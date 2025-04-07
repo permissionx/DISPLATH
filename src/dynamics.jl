@@ -2,7 +2,7 @@ using .BCA
 
 function ShotTarget(atom::Atom, simulator::Simulator)
     cellGrid = simulator.cellGrid
-    periodic = simulator.periodic    
+    periodic = simulator.parameters.periodic    
     cell = cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
     accCrossFlag = Vector{Int64}([0,0,0])
     while true
@@ -77,8 +77,8 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     pL = 0.0
     for atom_t in atoms_t
         l = atom_t.pL[atom_p.index]
-        if l > simulator.constants.pLMax 
-            l = simulator.constants.pLMax
+        if l > simulator.parameters.pLMax 
+            l = simulator.parameters.pLMax
         end
         pL += l
     end
@@ -105,7 +105,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             velocityDirectionTmp = atom_p.velocityDirection
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
-        if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > simulator.constants.stopEnergy
+        if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > simulator.parameters.stopEnergy
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
             DisplaceAtom!(atom_t, tCoordinate, simulator)  
@@ -153,7 +153,7 @@ end
 function Cascade!(atom_p::Atom, simulator::Simulator)
     pAtoms = Vector{Atom}([atom_p])
     nStep = 1
-    if simulator.isDumpInCascade
+    if simulator.parameters.isDumpInCascade
         Dump(simulator, "Cascade_$(simulator.nIrradiation).dump", nStep, false)
     end
     while true
@@ -180,7 +180,7 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
                     push!(nextPAtoms, target)
                 end
             end
-            if pAtom.energy > simulator.constants.stopEnergy   
+            if pAtom.energy > simulator.parameters.stopEnergy   
                 push!(nextPAtoms, pAtom)
             else
                 pAtom.lastTargets = Vector{Int64}()
@@ -207,7 +207,7 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
                 EmptyP!(target)
             end
         end 
-        if simulator.isDumpInCascade
+        if simulator.parameters.isDumpInCascade
             Dump(simulator, "Cascade_$(simulator.nIrradiation).dump", nStep, true)
         end
         if simulator.isLog
