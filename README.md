@@ -141,3 +141,6 @@ Feel free to tweak the code as needed for your specific research or simulation g
 ## References
 
 [1] I2DM: A Monte Carlo framework for ion irradiation on two-dimensional materials. [Link to paper](https://doi.org/10.1016/j.cpc.2020.107456)
+
+## Todo list
+1. 优化simulator的参数，parameters，constants布局

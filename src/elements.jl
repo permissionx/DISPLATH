@@ -1,15 +1,3 @@
-struct Element
-    name::String
-    radius::Float64
-    mass::Float64
-    Z::Float64
-    dte::Float64
-    bde::Float64
-    alpha::Float64
-    beta::Float64
-end
-
-
 function Element(name::String, dte::Float64, bde::Float64)
     if name == "H"
         return Element(name, 0.53, 1.0, 1.0, dte, bde, 1.0, 0.05)

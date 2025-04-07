@@ -41,6 +41,7 @@ mutable struct LatticePoint
     type::Int64  # Initial Type, will not change
     coordinate::Vector{Float64}
     cellIndex::Vector{Int64}
+    enviroment::Vector{Int64}
 
     atomIndex::Int64 # -1 for vacancy
 end
@@ -98,6 +99,16 @@ struct Constants
     isLog::Bool
 end
 
+struct Element
+    name::String
+    radius::Float64
+    mass::Float64
+    Z::Float64
+    dte::Float64
+    bde::Float64
+    alpha::Float64
+    beta::Float64
+end
 
 mutable struct Simulator
     atoms::Vector{Atom}
@@ -126,9 +137,12 @@ mutable struct Simulator
     θFunctions::Dict{Vector{Int64}, Function}
     τFunctions::Dict{Vector{Int64}, Function}
 
-    isSoap::Bool 
+    DTEMode::Int64
     soap::PyObject
+    enviromentCut::Float64
+    DTEData::Vector{Vector{Float64}}
 end
+
 
 
 struct Parameters
@@ -143,8 +157,10 @@ struct Parameters
     isDumpInCascade::Bool
     isLog::Bool
 
-    isSoap::Bool 
+    DTEMode::Int64 
     soapParameters::Vector{Float64}
+    enviromentCut::Float64
+    DTEFile::String
 end
 
 
@@ -161,14 +177,16 @@ function Parameters(
     pLMax::Float64 = 2.0, 
     isDumpInCascade::Bool = false, 
     isLog::Bool = false,
-    isSoap::Bool = false,
-    soapParameters::Vector{Float64} = [2.6, 8.0, 6.0])
+    DTEMode::Int64 = 1,
+    soapParameters::Vector{Float64} = [2.6, 8.0, 6.0],
+    enviromentCut::Float64 = 1.5,
+    DTEFile::String="")
     if !isdir(θτRepository)
         error("θτRepository $(θτRepository) does not exist.")
     end
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     return Parameters(pMax, θτRepository, vacancyRecoverDistance_squared, typeDict, 
                       E_p_power_range, p_range, stopEnergy, pLMax, isDumpInCascade, isLog,
-                      isSoap, soapParameters)
+                      DTEMode, soapParameters, enviromentCut,DTEFile)
 end 
 
