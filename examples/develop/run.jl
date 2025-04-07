@@ -26,6 +26,6 @@ parameters = Parameters(θτRepository, pMax, vacancyRecoverDistance, typeDict, 
 
 
 # Init simulator 
-simulator = Simulator(primaryVectors, boxSizes, inputGridVectors, periodic, latticeRanges, basis, basisTypes, parameters)
+simulator = Simulator(primaryVectors, boxSizes, inputGridVectors, latticeRanges, basis, basisTypes, parameters)
 
 

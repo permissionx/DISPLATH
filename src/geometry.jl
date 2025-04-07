@@ -118,14 +118,10 @@ function CreateCellGrid(box::Box, inputVectors::Matrix{Float64})
 end
 
 
-function InitConstants(parameters::Parameters)
-    return Constants(parameters.pMax, parameters.stopEnergy,
-                     parameters.vacancyRecoverDistance_squared, parameters.pLMax, 
-                     parameters.isDumpInCascade, parameters.isLog)
-end
 
 
-function InitConstantsByType(typeDict::Dict{Int64, Element}, constants::Constants) 
+
+function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Parameters) 
     V_upterm = Dict{Vector{Int64}, Float64}()
     a_U = Dict{Vector{Int64}, Float64}()
     E_m = Dict{Int64, Float64}()
@@ -147,7 +143,7 @@ function InitConstantsByType(typeDict::Dict{Int64, Element}, constants::Constant
             S_e_upTerm[[p,t]] = BCA.ConstantFunctions.S_e_upTerm(p, Z_p, Z_t, mass_p, α_p)
             x_nl[[p,t]] = BCA.ConstantFunctions.x_nl(p, Z_p, Z_t, β_p)
             a[[p,t]] = BCA.ConstantFunctions.a(Z_p, Z_t)
-            Q_nl[[p,t]] = BCA.ConstantFunctions.Q_nl(Z_p, Z_t, constants.pMax)
+            Q_nl[[p,t]] = BCA.ConstantFunctions.Q_nl(Z_p, Z_t, parameters.pMax)
             Q_loc[[p,t]] = BCA.ConstantFunctions.Q_loc(Z_p, Z_t)
             qMax_squared[[p,t]] = (radius_p + radius_t) * (radius_p + radius_t)
         end
@@ -212,37 +208,35 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
 end
 
 
-function Simulator(box::Box, inputGridVectors::Matrix{Float64}, periodic::Vector{Bool}, parameters::Parameters)
+function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Parameters)
     cellGrid = CreateCellGrid(box, inputGridVectors)
-    constants = InitConstants(parameters)
-    constantsByType = InitConstantsByType(parameters.typeDict, constants)
+    constantsByType = InitConstantsByType(parameters.typeDict, parameters)
     θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
     soap = InitSoap(parameters)
     if parameters.DTEMode == 2
-        DTEData = LoadDTEData(parameters)
+        enviromentCut, DTEData = LoadDTEData(parameters)
     else
-        DTEData = Vector{Vector{Float64}}()
+        enviromentCut, DTEData = -1, Vector{Vector{Float64}}()
     end
-    
-
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
-                     box, cellGrid, periodic, box.isOrthogonal, 0, 0, 
-                     parameters.typeDict, constantsByType, constants,
-                     false, Vector{Int64}(), 0, 0, 
-                     parameters.isDumpInCascade, parameters.isLog,
+                     box, cellGrid, 
+                     0, 0, 
+                     constantsByType,
+                     false, Vector{Int64}(), 0, 
+                     0, 
                      θFunctions, τFunctions,
-                     parameters.DTEMode, soap, parameters.enviromentCut, DTEData)  
+                     soap, enviromentCut, DTEData, 
+                     parameters)  
 end
 
 
 function Simulator(primaryVectors::Matrix{Float64}, boxSizes::Vector{Int64}, 
                    inputGridVectors::Matrix{Float64},
-                   periodic::Vector{Bool}, 
                    latticeRanges::Matrix{Int64}, basis::Matrix{Float64}, basisTypes::Vector{Int64},
                    parameters::Parameters)
     println("Initializing the simulator...")
     box = CreateBoxByPrimaryVectors(primaryVectors, boxSizes)
-    simulator = Simulator(box, inputGridVectors, periodic, parameters)
+    simulator = Simulator(box, inputGridVectors, parameters)
     for x in latticeRanges[1,1]:latticeRanges[1,2]-1
         for y in latticeRanges[2,1]:latticeRanges[2,2]-1    
             for z in latticeRanges[3,1]:latticeRanges[3,2]-1
@@ -418,7 +412,7 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, simulator::Simul
             #end
             if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0
                 ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
-                if neighborAtom.pValue[atom.index] >= simulator.constants.pMax
+                if neighborAtom.pValue[atom.index] >= simulator.parameters.pMax
                     DeleteP!(neighborAtom, atom.index)
                     continue
                 end
@@ -461,7 +455,7 @@ end
 function SimultaneousCriteria(atom::Atom, neighborAtom::Atom, addedTarget::Atom, crossFlag::Vector{Int64}, simulator::Simulator)
     box = simulator.box
     qMax_squared = simulator.constantsByType.qMax_squared[[neighborAtom.type, addedTarget.type]]
-    pMax = simulator.constants.pMax
+    pMax = simulator.parameters.pMax
     flagP = abs(neighborAtom.pValue[atom.index] - addedTarget.pValue[atom.index]) <= pMax
     flagQ = sum(VectorDifference(neighborAtom.coordinate, addedTarget.coordinate, crossFlag, box) .* atom.velocityDirection) <= sqrt(qMax_squared)
     return flagP && flagQ
@@ -497,7 +491,7 @@ function GetNeighborVacancy(atom::Atom, simulator::Simulator)
             latticePoint = simulator.latticePoints[latticePointIndex]
             if latticePoint.atomIndex == -1
                 dr2 = ComputeDistance_squared(atom.coordinate, latticePoint.coordinate, cross, simulator.box)
-                if dr2 < simulator.constants.vacancyRecoverDistance_squared && dr2 < nearestVacancyDistance_squared
+                if dr2 < simulator.parameters.vacancyRecoverDistance_squared && dr2 < nearestVacancyDistance_squared
                     nearestVacancyDistance_squared = dr2
                     nearestVacancyIndex = latticePoint.index
                 end

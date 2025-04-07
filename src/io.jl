@@ -1,5 +1,5 @@
 function Dump(simulator::Simulator, fileName::String, step::Int64, isAppend::Bool=false)
-    if !simulator.isOrthogonal        
+    if !simulator.parameters.isOrthogonal        
         error("The box is not orthogonal, please use the orthogonal box.")
     end
     write_flag = isAppend ? "a" : "w"
@@ -10,7 +10,7 @@ function Dump(simulator::Simulator, fileName::String, step::Int64, isAppend::Boo
         write(file, string(simulator.numberOfAtoms), "\n")
         write(file, "ITEM: BOX BOUNDS ")
         for d in 1:3
-            if simulator.periodic[d] 
+            if simulator.parameters.periodic[d] 
                 write(file, "pp ")
             else
                 write(file, "ff ")
@@ -124,9 +124,11 @@ function LoadDTEData(parameters::Parameters)
         error("DTE file $(file) does not exist.")
     end
     DTEData = Vector{Vector{Float64}}()
+    enviromentCut = 0.0 
     open(file, "r") do f
         lines = readlines(f)
         i = 1
+        enviromentCut = parse(Float64, split(lines[i])[2])
         while i <= length(lines)
             if startswith(lines[i], "@")
                 DTEs = Vector{Float64}()
@@ -138,8 +140,10 @@ function LoadDTEData(parameters::Parameters)
                     i += 1
                 end
                 push!(DTEData, DTEs)
+            else
+                i += 1
             end
         end
     end
-    return DTEData
+    return enviromentCut, DTEData
 end
