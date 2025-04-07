@@ -216,7 +216,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     if parameters.DTEMode == 2
         enviromentCut, DTEData = LoadDTEData(parameters)
     else
-        enviromentCut, DTEData = -1, Vector{Vector{Float64}}()
+        enviromentCut, DTEData = -1.0, Vector{Vector{Float64}}()
     end
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, cellGrid, 
