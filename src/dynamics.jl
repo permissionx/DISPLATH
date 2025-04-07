@@ -210,7 +210,7 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
         if simulator.parameters.isDumpInCascade
             Dump(simulator, "Cascade_$(simulator.nIrradiation).dump", nStep, true)
         end
-        if simulator.isLog
+        if simulator.parameters.isLog
             println("Collision times: ", nStep)
         end
         if length(nextPAtoms) > 0

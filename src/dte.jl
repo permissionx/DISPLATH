@@ -3,21 +3,21 @@ using PyCall
 @pyimport dscribe.descriptors as descriptors
 
 function GetDTE(atom::Atom, simulator::Simulator)
-    if simulator.DTEMode == 1  # direct 
+    if simulator.parameters.DTEMode == 1  # direct 
         return atom.dte
-    elseif simulator.DTEMode == 2  # all enviroment
+    elseif simulator.parameters.DTEMode == 2  # all enviroment
         return GetDTEByEnviroment(atom, simulator)
-    elseif simulator.DTEMode == 3   # soap
+    elseif simulator.parameters.DTEMode == 3   # soap
         return GetDTEBySoap(atom, simulator)
     end
 end
 
 function GetBDE(atom::Atom, simulator::Simulator)  # BDE: binding energy
-    if simulator.dteMode == 1  # direct 
+    if simulator.parameters.DTEMode == 1  # direct 
         return atom.bde
-    elseif simulator.DTEMode == 2  # all enviroment
+    elseif simulator.parameters.DTEMode == 2  # all enviroment
         return GetBDEByEnviroment(atom, simulator)
-    elseif simulator.DTEMode == 3   # soap
+    elseif simulator.parameters.DTEMode == 3   # soap
         return GetBDEBySoap(atom, simulator)
     end
 end

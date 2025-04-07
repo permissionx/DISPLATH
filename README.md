@@ -4,71 +4,71 @@
 
 DISPLAΘ is a Julia-based Binary Collision Approximation (BCA) simulator designed to model ion irradiation processes in materials. The name DISPLAΘ sounds like "displace" and stands for "DISPLAΘ Is the Second Program Laveraging Accurate Θ" (where I2DM [1] was the first one, and Θ represents the crucial scattering angle function in collision cascades). Through the simulation of collision cascades, it helps predict damage such as vacancies produced by different ions at various energies. ⚡
 
-
 ## Features
 
-- Simulate collision cascades within materials.
-- Compute irradiation damage (e.g., number of vacancies).
-- Flexible geometry and customizable parameters.
-- Supports a wide range of ion–material combinations.
-- Provides convenient data output (CSV, dump files, etc.).
+- Simulate collision cascades within materials
+- Compute irradiation damage (e.g., number of vacancies)
+- Flexible geometry and customizable parameters
+- Supports a wide range of ion–material combinations
+- Provides convenient data output (CSV, dump files, etc.)
+- Built-in support for various 2D materials (graphene, hBN, etc.)
+- Dynamic Time Evolution (DTE) simulation capabilities
+- Comprehensive defect tracking and analysis
 
 ## Installation Requirements
 
-- Julia 1.0 or higher.
+- Julia 1.0 or higher
 - Dependencies:
   - LinearAlgebra
   - PeriodicTable
   - QuadGK
-  - ProgressMeter (for displaying progress bars, configured in the code).
+  - ProgressMeter (for displaying progress bars)
+
+
 
 ## Getting Started
 
-1. Clone the repository to your local machine.
-2. Ensure you have the required Julia packages installed.
-3. Modify your calculation parameters and material settings as needed.
-4. Run your simulation script.
+1. Clone the repository to your local machine
+2. Ensure you have the required Julia packages installed
+3. Modify your calculation parameters and material settings as needed
+4. Run your simulation script
 
 ## Usage
 
-1. Define your material structure (lattice vectors, bounding box, basis atoms, etc.).
-2. Assign simulation parameters (ion types, energies, collision parameters, etc.).
-3. Initialize the simulator.
-4. Execute your irradiation script.
-5. Analyze the results (e.g., vacancy counts).
+1. Define your material structure (lattice vectors, bounding box, basis atoms, etc.)
+2. Assign simulation parameters (ion types, energies, collision parameters, etc.)
+3. Initialize the simulator
+4. Execute your irradiation script
+5. Analyze the results (e.g., vacancy counts)
 
-## Example
+## Examples
 
-Below is a simplified example of simulating xenon irradiation on graphene:
+### Basic hBN Irradiation Example
 
 ```julia
 # Load the BCA.jl modules
-include("path/to/main.jl")
+include("src/main.jl")
 
-# Define lattice parameters
-a = 1.42
-b = 3.35
+# Define lattice parameters for hBN
+a = 1.45  # Lattice constant
+b = 3.33  # Interlayer distance
 primaryVectors = [3.0*a 0.0 0.0; 0.0 sqrt(3)*a 0.0; 0.0 0.0 b]
 boxSizes = [10, 20, 10]
 inputGridVectors = [2.1*a 0.0 0.0; 0.0 2.1*a 0.0; 0.0 0.0 2.1*a]
 periodic = [true, true, false]
 latticeRanges = [0 10; 0 20; 5 6]   
 basis = [0.0 0.0 0.0; 1/3 0.0 0.0; 1/2 1/2 0.0; 5/6 1/2 0.0]
-basisTypes = [1, 1, 1, 1]
+basisTypes = [1, 2, 1, 2]  # 1 for B, 2 for N
 
 # Simulation parameters
-θτFileName = "CNe.thetatau"
+θτFileName = "BN.thetatau"
 pMax = 1.45
 vacancyRecoverDistance = 1.3
 typeDict = Dict(
-    1 => Element("C", 22.0, 22.0),  
-    2 => Element("Xe", 22.0, 22.0)  
+    1 => Element("B", 10.81, 10.81),
+    2 => Element("N", 14.01, 14.01),
+    3 => Element("Xe", 131.29, 131.29)
 )
-# Default values in Parameters (for reference):
-#   stopEnergy = 0.1
-#   pLMax = 2.0
-#   isDumpInCascade = false
-#   isLog = false
 
 parameters = Parameters(θτFileName, pMax, vacancyRecoverDistance, typeDict)
 
@@ -77,11 +77,12 @@ simulator = Simulator(primaryVectors, boxSizes, inputGridVectors, periodic,
     latticeRanges, basis, basisTypes, parameters)
 Save!(simulator)
 
+# Run irradiation simulation
 function Irradiation(simulator, energy)
     Restore!(simulator)
     simulator.nIrradiation += 1
-    ionPosition = RandomInAnUnitGrapheneCell(1.39667) .+ [18.855045, 22.981482313368623, 20]
-    ion = Atom(2, ionPosition, parameters)
+    ionPosition = RandomInAnUnitCell(primaryVectors) .+ [0.0, 0.0, 20.0]
+    ion = Atom(3, ionPosition, parameters)  # Xe ion
     SetVelocityDirection!(ion, [0.0, 0.0, -1.0])
     SetEnergy!(ion, energy)
     push!(simulator, ion)
@@ -89,15 +90,12 @@ function Irradiation(simulator, energy)
     return CountVacancies(simulator)
 end
 
-computerNumberPerEnergy = 1000
+# Run multiple simulations
+energies = [10*1.2^x for x in 0:35]
 vacancy_data = Dict{Int64, Vector{Int64}}()
 
-energies = [10*1.2^x for x in 0:35]
 for (n, energy) in enumerate(energies)
-    vacancyNumbers = Vector{Int64}(undef, computerNumberPerEnergy)
-    for i in 1:computerNumberPerEnergy
-        vacancyNumbers[i] = Irradiation(simulator, energy)
-    end
+    vacancyNumbers = [Irradiation(simulator, energy) for _ in 1:1000]
     vacancy_data[n] = vacancyNumbers
 end
 
@@ -111,36 +109,36 @@ open("vacancy.csv", "w") do f
     end
 end
 ```
-  
+
 ## Parameters
 
 - **Lattice / Box**:
-  - `primaryVectors`: defines the unit cell of the material.
-  - `boxSizes`: number of cells in each dimension.
-  - `periodic`: boundary conditions (true or false).
+  - `primaryVectors`: defines the unit cell of the material
+  - `boxSizes`: number of cells in each dimension
+  - `periodic`: boundary conditions (true or false)
+  - `basis`: atomic positions in the unit cell
+  - `basisTypes`: atomic types for each basis position
 
 - **Collision Settings**:
-  - `θτFileName`: file with angle and displacement data.
-  - `pMax`: maximum impact parameter.
-  - `vacancyRecoverDistance`: threshold distance for vacancy recovery.
-  - `stopEnergy` (default = 0.1 eV): minimum energy below which an atom stops moving.
-  - `pLMax` (default = 2.0): maximum collision distance factor.
-  - `isDumpInCascade` (default = false): whether to dump data after each collision event.
-  - `isLog` (default = false): whether to print log info.
+  - `θτFileName`: file with angle and displacement data
+  - `pMax`: maximum impact parameter
+  - `vacancyRecoverDistance`: threshold distance for vacancy recovery
+  - `stopEnergy` (default = 0.1 eV): minimum energy below which an atom stops moving
+  - `pLMax` (default = 2.0): maximum collision distance factor
+  - `isDumpInCascade` (default = false): whether to dump data after each collision event
+  - `isLog` (default = false): whether to print log info
 
 - **Ion/Material**:
-  - `typeDict`: dictionary defining the element (name, mass, radius, etc.).
+  - `typeDict`: dictionary defining the element (name, mass, radius, etc.)
 
 ## Output
 
-- `vacancy.csv`: CSV logging the energy and the corresponding vacancy count. 
-- Optional dump files (`Cascade_*.dump`): track the intermediate steps of collision cascades.
-
-Feel free to tweak the code as needed for your specific research or simulation goals. Happy simulating! ☀️
+- `vacancy.csv`: CSV logging the energy and the corresponding vacancy count
+- Optional dump files (`Cascade_*.dump`): track the intermediate steps of collision cascades
+- DTE output files: for dynamic time evolution simulations
 
 ## References
 
 [1] I2DM: A Monte Carlo framework for ion irradiation on two-dimensional materials. [Link to paper](https://doi.org/10.1016/j.cpc.2020.107456)
 
-## Todo list
-1. 优化simulator的参数，parameters，constants布局
+
