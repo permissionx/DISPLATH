@@ -6,7 +6,7 @@ using Interpolations
 using Dates
 using ProgressMeter
 using PyCall
-@pyimport dscribe.descriptors as descriptors    
+# @pyimport dscribe.descriptors as descriptors    
 
 function Box(Vectors::Matrix{Float64})
     # need to improve to detact if it is orithogonal. 
@@ -87,6 +87,7 @@ function CreateCellGrid(box::Box, inputVectors::Matrix{Float64})
         sizes[d] = Int64(floor(box.vectors[d,d] / inputVectors[d,d]))
         vectors[d,d] = box.vectors[d,d] / sizes[d]
     end
+    println("Created cell grid containing $(sizes[1]) x $(sizes[2]) x $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells with each cell size of $(vectors[1,1]) $(vectors[2,2]) $(vectors[3,3]).")
     cells = Array{GridCell, 3}(undef, sizes[1], sizes[2], sizes[3])
     for x in 1:sizes[1]
         for y in 1:sizes[2]
@@ -217,7 +218,12 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, periodic::Vector
     constantsByType = InitConstantsByType(parameters.typeDict, constants)
     θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
     soap = InitSoap(parameters)
-
+    if parameters.DTEMode == 2
+        DTEData = LoadDTEData(parameters)
+    else
+        DTEData = Vector{Vector{Float64}}()
+    end
+    
 
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, cellGrid, periodic, box.isOrthogonal, 0, 0, 
@@ -225,7 +231,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, periodic::Vector
                      false, Vector{Int64}(), 0, 0, 
                      parameters.isDumpInCascade, parameters.isLog,
                      θFunctions, τFunctions,
-                     parameters.isSoap, soap)  
+                     parameters.DTEMode, soap, parameters.enviromentCut, DTEData)  
 end
 
 
@@ -245,14 +251,16 @@ function Simulator(primaryVectors::Matrix{Float64}, boxSizes::Vector{Int64},
                     coordinate = primaryVectors' * reducedCoordinate
                     atom = Atom(basisTypes[i], coordinate, parameters)
                     push!(simulator, atom)
+                    enviroment = Vector{Int64}()
                     latticePoint = LatticePoint(copy(atom.index), copy(atom.type), 
-                                                copy(atom.coordinate), copy(atom.cellIndex),
+                                                copy(atom.coordinate), copy(atom.cellIndex), enviroment,
                                                 atom.index)
                     push!(simulator, latticePoint)
                 end
             end
         end
     end
+    InitLatticePointEnvronment(simulator)
     for cell in simulator.cellGrid.cells
         cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume
     end 
@@ -563,6 +571,7 @@ function Restore!(simulator::Simulator)
     simulator.numberOfAtoms  = maxAtomID
     empty!(simulator.displacedAtoms)
 end
+
 
 function Save!(simulator::Simulator)
     for atom in simulator.atoms

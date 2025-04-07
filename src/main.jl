@@ -1,7 +1,7 @@
 using LinearAlgebra
 import Base: push!
-include("elements.jl")
 include("types.jl")
+include("elements.jl")
 include("bca.jl")  # In namespace BCA: BCA->(QLoss, Constants)
 include("io.jl")
 include("geometry.jl")

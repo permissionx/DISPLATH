@@ -117,3 +117,29 @@ function LoadθτData(type_p::Int64, type_t::Int64, parameters::Parameters)
         return E_p_axis, p_axis, θMatrix, τMatrix
     end
 end
+
+function LoadDTEData(parameters::Parameters)
+    file = parameters.DTEFile
+    if !isfile(file)
+        error("DTE file $(file) does not exist.")
+    end
+    DTEData = Vector{Vector{Float64}}()
+    open(file, "r") do f
+        lines = readlines(f)
+        i = 1
+        while i <= length(lines)
+            if startswith(lines[i], "@")
+                DTEs = Vector{Float64}()
+                i += 1
+                while i <= length(lines) && !startswith(lines[i], "@")
+                    if !isempty(lines[i]) && !startswith(lines[i], "#")
+                        push!(DTEs, parse(Float64,split(lines[i])[1]))
+                    end
+                    i += 1
+                end
+                push!(DTEData, DTEs)
+            end
+        end
+    end
+    return DTEData
+end

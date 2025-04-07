@@ -35,8 +35,7 @@ parameters = Parameters(θτRepository, pMax, vacancyRecoverDistance, typeDict)
 simulator = Simulator(primaryVectors, boxSizes, inputGridVectors, periodic, latticeRanges, basis, basisTypes, parameters)  
 Save!(simulator)
 
-#Dump(simulator, "run.dump",0,false)
-
+Dump(simulator, "hBN.dump",0,false)
 
 
 
