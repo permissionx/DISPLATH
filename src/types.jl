@@ -149,6 +149,7 @@ function Parameters(
                       DTEMode, soapParameters, DTEFile)
 end 
 
+
 mutable struct Simulator
     atoms::Vector{Atom}
     latticePoints::Vector{LatticePoint}

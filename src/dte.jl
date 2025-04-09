@@ -68,23 +68,19 @@ function GetEnviromentIndex(latticePoint::LatticePoint, simulator::Simulator)
             index += 2^(i-1)
         end
     end
-    return index 
+    return index + 1
 end 
   
 function GetDTE(latticePoint::LatticePoint, simulator::Simulator)
-    index = GetEnviromentIndex(latticePoint, simulator)
+    index = GetEnviromentIndex(latticePoint, simulator) 
     return simulator.DTEData[latticePoint.type][index]
 end
 
 function GetDTEByEnviroment(atom::Atom, simulator::Simulator)\
-    try        
-        if atom.latticePointIndex != -1 
-            return GetDTE(simulator.latticePoints[atom.latticePointIndex], simulator)
-        else
-            return atom.dte/2
-        end
-    catch
-        return atom.dte
+    if atom.latticePointIndex != -1 
+        return GetDTE(simulator.latticePoints[atom.latticePointIndex], simulator)
+    else
+        return atom.dte/2
     end
 end
        
