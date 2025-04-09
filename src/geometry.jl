@@ -305,6 +305,10 @@ function delete!(simulator::Simulator, atom::Atom)
     delete!(originalCell, atom.index, simulator)
     simulator.numberOfAtoms -= 1
     atom.isAlive = false 
+    if atom.latticePointIndex != -1
+        simulator.latticePoints[atom.latticePointIndex].atomIndex = -1
+        atom.latticePointIndex = -1
+    end
     AddToStore!(atom, simulator)       
 end
 
@@ -475,7 +479,11 @@ function SetVelocityDirection!(atom::Atom, velocity::Vector{Float64})
 end
 
 function SetEnergy!(atom::Atom, energy::Float64)
-    atom.energy = energy
+    if energy < 0.0
+        atom.energy = 0.0
+    else
+        atom.energy = energy
+    end
 end
 
 function GetNeighborVacancy(atom::Atom, simulator::Simulator)

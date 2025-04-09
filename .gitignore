@@ -28,6 +28,11 @@ Manifest.toml
 *.log
 *.ipynb
 
+# dte_repository
+dte_repository/*
+!dte_repository/.gitkeep
+
+
 # thetatau_repository
 thetatau_repository/*
 !thetatau_repository/.gitkeep
