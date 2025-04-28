@@ -27,6 +27,7 @@ Manifest.toml
 *.csv
 *.log
 *.ipynb
+*.lammpstrj
 
 # dte_repository
 dte_repository/*
