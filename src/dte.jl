@@ -5,8 +5,8 @@ using PyCall
 function GetDTE(atom::Atom, simulator::Simulator)
     if simulator.parameters.DTEMode == 1  # direct 
         return atom.dte
-    elseif simulator.parameters.DTEMode == 2  # all enviroment
-        return GetDTEByEnviroment(atom, simulator)
+    elseif simulator.parameters.DTEMode == 2  # all environment
+        return GetDTEByenvironment(atom, simulator)
     elseif simulator.parameters.DTEMode == 3   # soap
         return GetDTEBySoap(atom, simulator)
     end
@@ -15,76 +15,28 @@ end
 function GetBDE(atom::Atom, simulator::Simulator)  # BDE: binding energy
     if simulator.parameters.DTEMode == 1  # direct 
         return atom.bde
-    elseif simulator.parameters.DTEMode == 2  # all enviroment
-        return GetBDEByEnviroment(atom, simulator)
+    elseif simulator.parameters.DTEMode == 2  # all environment
+        return GetBDEByenvironment(atom, simulator)
     elseif simulator.parameters.DTEMode == 3   # soap
         return GetBDEBySoap(atom, simulator)
     end
 end
 
-function GetEnviromentLatticePoints(latticePoint::LatticePoint, simulator::Simulator)
-    cellIndex = latticePoint.cellIndex
-    theCell = simulator.cellGrid.cells[cellIndex[1], cellIndex[2], cellIndex[3]]
-    cells = simulator.cellGrid.cells
-    cut_squared = simulator.enviromentCut^2
-    box = simulator.box
-    enviromentLatticePointsIndex = Vector{Int64}()
-    dVectors = Vector{Vector{Float64}}()
-    allLatticePoints = simulator.latticePoints
-    for (_, neighborCellInfo) in theCell.neighborCellsInfo
-        index, cross = neighborCellInfo.index, neighborCellInfo.cross
-        cell = cells[index[1], index[2], index[3]]
-        latticePointsIndex = cell.latticePoints
-        for neighborLatticePointIndex in latticePointsIndex
-            neighborLatticePoint = allLatticePoints[neighborLatticePointIndex]
-            if ComputeDistance_squared(latticePoint.coordinate, neighborLatticePoint.coordinate, cross, box) <= cut_squared && neighborLatticePointIndex != latticePoint.index
-                push!(dVectors, VectorDifference(latticePoint.coordinate, neighborLatticePoint.coordinate, cross, box))
-                push!(enviromentLatticePointsIndex, neighborLatticePointIndex)
-            end
-        end
-    end
-    # sort indexes by x then y then z of dVectors
-    sorted_indices = sortperm(dVectors, by = v -> (v[1], v[2], v[3]))
-    enviromentLatticePointsIndex = enviromentLatticePointsIndex[sorted_indices]
-    
-    return enviromentLatticePointsIndex
-end
-
-function InitLatticePointEnvronment(simulator::Simulator)
-    for latticePoint in simulator.latticePoints
-        latticePoint.enviroment = GetEnviromentLatticePoints(latticePoint, simulator)
-    end
-    # simulator.enviromentLength should be get from the DTEDict.
-end
-
-
-function GetEnviromentIndex(latticePoint::LatticePoint, simulator::Simulator)
-    enviroment = latticePoint.enviroment
-    latticePoints = simulator.latticePoints
-    index = 0
-    
-    for i in 1:length(enviroment)
-        if latticePoints[enviroment[i]].atomIndex != -1
-            index += 2^(i-1)
-        end
-    end
-    return index + 1
-end 
   
 function GetDTE(latticePoint::LatticePoint, simulator::Simulator)
-    index = GetEnviromentIndex(latticePoint, simulator) 
+    index = GetEnvironmentIndex(latticePoint, simulator) 
     return simulator.DTEData[latticePoint.type][index]
 end
 
-function GetDTEByEnviroment(atom::Atom, simulator::Simulator)\
+function GetDTEByenvironment(atom::Atom, simulator::Simulator)\
     if atom.latticePointIndex != -1 
         return GetDTE(simulator.latticePoints[atom.latticePointIndex], simulator)
     else
         return atom.dte/2
     end
 end
-       
-function GetBDEByEnviroment(atom::Atom, simulator::Simulator)
+         
+function GetBDEByenvironment(atom::Atom, simulator::Simulator)
     return GetDTE(atom, simulator)
 end
 

@@ -6,6 +6,7 @@ include("bca.jl")  # In namespace BCA: BCA->(QLoss, Constants)
 include("io.jl")
 include("geometry.jl")
 include("dte.jl")
+include("kmc.jl")
 include("dynamics.jl")
 include("defect_statics.jl")
 

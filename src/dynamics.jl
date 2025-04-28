@@ -10,9 +10,10 @@ function ShotTarget(atom::Atom, simulator::Simulator)
         # delete repeated targets in lastTargets
         filter!(t->!(t.index in atom.lastTargets), targets)
         if length(targets) > 0
-            for cell in cellGrid.cells
+            for cell in simulator.exploredCells
                 cell.isExplored = false
             end
+            empty!(simulator.exploredCells)
             return targets
         else
             dimension, direction = AtomOutFaceDimension(atom, cell, accCrossFlag, simulator.box)
@@ -21,9 +22,10 @@ function ShotTarget(atom::Atom, simulator::Simulator)
             neighborInfo = cell.neighborCellsInfo[neighborIndex]
             accCrossFlag += neighborInfo.cross
             if (neighborInfo.cross[dimension] != 0 && !periodic[dimension]) || isInfinity
-                for cell in cellGrid.cells
+                for cell in simulator.exploredCells
                     cell.isExplored = false
                 end
+                empty!(simulator.exploredCells)
                 return Vector{Atom}() # means find nothing  
             end 
             index = neighborInfo.index
@@ -105,14 +107,13 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             velocityDirectionTmp = atom_p.velocityDirection
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
-        if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > simulator.parameters.stopEnergy
+        if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.0
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
             DisplaceAtom!(atom_t, tCoordinate, simulator)  
             SetEnergy!(atom_t, E_tList[i])
             if atom_t.latticePointIndex != -1
-                simulator.latticePoints[atom_t.latticePointIndex].atomIndex = -1
-                atom_t.latticePointIndex = -1
+                LeaveLatticePoint!(atom, simulator)
             end     
         else 
             SetEnergy!(atom_t, 0.0)

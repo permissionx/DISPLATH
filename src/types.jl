@@ -33,6 +33,11 @@ mutable struct Atom
 
 
     latticePointIndex::Int64 # -1 for off lattice
+    
+    # for KMC 
+    probability::Float64
+    probabilities::Vector{Float64} 
+    finalLatticePointIndexs::Vector{Int64}
 end
 
 
@@ -41,7 +46,7 @@ mutable struct LatticePoint
     type::Int64  # Initial Type, will not change
     coordinate::Vector{Float64}
     cellIndex::Vector{Int64}
-    enviroment::Vector{Int64}
+    environment::Vector{Int64}
 
     atomIndex::Int64 # -1 for vacancy
 end
@@ -132,7 +137,7 @@ function Parameters(
     isOrthogonal::Bool = true,
     E_p_power_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -1.0:0.045:8.0,
     p_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = 0.0:0.01:2.0,
-    stopEnergy::Float64 = 0.1, 
+    stopEnergy::Float64 = 10.0, 
     pLMax::Float64 = 2.0, 
     isDumpInCascade::Bool = false, 
     isLog::Bool = false,
@@ -162,11 +167,16 @@ mutable struct Simulator
     displacedAtoms::Vector{Int64}
     atomNumberWhenStore::Int64
     nIrradiation::Int64
+    exploredCells::Vector{GridCell}
     θFunctions::Dict{Vector{Int64}, Function}
     τFunctions::Dict{Vector{Int64}, Function}
     soap::PyObject
-    enviromentCut::Float64
+    environmentCut::Float64
     DTEData::Vector{Vector{Float64}}
     parameters::Parameters
+    #for kmc 
+    probability::Float64
+    probabilities::Vector{Float64}
+    mobileAtoms::Vector{Atom}
 end
 

@@ -20,14 +20,15 @@ function Dump(simulator::Simulator, fileName::String, step::Int64, isAppend::Boo
         for d in 1:3
             write(file, "0 $(simulator.box.vectors[d,d])\n")
         end
-        write(file, "ITEM: ATOMS id type x y z vx vy vz energy cx cy cz\n")
+        write(file, "ITEM: ATOMS id type x y z vx vy vz energy cx cy cz dte\n")
         for atom in simulator.atoms
             if atom.isAlive
                 write(file, "$(atom.index) $(atom.type) \
                 $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3]) \
                 $(atom.velocityDirection[1]*sqrt(2*atom.mass*atom.energy)) $(atom.velocityDirection[2]*sqrt(2*atom.mass*atom.energy)) $(atom.velocityDirection[3]*sqrt(2*atom.mass*atom.energy)) \
                 $(atom.energy) \
-                $(atom.cellIndex[1]) $(atom.cellIndex[2]) $(atom.cellIndex[3])\n")
+                $(atom.cellIndex[1]) $(atom.cellIndex[2]) $(atom.cellIndex[3]) \
+                $(GetDTE(atom, simulator))\n")
             end
         end 
     end
@@ -124,11 +125,11 @@ function LoadDTEData(parameters::Parameters)
         error("DTE file $(file) does not exist.")
     end
     DTEData = Vector{Vector{Float64}}()
-    enviromentCut = 0.0 
+    environmentCut = 0.0 
     open(file, "r") do f
         lines = readlines(f)
         i = 1
-        enviromentCut = parse(Float64, split(lines[i])[2])
+        environmentCut = parse(Float64, split(lines[i])[2])
         while i <= length(lines)
             if startswith(lines[i], "@")
                 DTEs = Vector{Float64}()
@@ -145,5 +146,39 @@ function LoadDTEData(parameters::Parameters)
             end
         end
     end
-    return enviromentCut, DTEData
+    return environmentCut, DTEData
+end
+
+
+
+function DumpVacancies(simulator::Simulator, fileName::String, step::Int64, isAppend::Bool=false)
+    if !simulator.parameters.isOrthogonal        
+        error("The box is not orthogonal, please use the orthogonal box.")
+    end
+    vacancyLattices = ExtractVacancyLattices(simulator)
+    write_flag = isAppend ? "a" : "w"
+    open(fileName, write_flag) do file
+        write(file, "ITEM: TIMESTEP\n")
+        write(file, string(step), "\n")
+        write(file, "ITEM: NUMBER OF ATOMS\n")
+        write(file, string(length(vacancyLattices)), "\n")
+        write(file, "ITEM: BOX BOUNDS ")
+        for d in 1:3
+            if simulator.parameters.periodic[d] 
+                write(file, "pp ")
+            else
+                write(file, "ff ")
+            end
+        end
+        write(file, "\n")
+        for d in 1:3
+            write(file, "0 $(simulator.box.vectors[d,d])\n")
+        end
+        write(file, "ITEM: ATOMS id type x y z cx cy cz dte\n")
+        for latticePoint in vacancyLattices
+            write(file, "$(latticePoint.index) $(latticePoint.type) \
+            $(latticePoint.coordinate[1]) $(latticePoint.coordinate[2]) $(latticePoint.coordinate[3]) \
+            $(latticePoint.cellIndex[1]) $(latticePoint.cellIndex[2]) $(latticePoint.cellIndex[3])\n")
+        end
+    end
 end

@@ -214,18 +214,18 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
     soap = InitSoap(parameters)
     if parameters.DTEMode == 2
-        enviromentCut, DTEData = LoadDTEData(parameters)
+        environmentCut, DTEData = LoadDTEData(parameters)
     else
-        enviromentCut, DTEData = -1.0, Vector{Vector{Float64}}()
+        environmentCut, DTEData = -1.0, Vector{Vector{Float64}}()
     end
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, cellGrid, 
                      0, 0, 
                      constantsByType,
                      false, Vector{Int64}(), 0, 
-                     0, 
+                     0, Vector{GridCell}(),
                      θFunctions, τFunctions,
-                     soap, enviromentCut, DTEData, 
+                     soap, environmentCut, DTEData, 
                      parameters)  
 end
 
@@ -245,9 +245,9 @@ function Simulator(primaryVectors::Matrix{Float64}, boxSizes::Vector{Int64},
                     coordinate = primaryVectors' * reducedCoordinate
                     atom = Atom(basisTypes[i], coordinate, parameters)
                     push!(simulator, atom)
-                    enviroment = Vector{Int64}()
+                    environment = Vector{Int64}()
                     latticePoint = LatticePoint(copy(atom.index), copy(atom.type), 
-                                                copy(atom.coordinate), copy(atom.cellIndex), enviroment,
+                                                copy(atom.coordinate), copy(atom.cellIndex), environment,
                                                 atom.index)
                     push!(simulator, latticePoint)
                 end
@@ -306,10 +306,16 @@ function delete!(simulator::Simulator, atom::Atom)
     simulator.numberOfAtoms -= 1
     atom.isAlive = false 
     if atom.latticePointIndex != -1
-        simulator.latticePoints[atom.latticePointIndex].atomIndex = -1
-        atom.latticePointIndex = -1
+        LeaveLatticePoint!(atom, simulator)
     end
+end
+
+function LeaveLatticePoint!(atom::Atom, simulator::Simulator)
     AddToStore!(atom, simulator)       
+    latticePoint = simulator.latticePoints[atom.latticePointIndex]
+    latticePoint.atomIndex = -1
+    atom.latticePointIndex = -1
+    UpdateKMCEnvironment!(latticePoint, simulator)
 end
 
 
@@ -434,12 +440,14 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, simulator::Simul
             end
         end
         neighborCell.isExplored = true
+        push!(simulator.exploredCells, neighborCell)
     end
     if infiniteFlag
         log("Infinitely fly atom in the $(simulator.nIrradiation)th irradiation:\n$(atom)\n")
     end
     return (targets, infiniteFlag)
 end
+
 
 function DeleteP!(atom_t::Atom, atom_pIndex::Int64)
     delete!(atom_t.pValue, atom_pIndex)
@@ -518,9 +526,6 @@ end
 
 function Recover!(atom::Atom, simulator::Simulator)
     nearestVacancyIndex = GetNeighborVacancy(atom, simulator)
-    if atom.index != nearestVacancyIndex
-        AddToStore!(atom, simulator)
-    end
     if nearestVacancyIndex != -1
         SetOnLatticePoint!(atom, simulator.latticePoints[nearestVacancyIndex], simulator)
     end
@@ -539,13 +544,14 @@ function SetOnLatticePoint!(atom::Atom, latticePoint::LatticePoint, simulator::S
         nextCell = simulator.cellGrid.cells[latticePoint.cellIndex[1], latticePoint.cellIndex[2], latticePoint.cellIndex[3]]
         push!(nextCell, atom, simulator)
     end 
+    UpdateKMCEnvironment!(latticePoint, simulator)
 end
 
 
 function AddToStore!(atom::Atom, simulator::Simulator)
     if simulator.isStore && atom.index <= simulator.atomNumberWhenStore
         push!(simulator.displacedAtoms, atom.index)
-    end
+    end 
 end
 
 function DeleteFromStore!(atom::Atom, simulator::Simulator)
@@ -564,6 +570,9 @@ function Restore!(simulator::Simulator)
     end
     for index in Set(simulator.displacedAtoms)
         atom = simulator.atoms[index]
+        if atom.index == atom.latticePointIndex
+            continue
+        end
         latticePoint = simulator.latticePoints[atom.index]
         SetOnLatticePoint!(atom, latticePoint, simulator)
     end
@@ -585,3 +594,58 @@ function Save!(simulator::Simulator)
     simulator.atomNumberWhenStore = simulator.numberOfAtoms
 end 
 
+
+function GetenvironmentLatticePoints(latticePoint::LatticePoint, simulator::Simulator)
+    cellIndex = latticePoint.cellIndex
+    theCell = simulator.cellGrid.cells[cellIndex[1], cellIndex[2], cellIndex[3]]
+    cells = simulator.cellGrid.cells
+    cut_squared = simulator.environmentCut^2
+    box = simulator.box
+    environmentLatticePointsIndex = Vector{Int64}()
+    dVectors = Vector{Vector{Float64}}()
+    allLatticePoints = simulator.latticePoints
+    for (_, neighborCellInfo) in theCell.neighborCellsInfo
+        index, cross = neighborCellInfo.index, neighborCellInfo.cross
+        cell = cells[index[1], index[2], index[3]]
+        latticePointsIndex = cell.latticePoints
+        for neighborLatticePointIndex in latticePointsIndex
+            neighborLatticePoint = allLatticePoints[neighborLatticePointIndex]
+            if ComputeDistance_squared(latticePoint.coordinate, neighborLatticePoint.coordinate, cross, box) <= cut_squared && neighborLatticePointIndex != latticePoint.index
+                push!(dVectors, VectorDifference(latticePoint.coordinate, neighborLatticePoint.coordinate, cross, box))
+                push!(environmentLatticePointsIndex, neighborLatticePointIndex)
+            end
+        end
+    end
+    # sort indexes by x then y then z of dVectors
+    sorted_indices = sortperm(dVectors, by = v -> (v[1], v[2], v[3]))
+    environmentLatticePointsIndex = environmentLatticePointsIndex[sorted_indices]
+    
+    return environmentLatticePointsIndex
+end
+
+
+function InitLatticePointEnvronment(simulator::Simulator)
+    for latticePoint in simulator.latticePoints
+        latticePoint.environment = GetenvironmentLatticePoints(latticePoint, simulator)
+    end
+    # simulator.environmentLength should be get from the DTEDict.
+end
+
+
+function GetEnvironmentIndex(latticePoint::LatticePoint, simulator::Simulator)
+    environment = latticePoint.environment
+    latticePoints = simulator.latticePoints
+    index = 0
+    
+    for i in 1:length(environment)
+        if latticePoints[environment[i]].atomIndex != -1
+            index += 2^(i-1)
+        end
+    end
+    return index + 1
+end 
+
+function SwitchLatticePoint(atom::Atom, latticePoint::LatticePoint, simulator::Simulator)
+    LeaveLatticePoint!(atom, simulator)
+    SetOnLatticePoint!(atom, latticePoint, simulator)
+end
