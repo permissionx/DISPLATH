@@ -113,7 +113,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             DisplaceAtom!(atom_t, tCoordinate, simulator)  
             SetEnergy!(atom_t, E_tList[i])
             if atom_t.latticePointIndex != -1
-                LeaveLatticePoint!(atom, simulator)
+                LeaveLatticePoint!(atom_t, simulator)
             end     
         else 
             SetEnergy!(atom_t, 0.0)

@@ -21,7 +21,7 @@ DTEFile = "hBN.dte"
 typeDict = Dict(
     1 => Element("B", 19.96, 19.96),  
     2 => Element("N", 22.77, 22.77),
-    3 => Element("Xe", 1.0, 1.0)
+    3 => Element("He", 1.0, 1.0)
 )
 parameters = Parameters(θτRepository, pMax, vacancyRecoverDistance, typeDict, DTEMode=DTEMode, DTEFile=DTEFile)
 
@@ -31,8 +31,8 @@ simulator = Simulator(primaryVectors, boxSizes, inputGridVectors, latticeRanges,
 Dump(simulator, "hBNH.dump", 0, false)
        
 Random.seed!(40)
-@showprogress for _ in 1:1000000
-    energy = 9000000.5
+@showprogress for _ in 1:10000
+    energy = 9000000.0
     simulator.nIrradiation += 1
     ionPosition = RandomInSquare(43.5, 50.2294) + [0.0, 0.0, 12.0]
     ion = Atom(3, ionPosition, parameters)
@@ -43,7 +43,7 @@ Random.seed!(40)
     #if ion.isAlive
     #    delete!(simulator, ion)
     #end
-    if simulator.nIrradiation % 10000 == 0  
+    if simulator.nIrradiation % 100 == 0  
         Dump(simulator, "hBNH.dump", simulator.nIrradiation, true)  
     end
 end

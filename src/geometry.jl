@@ -32,11 +32,16 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     lastTargets = Vector{Int64}()
     pL = Dict{Int64, Float64}()
     latticePointIndex = -1
+    frequency = 0.0
+    frequencies = Vector{Float64}()
+    finalLatticePointEnvIndexs = Vector{Int64}()
+    eventIndex = -1
     return Atom(index, isAlive, type, coordinate, cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
                 dte, bde,
                 pValue, pVector, pPoint, pL, lastTargets,
-                latticePointIndex)
+                latticePointIndex,
+                frequency, frequencies, finalLatticePointEnvIndexs, eventIndex)
 end
 
 
@@ -208,27 +213,6 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
 end
 
 
-function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    cellGrid = CreateCellGrid(box, inputGridVectors)
-    constantsByType = InitConstantsByType(parameters.typeDict, parameters)
-    θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
-    soap = InitSoap(parameters)
-    if parameters.DTEMode == 2
-        environmentCut, DTEData = LoadDTEData(parameters)
-    else
-        environmentCut, DTEData = -1.0, Vector{Vector{Float64}}()
-    end
-    return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
-                     box, cellGrid, 
-                     0, 0, 
-                     constantsByType,
-                     false, Vector{Int64}(), 0, 
-                     0, Vector{GridCell}(),
-                     θFunctions, τFunctions,
-                     soap, environmentCut, DTEData, 
-                     parameters)  
-end
-
 
 function Simulator(primaryVectors::Matrix{Float64}, boxSizes::Vector{Int64}, 
                    inputGridVectors::Matrix{Float64},
@@ -310,12 +294,15 @@ function delete!(simulator::Simulator, atom::Atom)
     end
 end
 
-function LeaveLatticePoint!(atom::Atom, simulator::Simulator)
+function LeaveLatticePoint!(atom::Atom, simulator::Simulator; isUpdateEnv::Bool = true)
     AddToStore!(atom, simulator)       
     latticePoint = simulator.latticePoints[atom.latticePointIndex]
     latticePoint.atomIndex = -1
     atom.latticePointIndex = -1
-    UpdateKMCEnvironment!(latticePoint, simulator)
+    if isUpdateEnv && simulator.parameters.isKMC
+        DeleteAtomEvents!(simulator, atom)
+        UpdateEvents!(Set(latticePoint.environment), simulator)
+    end
 end
 
 
@@ -533,7 +520,7 @@ end
 
 
 
-function SetOnLatticePoint!(atom::Atom, latticePoint::LatticePoint, simulator::Simulator)
+function SetOnLatticePoint!(atom::Atom, latticePoint::LatticePoint, simulator::Simulator; isUpdateEnv::Bool = true)
     latticePoint.atomIndex = atom.index
     atom.latticePointIndex = latticePoint.index
     atom.coordinate = latticePoint.coordinate[:]
@@ -544,7 +531,10 @@ function SetOnLatticePoint!(atom::Atom, latticePoint::LatticePoint, simulator::S
         nextCell = simulator.cellGrid.cells[latticePoint.cellIndex[1], latticePoint.cellIndex[2], latticePoint.cellIndex[3]]
         push!(nextCell, atom, simulator)
     end 
-    UpdateKMCEnvironment!(latticePoint, simulator)
+    if simulator.parameters.isKMC && isUpdateEnv
+        latticePointIndexs = Set([latticePoint.environment;latticePoint.index])
+        UpdateEvents!(latticePointIndexs, simulator)
+    end
 end
 
 
@@ -595,7 +585,7 @@ function Save!(simulator::Simulator)
 end 
 
 
-function GetenvironmentLatticePoints(latticePoint::LatticePoint, simulator::Simulator)
+function GetEnvironmentLatticePoints(latticePoint::LatticePoint, simulator::Simulator)
     cellIndex = latticePoint.cellIndex
     theCell = simulator.cellGrid.cells[cellIndex[1], cellIndex[2], cellIndex[3]]
     cells = simulator.cellGrid.cells
@@ -626,7 +616,7 @@ end
 
 function InitLatticePointEnvronment(simulator::Simulator)
     for latticePoint in simulator.latticePoints
-        latticePoint.environment = GetenvironmentLatticePoints(latticePoint, simulator)
+        latticePoint.environment = GetEnvironmentLatticePoints(latticePoint, simulator)
     end
     # simulator.environmentLength should be get from the DTEDict.
 end
@@ -645,7 +635,4 @@ function GetEnvironmentIndex(latticePoint::LatticePoint, simulator::Simulator)
     return index + 1
 end 
 
-function SwitchLatticePoint(atom::Atom, latticePoint::LatticePoint, simulator::Simulator)
-    LeaveLatticePoint!(atom, simulator)
-    SetOnLatticePoint!(atom, latticePoint, simulator)
-end
+

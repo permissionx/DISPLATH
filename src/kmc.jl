@@ -1,3 +1,47 @@
+function UpdateEvents!(latticePointIndexs::Set{Int64}, simulator::Simulator)
+    if simulator.parameters.isKMC
+        for latticePointIndex in latticePointIndexs
+            latticePoint = simulator.latticePoints[latticePointIndex]
+            if latticePoint.atomIndex != -1
+                envIndex = GetEnvironmentIndex(latticePoint, simulator)
+                atom = simulator.atoms[latticePoint.atomIndex]
+                if envIndex == simulator.parameters.perfectEnvIndex
+                    DeleteAtomEvents!(simulator, atom)
+                else
+                    if atom.eventIndex != -1
+                        simulator.frequency -= atom.frequency
+                        SetAtomEvents!(atom, latticePoint, simulator)
+                        simulator.frequency += atom.frequency
+                        simulator.frequencies[atom.eventIndex] = atom.frequency
+                    else
+                        SetAtomEvents!(atom, latticePoint, simulator)
+                        AppendAtomEvents!(simulator, atom)
+                    end
+                end
+            end
+        end
+    end
+end
+
+
+function SetAtomEvents!(atom::Atom, latticePoint::LatticePoint, simulator::Simulator)
+    finalLatticePointEnvIndexs, finalLatticePointIndexs = GetFinalLatticePointInfo(latticePoint, simulator)
+    energyBarriers = [simulator.energyBarrierDict[atom.type][[envIndex, i]] for i in finalLatticePointEnvIndexs]
+    atom.frequencies = [ComputeKMCProbability(type, e, simulator.temperature) for e in energyBarriers]
+    atom.frequency = sum(atom.frequencies)
+    atom.finalLatticePointIndexs = finalLatticePointIndexs
+end
+
+
+function AppendAtomEvents!(simulator::Simulator, atom::Atom)
+    push!(simulator.frequencies, atom.frequency)
+    push!(simulator.mobileAtoms, atom)
+    simulator.maxEventIndex += 1
+    atom.eventIndex = simulator.maxEventIndex 
+    simulator.frequency += atom.frequency
+end 
+
+
 function GetFinalLatticePointInfo(latticePoint::LatticePoint, simulator::Simulator)
     environment = latticePoint.environment
     latticePoints = simulator.latticePoints
@@ -13,103 +57,73 @@ function GetFinalLatticePointInfo(latticePoint::LatticePoint, simulator::Simulat
     return finalLatticePointEnvIndexs, finalLatticePointIndexs
 end
 
-function AddKMCInfo(atom::Atom, simulator::Simulator)
-    if atom.latticePointIndex == -1
-        error("Atom is not on lattice")
-    end
-    latticePoint = simulator.latticePoints[atom.latticePointIndex]
-    envIndex = GetEnviromentIndex(latticePoint, simulator)
-    finalLatticePointEnvIndexs, finalLatticePointIndexs = GetFinalLatticePointInfo(latticePoint, simulator)
-    energyBarriers = [simulator.energyBarrierDict[envIndex, i] for i in finalLatticePointEnvIndexs]
-    
-    atom.probabilities = [ComputeProbability(e, simulator) for e in energyBarriers]
-    atom.probability = sum(atom.probabilities)
-    atom.finalLatticePointIndexs = finalLatticePointIndexs
-
-    simulator.probability += atom.probability
-    push!(simulator.probabilities, atom.probability)
-    push!(simulator.mobileAtoms, atom)
-end 
-
-function ComputeProbability(energyBarrier::Float64, simulator::Simulator)
-    return exp(-energyBarrier / simulator.kmc.temperature_kb)
+function SetTemperature!(simulator::Simulator, temperature::Float64)
+    temperature_kb = temperature * 8.61733362E-5
+    simulator.parameters.temperature_kb = temperature_kb
 end
 
-function GetRandomMobileAtom(simulator::Simulator)
-    randomNumber = rand() * simulator.probability
+function ComputeProbability(type::Int64, energyBarrier::Float64, simulator::Simulator)
+    return simulator.parameters.nu_0_dict[type] * exp(-energyBarrier / simulator.parameters.temperature_kb)
+end
+
+function GetRandomMobileAtomIndex(simulator::Simulator)
+    randomNumber = rand() * (simulator.frequency + simulator.parameters.irrdiationFrequency)
     cumulativeProbability = 0.0
-    for i in 1:length(simulator.probabilities)
-        cumulativeProbability += simulator.probabilities[i]
-        if randomNumber <= cumulativeProbability
-            return simulator.mobileAtoms[i], i
+    for i in 1:length(simulator.frequencies)
+        cumulativeProbability += simulator.frequencies[i]
+        if cumulativeProbability >= randomNumber
+            return i
         end
     end
+    return -1
 end
 
 function GetRandomFinalLatticePointIndex(atom::Atom)
-    randomNumber = rand() * atom.probability
+    randomNumber = rand() * atom.frequency
     cumulativeProbability = 0.0
-    for i in 1:length(atom.probabilities)
-        cumulativeProbability += atom.probabilities[i]
+    for i in 1:length(atom.frequencies)
+        cumulativeProbability += atom.frequencies[i]
         if randomNumber <= cumulativeProbability
             return atom.finalLatticePointIndexs[i]
         end
     end
 end
 
-function RandomMobileEvent(simulator::Simulator)
-    atom, mobileIndex = GetRandomMobileAtom(simulator)
-    latticePoint = simulator.latticePoints[GetRandomFinalLatticePointIndex(atom)]
-    SetOnLatticePoint!(atom, latticePoint, simulator)
-    dt = GetTimeStep(simulator)
-    simulator.time += dt    
-    DeleteKMCInfo!(simulator, mobileIndex)
-
-    envIndexs = GetEnviromentIndex(latticePoint, simulator)
-    for index in envIndexs
-        latticePoint = simulator.latticePoints[index]
-        atom = simulator.atoms[latticePoint.atomIndex]
-        AddKMCInfo(atom, simulator)
+function ProcessAnEvent(simulator::Simulator)
+    idx = GetRandomMobileAtomIndex(simulator)
+    if idx > 0
+        atom = simulator.mobileAtoms[idx]
+        latticePoint = simulator.latticePoints[GetRandomFinalLatticePointIndex(atom)]
+        Migrate!(atom, latticePoint, simulator)
+    else
+        Irrdiate!(simulator)
     end
+    ElapsTime(simulator)
 end
 
-function DeleteKMCInfo!(simulator::Simulator, index::Int64)
-    simulator.probability -= simulator.probabilities[index]
-    deleteat!(simulator.probabilities, index)
+
+function DeleteAtomEvents!(simulator::Simulator, atom::Atom)
+    index = atom.eventIndex
+    simulator.frequency -= simulator.frequencies[index]
+    deleteat!(simulator.frequencies, index)
     deleteat!(simulator.mobileAtoms, index)
+    atom.eventIndex = -1
 end 
 
-function UpdateKMCEnvironment(latticePoint::LatticePoint, simulator::Simulator)
-     for envLatticePoint in latticePoint
-        if envLatticePoint.atomIndex != -1
-            atom = simulator.atoms[envLatticePoint.atomIndex]
-            if atom.eventIndex != -1
-                UpdateKMCInfo(atom, simulator)
-            else
-                AddKMCInfo(atom, simulator)
-            end
-        end
-    end
+
+function ElapsTime(simulator::Simulator)
+    time = -1/simulator.frequency * log(rand())
+    simulator.time += time
 end
 
-    
 
-function UpdateAtomKMCInfo(atom::Atom, simulator::Simulator)
-    latticePoint = simulator.latticePoints[atom.latticePointIndex]
-    envIndex = GetEnviromentIndex(latticePoint, simulator)
-    if envIndex == simulator.perfectEnvIndex
-        DeleteKMCInfo(simulator, atom.envIndex)
-    else
-        simulator.probabilities -= atom.probability
-        finalLatticePointEnvIndexs, finalLatticePointIndexs = GetFinalLatticePointInfo(latticePoint, simulator)
-        energyBarriers = [simulator.energyBarrierDict[envIndex, i] for i in finalLatticePointEnvIndexs]
-        atom.probabilities = [ComputeProbability(e, simulator) for e in energyBarriers]
-        atom.probability = sum(atom.probabilities)
-        atom.finalLatticePointIndexs = finalLatticePointIndexs
+function Migrate!(atom::Atom, latticePoint::LatticePoint, simulator::Simulator)
+    oldLatticePoint = simulator.latticePoints[atom.latticePointIndex]
+    LeaveLatticePoint!(atom, simulator; isUpdateEnv = false)
+    SetOnLatticePoint!(atom, latticePoint, simulator; isUpdateEnv = false)
+    latticePointIndexs = Set([oldLatticePoint.environment; latticePoint.environment; latticePoint.index])
+    UpdateEvents!(latticePointIndexs, simulator)
+end
 
 
-x
-
-# types: simualtor.kmc, simulator.kmc.probabilities,simulator.kmc.finalLatticePoints, simulator.kmc.mobileAtomindexs
-# functions: GetTimeStep  
 

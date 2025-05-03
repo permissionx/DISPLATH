@@ -35,10 +35,13 @@ mutable struct Atom
     latticePointIndex::Int64 # -1 for off lattice
     
     # for KMC 
-    probability::Float64
-    probabilities::Vector{Float64} 
+    frequency::Float64 # Hz, s^-1
+    frequencies::Vector{Float64} 
     finalLatticePointIndexs::Vector{Int64}
+    eventIndex::Int64
 end
+
+
 
 
 mutable struct LatticePoint
@@ -123,6 +126,11 @@ struct Parameters
     DTEMode::Int64 
     soapParameters::Vector{Float64}
     DTEFile::String
+    isKMC::Bool
+    nu_0_dict::Dict{Int64, Float64}
+    temperature_kb::Float64
+    perfectEnvIndex::Int64
+    irrdiationFrequency::Float64
 end
 
 
@@ -143,7 +151,13 @@ function Parameters(
     isLog::Bool = false,
     DTEMode::Int64 = 1,
     soapParameters::Vector{Float64} = [2.6, 8.0, 6.0],
-    DTEFile::String="")
+    DTEFile::String="",
+    isKMC::Bool = false,
+    nu_0_dict::Dict{Int64, Float64} = Dict{Int64, Float64}(), # Hz, s^-1
+    temperature::Float64 = 1.0,
+    perfectEnvIndex::Int64 = 0,
+    irrdiationFrequency::Float64 = 0.0)
+    temperature_kb = temperature * 8.61733362E-5 # eV
     if !isdir(θτRepository)
         error("θτRepository $(θτRepository) does not exist.")
     end
@@ -151,7 +165,8 @@ function Parameters(
     return Parameters(θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict, 
                       periodic, isOrthogonal,
                       E_p_power_range, p_range, stopEnergy, pLMax, isDumpInCascade, isLog,
-                      DTEMode, soapParameters, DTEFile)
+                      DTEMode, soapParameters, DTEFile,
+                      isKMC, nu_0_dict, temperature_kb, perfectEnvIndex, irrdiationFrequency)
 end 
 
 
@@ -173,10 +188,39 @@ mutable struct Simulator
     soap::PyObject
     environmentCut::Float64
     DTEData::Vector{Vector{Float64}}
-    parameters::Parameters
     #for kmc 
-    probability::Float64
-    probabilities::Vector{Float64}
+    time::Float64
+    frequency::Float64
+    frequencies::Vector{Float64}
     mobileAtoms::Vector{Atom}
+
+    parameters::Parameters
+end
+
+function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    cellGrid = CreateCellGrid(box, inputGridVectors)
+    constantsByType = InitConstantsByType(parameters.typeDict, parameters)
+    θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
+    soap = InitSoap(parameters)
+    if parameters.DTEMode == 2
+        environmentCut, DTEData = LoadDTEData(parameters)
+    else
+        environmentCut, DTEData = -1.0, Vector{Vector{Float64}}()
+    end
+    time = 0.0
+    frequency = 0.0
+    frequencies = Vector{Float64}()
+    mobileAtoms = Vector{Atom}()
+
+    return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
+                     box, cellGrid, 
+                     0, 0, 
+                     constantsByType,
+                     false, Vector{Int64}(), 0, 
+                     0, Vector{GridCell}(),
+                     θFunctions, τFunctions,
+                     soap, environmentCut, DTEData, 
+                     time, frequency, frequencies, mobileAtoms,
+                     parameters)  
 end
 
