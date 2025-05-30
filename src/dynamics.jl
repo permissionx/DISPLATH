@@ -1,4 +1,5 @@
 using .BCA
+using Printf
 
 function ShotTarget(atom::Atom, simulator::Simulator)
     cellGrid = simulator.cellGrid
@@ -67,7 +68,7 @@ function AtomOutFaceDimension(atom::Atom, cell::GridCell, crossFlag::Vector{Int6
 end
 
 
-function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, nStep::Int64)
     N_t = length(atoms_t)
     cellGrid = simulator.cellGrid
     tanφList = Vector{Float64}(undef, N_t)
@@ -100,6 +101,11 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     # Update atoms_t (target atoms)         
     avePPoint = Vector{Float64}([0.0,0.0,0.0])
     momentum = Vector{Float64}([0.0,0.0,0.0])
+    global tid
+    global buf
+    if (! (tid in [atom_t.index for atom_t in atoms_t])) && nStep == 1
+        write(buf, "0.0\n")
+    end
     for (i, atom_t) in enumerate(atoms_t)
         if atom_t.pValue[atom_p.index] != 0
             velocityDirectionTmp = -atom_t.pVector[atom_p.index] / atom_t.pValue[atom_p.index] * tanψList[i] + atom_p.velocityDirection
@@ -107,6 +113,9 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             velocityDirectionTmp = atom_p.velocityDirection
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
+        if atom_t.index == tid && nStep == 1
+            @printf(buf, "%f\n", E_tList[i])
+        end
         if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.0
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
@@ -117,6 +126,9 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             end     
         else 
             SetEnergy!(atom_t, 0.0)
+            if atom_t.latticePointIndex != -1
+                atom_t.coordinate = simulator.latticePoints[atom_t.latticePointIndex].coordinate[:] 
+            end
         end
         avePPoint += atom_t.pPoint[atom_p.index]
         momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
@@ -175,7 +187,7 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
                 continue
             end
             pAtom.lastTargets = [t.index for t in targets]
-            Collision!(pAtom, targets, simulator)
+            Collision!(pAtom, targets, simulator, nStep)
             for target in targets
                 if target.energy > 0.0   
                     push!(nextPAtoms, target)

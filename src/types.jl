@@ -94,6 +94,7 @@ struct ConstantsByType
     Q_nl::Dict{Vector{Int64}, Float64}  
     Q_loc::Dict{Vector{Int64}, Float64}
     qMax_squared::Dict{Vector{Int64}, Float64}
+    sigma::Dict{Int64, Float64}
 end
 
 
@@ -120,6 +121,7 @@ struct Parameters
     E_p_power_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     p_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     stopEnergy::Float64
+    DebyeTemperature::Float64
     pLMax::Float64     
     isDumpInCascade::Bool
     isLog::Bool
@@ -144,8 +146,9 @@ function Parameters(
     periodic::Vector{Bool} = [true, true, false],
     isOrthogonal::Bool = true,
     E_p_power_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -1.0:0.045:8.0,
-    p_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = 0.0:0.01:2.0,
+    p_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = 0.0:0.01:5.0,
     stopEnergy::Float64 = 10.0, 
+    DebyeTemperature::Float64 = 1000.0, 
     pLMax::Float64 = 2.0, 
     isDumpInCascade::Bool = false, 
     isLog::Bool = false,
@@ -154,7 +157,7 @@ function Parameters(
     DTEFile::String="",
     isKMC::Bool = false,
     nu_0_dict::Dict{Int64, Float64} = Dict{Int64, Float64}(), # Hz, s^-1
-    temperature::Float64 = 1.0,
+    temperature::Float64 = 0.0,   # K
     perfectEnvIndex::Int64 = 0,
     irrdiationFrequency::Float64 = 0.0)
     temperature_kb = temperature * 8.61733362E-5 # eV
@@ -164,7 +167,7 @@ function Parameters(
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     return Parameters(θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict, 
                       periodic, isOrthogonal,
-                      E_p_power_range, p_range, stopEnergy, pLMax, isDumpInCascade, isLog,
+                      E_p_power_range, p_range, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, isLog,
                       DTEMode, soapParameters, DTEFile,
                       isKMC, nu_0_dict, temperature_kb, perfectEnvIndex, irrdiationFrequency)
 end 

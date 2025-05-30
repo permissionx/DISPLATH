@@ -89,16 +89,16 @@ function GetRandomFinalLatticePointIndex(atom::Atom)
     end
 end
 
-function ProcessAnEvent(simulator::Simulator)
+function ProcessAnEvent!(simulator::Simulator)
     idx = GetRandomMobileAtomIndex(simulator)
     if idx > 0
         atom = simulator.mobileAtoms[idx]
         latticePoint = simulator.latticePoints[GetRandomFinalLatticePointIndex(atom)]
         Migrate!(atom, latticePoint, simulator)
     else
-        Irrdiate!(simulator)
+        Irradiate!(simulator)
     end
-    ElapsTime(simulator)
+    ElapseTime!(simulator)
 end
 
 
@@ -111,7 +111,7 @@ function DeleteAtomEvents!(simulator::Simulator, atom::Atom)
 end 
 
 
-function ElapsTime(simulator::Simulator)
+function ElapseTime!(simulator::Simulator)
     time = -1/simulator.frequency * log(rand())
     simulator.time += time
 end

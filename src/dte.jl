@@ -9,6 +9,8 @@ function GetDTE(atom::Atom, simulator::Simulator)
         return GetDTEByEnvironment(atom, simulator)
     elseif simulator.parameters.DTEMode == 3   # soap
         return GetDTEBySoap(atom, simulator)
+    elseif simulator.parameters.DTEMode == 4
+        return GetDTECustom(atom, simulator)
     end
 end
 
@@ -19,6 +21,8 @@ function GetBDE(atom::Atom, simulator::Simulator)  # BDE: binding energy
         return GetBDEByEnvironment(atom, simulator)
     elseif simulator.parameters.DTEMode == 3   # soap
         return GetBDEBySoap(atom, simulator)
+    elseif simulator.parameters.DTEMode == 4
+        return GetBDECustom(atom, simulator)
     end
 end
 
@@ -29,10 +33,10 @@ function GetDTE(latticePoint::LatticePoint, simulator::Simulator)
 end
 
 function GetDTEByEnvironment(atom::Atom, simulator::Simulator)\
-    if atom.latticePointIndex != -1 
+    if atom.latticePointIndex != -1 && simulator.latticePoints[atom.latticePointIndex].type == atom.type
         return GetDTE(simulator.latticePoints[atom.latticePointIndex], simulator)
     else
-        return atom.dte/2
+        return 0.1
     end
 end
          
@@ -40,6 +44,9 @@ function GetBDEByEnvironment(atom::Atom, simulator::Simulator)
     return GetDTE(atom, simulator)
 end
 
+function GetBDECustom(atom::Atom, simulator::Simulator)
+    return GetDTECustom(atom, simulator)
+end
 
 
 function InitSoap(parameters::Parameters)

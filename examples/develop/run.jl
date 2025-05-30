@@ -15,7 +15,7 @@ basisTypes = [1, 2, 1, 2]
 # Parameters
 θτRepository = "../../thetatau_repository/"
 pMax = 1.45
-vacancyRecoverDistance = 1.3
+vacancyRecoverDistance = 4.0
 DTEMode = 2
 DTEFile = "hBN.dte"
 typeDict = Dict(
@@ -31,8 +31,8 @@ simulator = Simulator(primaryVectors, boxSizes, inputGridVectors, latticeRanges,
 Dump(simulator, "hBNH.dump", 0, false)
        
 Random.seed!(40)
-@showprogress for _ in 1:10000
-    energy = 9000000.0
+@showprogress for _ in 1:1000000
+    energy = 1000000.0
     simulator.nIrradiation += 1
     ionPosition = RandomInSquare(43.5, 50.2294) + [0.0, 0.0, 12.0]
     ion = Atom(3, ionPosition, parameters)
@@ -43,7 +43,7 @@ Random.seed!(40)
     #if ion.isAlive
     #    delete!(simulator, ion)
     #end
-    if simulator.nIrradiation % 100 == 0  
+    if simulator.nIrradiation % 10000 == 0  
         Dump(simulator, "hBNH.dump", simulator.nIrradiation, true)  
     end
 end

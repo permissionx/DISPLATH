@@ -6,7 +6,8 @@ using Interpolations
 using Dates
 using ProgressMeter
 using PyCall
-# @pyimport dscribe.descriptors as descriptors    
+using QuadGK
+# @pyimport dscribe.descriptors as descriptors
 
 function Box(Vectors::Matrix{Float64})
     # need to improve to detact if it is orithogonal. 
@@ -151,9 +152,10 @@ function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Paramet
             Q_nl[[p,t]] = BCA.ConstantFunctions.Q_nl(Z_p, Z_t, parameters.pMax)
             Q_loc[[p,t]] = BCA.ConstantFunctions.Q_loc(Z_p, Z_t)
             qMax_squared[[p,t]] = (radius_p + radius_t) * (radius_p + radius_t)
+            sigma[p] = TemperatureToSigma(parameters.temperature, parameters.DebyeTemperature, mass_p)
         end
     end
-    return ConstantsByType(V_upterm, a_U, E_m, S_e_upTerm, S_e_downTerm, x_nl, a, Q_nl, Q_loc, qMax_squared)
+    return ConstantsByType(V_upterm, a_U, E_m, S_e_upTerm, S_e_downTerm, x_nl, a, Q_nl, Q_loc, qMax_squared, sigma)
 end
 
 
@@ -244,7 +246,6 @@ function Simulator(primaryVectors::Matrix{Float64}, boxSizes::Vector{Int64},
     end 
     return simulator
 end 
-
 
 function WhichCell(coordinate::Vector{Float64}, cellGrid::CellGrid)
     cellIndex = zeros(Int64, 3)
@@ -407,7 +408,8 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, simulator::Simul
             #    println(neighborCell.index)
             #    println(simulator.cellGrid.cells[11,21,11].atoms)
             #end
-            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0
+            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 && neighborAtom.index != atom.index
+                Pertubation!(neighborAtom, simulator)
                 ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
                 if neighborAtom.pValue[atom.index] >= simulator.parameters.pMax
                     DeleteP!(neighborAtom, atom.index)
@@ -418,6 +420,9 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, simulator::Simul
                     if !SimultaneousCriteria(atom, neighborAtom, target, neighborCellInfo.cross, simulator)
                         matchFlag = false
                         DeleteP!(neighborAtom, atom.index)
+                        if neighborAtom.latticePointIndex != -1
+                            neighborAtom.coordinate = simulator.latticePoints[neighborAtom.latticePointIndex].coordinate[:]
+                        end
                         break
                     end
                 end
@@ -635,4 +640,40 @@ function GetEnvironmentIndex(latticePoint::LatticePoint, simulator::Simulator)
     return index + 1
 end 
 
+function GaussianDeltaX(sigma::Float64)
+    while true
+        u1 = rand()*2-1
+        u2 = rand()*2-1
+        r2 = u1 * u1 + u2 * u2
+        if r2 <= 1 && r2 > 0
+            break
+        end
+    end
+    return u1 * sqrt(-2 * log(r2) / r2) * sigma
+end
 
+function Pertubation!(atom::Atom, simulator::Simulator)
+    if simulator.parameters.temperature > 0 
+        for d in 1:3
+            atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
+        end
+    end
+end
+
+function TemperatureToSigma(temperature::Float64, debyeTemperature::Float64, mass::Float64)
+    if temperature == 0.0
+        return 0.0
+    end
+    hbar = 6.582119569e-16 # eV·s
+    kB = 8.617333262145e-5 # eV/K
+    amu_to_kg = 1.66053906660e-27 # kg
+    angstrom_to_m = 1e-10 # m
+
+    mass_kg = mass * amu_to_kg
+    xD = debyeTemperature / temperature
+
+    integral, _ = QuadGK.quadgk(x -> x / (exp(x) - 1), 0, xD)
+    mean_square = (3 * hbar^2) / (mass_kg * kB * debyeTemperature) * (0.25 + (temperature / debyeTemperature)^2 * integral)
+    sigma = sqrt(mean_square) / angstrom_to_m
+    return sigma
+end

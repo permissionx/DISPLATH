@@ -174,7 +174,7 @@ function DumpVacancies(simulator::Simulator, fileName::String, step::Int64, isAp
         for d in 1:3
             write(file, "0 $(simulator.box.vectors[d,d])\n")
         end
-        write(file, "ITEM: ATOMS id type x y z cx cy cz dte\n")
+        write(file, "ITEM: ATOMS id type x y z cx cy cz\n")
         for latticePoint in vacancyLattices
             write(file, "$(latticePoint.index) $(latticePoint.type) \
             $(latticePoint.coordinate[1]) $(latticePoint.coordinate[2]) $(latticePoint.coordinate[3]) \
