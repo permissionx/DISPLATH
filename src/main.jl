@@ -8,7 +8,8 @@ include("geometry.jl")
 include("dte.jl")
 include("kmc.jl")
 include("dynamics.jl")
-include("defect_statics.jl")
+include("dynamic_load.jl")
+include("utils.jl")
 
 
 # modules

@@ -5,7 +5,6 @@ function ShotTarget(atom::Atom, simulator::Simulator)
     cellGrid = simulator.cellGrid
     periodic = simulator.parameters.periodic    
     cell = cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
-    accCrossFlag = Vector{Int64}([0,0,0])
     while true
         (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, simulator)
         # delete repeated targets in lastTargets
@@ -17,11 +16,16 @@ function ShotTarget(atom::Atom, simulator::Simulator)
             empty!(simulator.exploredCells)
             return targets
         else
-            dimension, direction = AtomOutFaceDimension(atom, cell, accCrossFlag, simulator.box)
-            neighborIndex = Vector{Int64}([0,0,0])
-            neighborIndex[dimension] = direction == 1 ? -1 : 1
+            dimension, direction = AtomOutFaceDimension(atom, cell)
+            neighborIndex = Vector{Int8}([0,0,0])
+            neighborIndex[dimension] = direction == 1 ? Int8(-1) : Int8(1)
             neighborInfo = cell.neighborCellsInfo[neighborIndex]
-            accCrossFlag += neighborInfo.cross
+            crossFlag = neighborInfo.cross
+            for d in 1:3
+                if crossFlag[d] != 0
+                    atom.coordinate[d] -= crossFlag[d] * simulator.box.vectors[d, d]
+                end
+            end 
             if (neighborInfo.cross[dimension] != 0 && !periodic[dimension]) || isInfinity
                 for cell in simulator.exploredCells
                     cell.isExplored = false
@@ -36,13 +40,9 @@ function ShotTarget(atom::Atom, simulator::Simulator)
 end
 
 
-function AtomOutFaceDimension(atom::Atom, cell::GridCell, crossFlag::Vector{Int64}, box::Box)
-    coordinate = copy(atom.coordinate)
-    for d in 1:3
-        if crossFlag[d] != 0
-            coordinate[d] = coordinate[d] - crossFlag[d] * box.vectors[d, d]
-        end
-    end 
+function AtomOutFaceDimension(atom::Atom, cell::GridCell)
+    coordinate = atom.coordinate
+
     for d in 1:3
         if atom.velocityDirection[d] >= 0
             rangeIndex = 2
@@ -64,7 +64,9 @@ function AtomOutFaceDimension(atom::Atom, cell::GridCell, crossFlag::Vector{Int6
             return d, rangeIndex
         end
     end
-    error("Out face not found\n $(atom) \n $(cell)")
+    error("Out face not found\n ########Atom#######\n $(atom) \n 
+                                ########cell#######\n $(cell) \n
+                                ####cross flag#####\n$(crossFlag)")
 end
 
 
@@ -101,11 +103,12 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, n
     # Update atoms_t (target atoms)         
     avePPoint = Vector{Float64}([0.0,0.0,0.0])
     momentum = Vector{Float64}([0.0,0.0,0.0])
-    global tid
-    global buf
-    if (! (tid in [atom_t.index for atom_t in atoms_t])) && nStep == 1
-        write(buf, "0.0\n")
-    end
+    # for cross section calculations
+    #global tid
+    #global buf
+    #if (! (tid in [atom_t.index for atom_t in atoms_t])) && nStep == 1
+    #    write(buf, "0.0\n")
+    #end
     for (i, atom_t) in enumerate(atoms_t)
         if atom_t.pValue[atom_p.index] != 0
             velocityDirectionTmp = -atom_t.pVector[atom_p.index] / atom_t.pValue[atom_p.index] * tanψList[i] + atom_p.velocityDirection
@@ -113,9 +116,10 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, n
             velocityDirectionTmp = atom_p.velocityDirection
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
-        if atom_t.index == tid && nStep == 1
-            @printf(buf, "%f\n", E_tList[i])
-        end
+        # for cross section calculations
+        #if atom_t.index == tid && nStep == 1
+        #    @printf(buf, "%f\n", E_tList[i])
+        #end
         if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.0
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
@@ -126,6 +130,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, n
             end     
         else 
             SetEnergy!(atom_t, 0.0)
+            # this is for undoing the pertubation 
             if atom_t.latticePointIndex != -1
                 atom_t.coordinate = simulator.latticePoints[atom_t.latticePointIndex].coordinate[:] 
             end

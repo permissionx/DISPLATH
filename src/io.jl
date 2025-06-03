@@ -1,4 +1,4 @@
-function Dump(simulator::Simulator, fileName::String, step::Int64, isAppend::Bool=false)
+function Dump(simulator::Simulator, fileName::String, step::Int64, isAppend::Bool=false, isDebug::Bool=false)
     if !simulator.parameters.isOrthogonal        
         error("The box is not orthogonal, please use the orthogonal box.")
     end
@@ -20,19 +20,31 @@ function Dump(simulator::Simulator, fileName::String, step::Int64, isAppend::Boo
         for d in 1:3
             write(file, "0 $(simulator.box.vectors[d,d])\n")
         end
-        write(file, "ITEM: ATOMS id type x y z vx vy vz energy cx cy cz dte\n")
+        if isDebug
+            write(file, "ITEM: ATOMS id type x y z vx vy vz energy cx cy cz dte\n")
+        else
+            write(file, "ITEM: ATOMS id type x y z e\n")
+        end
         for atom in simulator.atoms
             if atom.isAlive
-                write(file, "$(atom.index) $(atom.type) \
-                $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3]) \
-                $(atom.velocityDirection[1]*sqrt(2*atom.mass*atom.energy)) $(atom.velocityDirection[2]*sqrt(2*atom.mass*atom.energy)) $(atom.velocityDirection[3]*sqrt(2*atom.mass*atom.energy)) \
-                $(atom.energy) \
-                $(atom.cellIndex[1]) $(atom.cellIndex[2]) $(atom.cellIndex[3]) \
-                $(GetDTE(atom, simulator))\n")
+                if isDebug
+                    write(file, "$(atom.index) $(atom.type) \
+                    $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3]) \
+                    $(atom.velocityDirection[1]*sqrt(2*atom.mass*atom.energy)) $(atom.velocityDirection[2]*sqrt(2*atom.mass*atom.energy)) $(atom.velocityDirection[3]*sqrt(2*atom.mass*atom.energy)) \
+                    $(atom.energy) \
+                    $(atom.cellIndex[1]) $(atom.cellIndex[2]) $(atom.cellIndex[3]) \
+                    $(GetDTE(atom, simulator))\n")
+                else
+                    write(file, "$(atom.index) $(atom.type) \
+                    $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3]) $(atom.energy)\n")
+                end
             end
         end 
     end
 end
+
+
+
 
 function log(string::String)
     open("bca.log", "a") do file
