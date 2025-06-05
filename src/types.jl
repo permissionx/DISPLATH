@@ -42,6 +42,7 @@ mutable struct Atom
 
     # for dynamic load 
     isNewlyLoaded::Bool
+    latticeCoordinate::Vector{Float64}
 end
 
 
@@ -238,7 +239,7 @@ mutable struct Simulator
     displacedAtoms::Vector{Int64}
     atomNumberWhenStore::Int64
     nIrradiation::Int64
-    nDisplaceStep::Int64
+    nCollisionEvent::Int64
     exploredCells::Vector{GridCell}
     θFunctions::Dict{Vector{Int64}, Function}
     τFunctions::Dict{Vector{Int64}, Function}
@@ -277,7 +278,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     mobileAtoms = Vector{Atom}()
     loadedCells = Vector{GridCell}()
     vacancies = Vector{Atom}()
-    nDisplaceStep = 0
+    nCollisionEvent = 0
     numberOfVacancies = 0
     maxVacancyID = 0
     minLatticeAtomID = 0
@@ -288,7 +289,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      0, 0, 
                      constantsByType,
                      false, Vector{Int64}(), 0, 
-                     0,nDisplaceStep,
+                     0,nCollisionEvent,
                      Vector{GridCell}(),
                      θFunctions, τFunctions,
                      soap, environmentCut, DTEData, 

@@ -38,13 +38,15 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     frequencies = Vector{Float64}()
     finalLatticePointEnvIndexs = Vector{Int64}()
     eventIndex = -1
-    isNewlyLoaded = true
+    isNewlyLoaded = false
+    lattcieCoordinate = Vector{Float64}()
     return Atom(index, isAlive, type, coordinate, cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
                 dte, bde,
                 pValue, pVector, pPoint, pL, lastTargets,
                 latticePointIndex,
-                frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, isNewlyLoaded)
+                frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, 
+                isNewlyLoaded, lattcieCoordinate)
 end
 
 
@@ -362,6 +364,7 @@ end
 
 function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
     for d in 1:3
+        # need to adappt non-periodic condition
         if newPosition[d] < 0
             newPosition[d] += simulator.box.vectors[d,d]
         elseif newPosition[d] >= simulator.box.vectors[d,d]
@@ -449,11 +452,17 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, simulator::Simul
             #    println(neighborCell.index)
             #    println(simulator.cellGrid.cells[11,21,11].atoms)
             #end
-            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 && neighborAtom.index != atom.index
-                Pertubation!(neighborAtom, simulator)
+            if neighborAtom.index == atom.index
+                continue
+            end
+            Pertubation!(neighborAtom, simulator)
+            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
                 ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
                 if neighborAtom.pValue[atom.index] >= simulator.parameters.pMax
                     DeleteP!(neighborAtom, atom.index)
+                    if neighborAtom.latticePointIndex != -1
+                        neighborAtom.coordinate = simulator.latticePoints[neighborAtom.latticePointIndex].coordinate[:]
+                    end
                     continue
                 end
                 matchFlag = true
@@ -476,8 +485,74 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, simulator::Simul
         push!(simulator.exploredCells, neighborCell)
     end
     if infiniteFlag
-        log("Infinitely fly atom in the $(simulator.nIrradiation)th irradiation:\n$(atom)\n")
+        Log("Infinitely fly atom in the $(simulator.nIrradiation)th irradiation:\n$(atom)\n")
     end
+    return (targets, infiniteFlag)
+end
+
+
+function GetTargetsFromNeighbor_nearst(atom::Atom, gridCell::GridCell, simulator::Simulator)
+    cellGrid = simulator.cellGrid
+    box = simulator.box
+    targets = Vector{Atom}()
+    infiniteFlag = true
+    candidateTargets = Vector{Atom}()
+    for (_, neighborCellInfo) in gridCell.neighborCellsInfo
+        index = neighborCellInfo.index
+        neighborCell = cellGrid.cells[index[1], index[2], index[3]]
+        if neighborCell.isExplored
+            continue
+        end
+        neighborCell.isExplored = true
+        push!(simulator.exploredCells, neighborCell)
+        infiniteFlag = false
+        for neighborAtom in neighborCell.atoms
+            if neighborAtom.index == atom.index
+                continue
+            end
+            Pertubation!(neighborAtom, simulator)
+            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
+                ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
+                if neighborAtom.pValue[atom.index] >= simulator.parameters.pMax
+                    DeleteP!(neighborAtom, atom.index)
+                    if neighborAtom.latticePointIndex != -1
+                        neighborAtom.coordinate = simulator.latticePoints[neighborAtom.latticePointIndex].coordinate[:]
+                    end
+                    continue
+                end
+                push!(candidateTargets, neighborAtom)
+            end
+        end
+    end
+    if infiniteFlag
+        Log("Infinitely fly atom in the $(simulator.nIrradiation)th irradiation:\n$(atom)\n")
+    end
+    if isempty(candidateTargets)
+        return (targets, infiniteFlag)
+    end
+    # Find target with minimum pL value using Julia's built-in findmin
+    _, minIdx = findmin(t -> t.pL[atom.index], candidateTargets)
+    nearestTarget = candidateTargets[minIdx]    
+    push!(targets, nearestTarget)
+    for candidateTarget in candidateTargets
+        if candidateTarget.index == nearestTarget.index
+            continue
+        end
+        matchFlag = true
+        for target in targets            
+            if !SimultaneousCriteria(atom, candidateTarget, target, neighborCellInfo.cross, simulator)
+                matchFlag = false
+                DeleteP!(candidateTarget, atom.index)
+                if neighborAtom.latticePointIndex != -1
+                    neighborAtom.coordinate = simulator.latticePoints[neighborAtom.latticePointIndex].coordinate[:]
+                end
+                break
+            end
+        end
+        if matchFlag
+            push!(targets, candidateTarget)
+        end
+    end    
     return (targets, infiniteFlag)
 end
 
@@ -615,7 +690,7 @@ function Restore!(simulator::Simulator)
     simulator.atoms = simulator.atoms[1:maxAtomID]
     simulator.maxAtomID = maxAtomID
     simulator.numberOfAtoms  = maxAtomID
-    simulator.nDisplaceStep = 0
+    simulator.nCollisionEvent = 0
     empty!(simulator.displacedAtoms)
 end
 
@@ -694,7 +769,7 @@ function GaussianDeltaX(sigma::Float64)
             break
         end
     end
-    return u1 * sqrt(-2 * Base.log(r2) / r2) * sigma
+    return u1 * sqrt(-2 * log(r2) / r2) * sigma
 end
 
 function Pertubation!(atom::Atom, simulator::Simulator)

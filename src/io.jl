@@ -46,8 +46,8 @@ end
 
 
 
-function log(string::String)
-    open("bca.log", "a") do file
+function Log(string::String; fileName::String="log", type::String="a")
+    open(fileName, type) do file
         write(file, string)
     end
 end
