@@ -46,22 +46,24 @@ simulator = Simulator_dynamicLoad(boxSizes, inputGridVectors, parameters)
 
 
 Random.seed!(43)
-energy = 40000.0
+energy = 4000.0
 
 println("Running 1 ion...")
 if simulator.parameters.isDumpInCascade
     Dump(simulator, "Cascade.dump", 0, false)
 end
 
+for _ in 1:10
 ionPosition = RandomPointInCircle(30.0) + [1000.0, 1000.0, 2198.0] 
 ion = Atom(2, ionPosition, parameters)
 SetVelocityDirection!(ion, [0.,0.,-1.])
 SetEnergy!(ion,energy)
 push!(simulator, ion)
-Log("E_atom,E_electron\n",type="w")
+#Log("E_atom,E_electron\n",type="w")
 @time Cascade_dynamicLoad!(ion, simulator)
-println("Initersitial number: $(length(simulator.atoms)); Vacancy number: $(length(simulator.vacancies))")
-
+println("Initersitial number: $(length([a for a in simulator.atoms if a.isAlive==true])); 
+Vacancy number: $(length([a for a in simulator.vacancies if a.isAlive==true]))")
+end
 
 
 

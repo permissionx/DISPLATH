@@ -1,6 +1,7 @@
 function Element(name::String, dte::Float64, bde::Float64)
     if name == "H"
         return Element(name, 0.53, 1.0, 1.0, dte, bde, 1.0, 0.05)
+        #  radius mass Z dte bde alpha beta
     elseif name == "He"
         return Element(name, 0.31, 4.0, 2.0, dte, bde, 1.0, 0.05)
     elseif name == "Li"

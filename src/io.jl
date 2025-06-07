@@ -194,3 +194,37 @@ function DumpVacancies(simulator::Simulator, fileName::String, step::Int64, isAp
         end
     end
 end
+
+function DumpDefects(simulator::Simulator, fileName::String, step::Int64, isAppend::Bool=false)
+    if !simulator.isStore
+        error("The defects are not stored, please set isStore to true.")
+    end
+    write_flag = isAppend ? "a" : "w"
+    open(fileName, write_flag) do file
+        write(file, "ITEM: TIMESTEP\n")
+        write(file, string(step), "\n")
+        write(file, "ITEM: NUMBER OF ATOMS\n")
+        write(file, string(length(simulator.displacedAtoms)*2), "\n")
+        write(file, "ITEM: BOX BOUNDS ")
+        for d in 1:3
+            if simulator.parameters.periodic[d] 
+                write(file, "pp ")
+            else
+                write(file, "ff ")
+            end
+        end
+        write(file, "\n")
+        for d in 1:3
+            write(file, "0 $(simulator.box.vectors[d,d])\n")
+        end
+        write(file, "ITEM: ATOMS id type x y z\n")
+        for atomIndex in simulator.displacedAtoms
+            atom = simulator.atoms[atomIndex]
+            write(file, "$(atom.index) $(atom.type) \
+            $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3])\n")
+            latticePoint = simulator.latticePoints[atomIndex]  
+            write(file, "$(latticePoint.index) $(latticePoint.type+length(keys(simulator.parameters.typeDict))) \
+            $(latticePoint.coordinate[1]) $(latticePoint.coordinate[2]) $(latticePoint.coordinate[3])\n")
+        end
+    end
+end

@@ -132,7 +132,7 @@ struct ConstantsByType
     a::Dict{Vector{Int64}, Float64}
     Q_nl::Dict{Vector{Int64}, Float64}  
     Q_loc::Dict{Vector{Int64}, Float64}
-    qMax_squared::Dict{Vector{Int64}, Float64}
+    qMax::Dict{Vector{Int64}, Float64}
     sigma::Dict{Int64, Float64}
 end
 
@@ -179,6 +179,7 @@ struct Parameters
     perfectEnvIndex::Int64
     irrdiationFrequency::Float64
     isDynamicLoad::Bool
+    nCascadeEveryLoad::Int64
 end
 
 
@@ -210,7 +211,8 @@ function Parameters(
     temperature::Float64 = 0.0,   # K
     perfectEnvIndex::Int64 = 0,
     irrdiationFrequency::Float64 = 0.0,
-    isDynamicLoad = false)
+    isDynamicLoad = false,
+    nCascadeEveryLoad = 1)
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
     if !isdir(θτRepository)
@@ -223,7 +225,7 @@ function Parameters(
                       E_p_power_range, p_range, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, isLog,
                       DTEMode, soapParameters, DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      isDynamicLoad)
+                      isDynamicLoad, nCascadeEveryLoad)
 end 
 
 
@@ -238,7 +240,7 @@ mutable struct Simulator
     isStore::Bool
     displacedAtoms::Vector{Int64}
     atomNumberWhenStore::Int64
-    nIrradiation::Int64
+    nCascade::Int64
     nCollisionEvent::Int64
     exploredCells::Vector{GridCell}
     θFunctions::Dict{Vector{Int64}, Function}

@@ -1,12 +1,12 @@
 using .BCA
 using Printf
 
-function ShotTarget(atom::Atom, simulator::Simulator)
+function ShotTarget(atom::Atom, pAtomsIndex::Vector{Int64}, simulator::Simulator)
     cellGrid = simulator.cellGrid
     periodic = simulator.parameters.periodic    
     cell = cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
     while true
-        (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, simulator)
+        (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, pAtomsIndex, simulator)
         # delete repeated targets in lastTargets
         filter!(t->!(t.index in atom.lastTargets), targets)
         if length(targets) > 0
@@ -21,12 +21,10 @@ function ShotTarget(atom::Atom, simulator::Simulator)
             neighborIndex[dimension] = direction == 1 ? Int8(-1) : Int8(1)
             neighborInfo = cell.neighborCellsInfo[neighborIndex]
             crossFlag = neighborInfo.cross
-            for d in 1:3
-                if crossFlag[d] != 0
-                    atom.coordinate[d] -= crossFlag[d] * simulator.box.vectors[d, d]
-                end
-            end 
-            if (neighborInfo.cross[dimension] != 0 && !periodic[dimension]) || isInfinity
+            if crossFlag[dimension] != 0 && periodic[dimension]
+                atom.coordinate[dimension] -= crossFlag[dimension] * simulator.box.vectors[dimension, dimension]
+            end
+            if (crossFlag[dimension] != 0 && !periodic[dimension]) || isInfinity
                 for cell in simulator.exploredCells
                     cell.isExplored = false
                 end
@@ -65,12 +63,11 @@ function AtomOutFaceDimension(atom::Atom, cell::GridCell)
         end
     end
     error("Out face not found\n ########Atom#######\n $(atom) \n 
-                                ########cell#######\n $(cell) \n
-                                ####cross flag#####\n$(crossFlag)")
+                                ########cell#######\n $(cell.ranges) \n $(cell.index)\n")
 end
 
 
-function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, nStep::Int64)
+function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     N_t = length(atoms_t)
     cellGrid = simulator.cellGrid
     tanφList = Vector{Float64}(undef, N_t)
@@ -82,9 +79,9 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, n
     pL = 0.0
     for atom_t in atoms_t
         l = atom_t.pL[atom_p.index]
-        if l > simulator.parameters.pLMax 
-            l = simulator.parameters.pLMax
-        end
+        #if l > simulator.parameters.pLMax 
+        #    l = simulator.parameters.pLMax
+        #end
         pL += l
     end
     pL /= N_t   
@@ -106,7 +103,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, n
     # for cross section calculations
     #global tid
     #global buf
-    #if (! (tid in [atom_t.index for atom_t in atoms_t])) && nStep == 1
+    #if (! (tid in [atom_t.index for atom_t in atoms_t])) && simulator.nCollisionEvent == 1
     #    write(buf, "0.0\n")
     #end
     for (i, atom_t) in enumerate(atoms_t)
@@ -117,14 +114,14 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, n
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
         # for cross section calculations
-        #if atom_t.index == tid && nStep == 1
+        #if atom_t.index == tid && simulator.nCollisionEvent == 1
         #    @printf(buf, "%f\n", E_tList[i])
         #end
-        if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.0
+        if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.1
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
             DisplaceAtom!(atom_t, tCoordinate, simulator)  
-            SetEnergy!(atom_t, E_tList[i])
+            #SetEnergy!(atom_t, E_tList[i])
             if atom_t.latticePointIndex != -1
                 LeaveLatticePoint!(atom_t, simulator)
             end     
@@ -132,7 +129,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, n
             SetEnergy!(atom_t, 0.0)
             # this is for undoing the pertubation 
             if atom_t.latticePointIndex != -1
-                atom_t.coordinate = simulator.latticePoints[atom_t.latticePointIndex].coordinate[:] 
+                SetCoordinate!(atom_t, simulator.latticePoints[atom_t.latticePointIndex].coordinate)
             end
         end
         avePPoint += atom_t.pPoint[atom_p.index]
@@ -150,6 +147,9 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, n
     SetVelocityDirection!(atom_p, velocity)
     
     SetEnergy!(atom_p, atom_p.energy - (sumE_t + sum(QList)) * η)
+    #if atom_p.type == 2 
+    #    Log("$(sumE_t),$(sum(QList))\n", fileName="loss/$(simulator.nCascade)")
+    #end
 
 
 
@@ -160,7 +160,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator, n
     #    afterMomentum += sqrt(2 * atoms_t[i].mass * E_tList[i]) * atoms_t[i].velocityDirection  # debug
     #end
     #open("p.debug.log", "a") do f
-    #    write(f, "$(simulator.nIrradiation),$(N_t),$(initMomentum[1]),$(initMomentum[2]),$(initMomentum[3]),$(afterMomentum[1]),$(afterMomentum[2]),$(afterMomentum[3])\n")
+    #    write(f, "$(simulator.nCascade),$(N_t),$(initMomentum[1]),$(initMomentum[2]),$(initMomentum[3]),$(afterMomentum[1]),$(afterMomentum[2]),$(afterMomentum[3])\n")
     #end
     #exit()
 end 
@@ -170,73 +170,67 @@ end
 
 function Cascade!(atom_p::Atom, simulator::Simulator)
     pAtoms = Vector{Atom}([atom_p])
-    nStep = 1
+    pAtomsIndex = [a.index for a in pAtoms]
     if simulator.parameters.isDumpInCascade
-        Dump(simulator, "Cascade_$(simulator.nIrradiation).dump", nStep, false)
+        Dump(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, false)
     end
     while true
         targetsList = Vector{Vector{Atom}}()
-        for atom in pAtoms
-            targets = ShotTarget(atom, simulator)
-            for pAtom in pAtoms
-                filter!(t->t.index != pAtom.index, targets)
-            end
-            push!(targetsList, targets)
-        end
-        UniqueTargets!(targetsList, pAtoms)
-        nextPAtoms = Vector{Atom}()
-        for (pAtom, targets) in zip(pAtoms, targetsList)
+        deleteIndexes = Vector{Int64}()
+        for (na, pAtom) in enumerate(pAtoms)
+            targets = ShotTarget(pAtom, pAtomsIndex, simulator)
             if length(targets) == 0.0
                 pAtom.lastTargets = Vector{Int64}()
                 delete!(simulator, pAtom)
+                push!(deleteIndexes, na)
                 continue
             end
-            pAtom.lastTargets = [t.index for t in targets]
-            Collision!(pAtom, targets, simulator, nStep)
-            for target in targets
-                if target.energy > 0.0   
-                    push!(nextPAtoms, target)
+            push!(targetsList, targets)
+        end
+        deleteat!(pAtoms, deleteIndexes)
+        pAtomsIndex = [a.index for a in pAtoms]
+        UniqueTargets!(targetsList, pAtoms)
+        nextPAtoms = Vector{Atom}()
+        for (pAtom, targets) in zip(pAtoms, targetsList)
+            if length(targets) > 0
+                pAtom.lastTargets = [t.index for t in targets]
+                Collision!(pAtom, targets, simulator)
+                for target in targets
+                    if target.energy > 0.0   
+                        DisplaceAtom!(target, target.coordinate, simulator)
+                        push!(nextPAtoms, target)
+                    end
                 end
-            end
-            if pAtom.energy > simulator.parameters.stopEnergy   
-                push!(nextPAtoms, pAtom)
+                if pAtom.energy > simulator.parameters.stopEnergy   
+                    push!(nextPAtoms, pAtom)
+                else
+                    pAtom.lastTargets = Vector{Int64}()
+                    Stop!(pAtom, simulator)
+                end
             else
-                pAtom.lastTargets = Vector{Int64}()
-                Stop!(pAtom, simulator)
-                #cell = simulator.cellGrid.cells[pAtom.cellIndex[1], pAtom.cellIndex[2], pAtom.cellIndex[3]]
-                #neighbors = GetAllNeighbors(cell, simulator)
-                #hasNonPNeighbor = false
-                #for neighbor in neighbors   # should change to a new function by computing distance # debug
-                #    if !(neighbor in pAtoms)
-                #        hasNonPNeighbor = true
-                #        pAtom.lastTargets = Vector{Int64}()
-                #        Stop!(pAtom, simulator)
-                #        break
-                #    end
-                #end
-                #if !hasNonPNeighbor  
-                #    push!(nextPAtoms, pAtom)
-                #end
+                push!(nextPAtoms, pAtom)
             end
         end
-        nStep += 1
         for targets in targetsList
             for target in targets
                 EmptyP!(target)
             end
         end 
+        simulator.nCollisionEvent += 1
         if simulator.parameters.isDumpInCascade
-            Dump(simulator, "Cascade_$(simulator.nIrradiation).dump", nStep, true)
+            Dump(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, true)
         end
         if simulator.parameters.isLog
-            println("Collision times: ", nStep)
+            println("Collision times: ", simulator.nCollisionEvent)
         end
         if length(nextPAtoms) > 0
             pAtoms = nextPAtoms
+            pAtomsIndex = [a.index for a in pAtoms]
         else
             break
         end
     end
+    simulator.nCascade += 1
 end
 
 
