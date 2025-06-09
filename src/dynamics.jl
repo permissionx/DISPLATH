@@ -1,14 +1,13 @@
 using .BCA
 using Printf
 
-function ShotTarget(atom::Atom, pAtomsIndex::Vector{Int64}, simulator::Simulator)
+function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
     cellGrid = simulator.cellGrid
     periodic = simulator.parameters.periodic    
     cell = cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
     while true
-        (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, pAtomsIndex, simulator)
+        (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, filterIndexes, simulator)
         # delete repeated targets in lastTargets
-        filter!(t->!(t.index in atom.lastTargets), targets)
         if length(targets) > 0
             for cell in simulator.exploredCells
                 cell.isExplored = false
@@ -95,7 +94,8 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
         #println("DEBUG:\n tanφ: $(tanφList[i])\n tanψ: $(tanψList[i])\n E_t: $(E_tList[i])\n x_p: $(x_pList[i])\n x_t: $(x_tList[i])\n Q: $(QList[i])")
     end
     sumE_t = sum(E_tList)
-    η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * sumE_t)
+    sumQ = sum(QList)
+    η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t+sumQ))
     E_tList *= η
     # Update atoms_t (target atoms)         
     avePPoint = Vector{Float64}([0.0,0.0,0.0])
@@ -172,13 +172,13 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
     pAtoms = Vector{Atom}([atom_p])
     pAtomsIndex = [a.index for a in pAtoms]
     if simulator.parameters.isDumpInCascade
-        Dump(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, false)
+        DumpDefects(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, false)
     end
     while true
         targetsList = Vector{Vector{Atom}}()
         deleteIndexes = Vector{Int64}()
         for (na, pAtom) in enumerate(pAtoms)
-            targets = ShotTarget(pAtom, pAtomsIndex, simulator)
+            targets = ShotTarget(pAtom, [pAtomsIndex; pAtom.lastTargets], simulator)
             if length(targets) == 0.0
                 pAtom.lastTargets = Vector{Int64}()
                 delete!(simulator, pAtom)
@@ -218,7 +218,7 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
         end 
         simulator.nCollisionEvent += 1
         if simulator.parameters.isDumpInCascade
-            Dump(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, true)
+            DumpDefects(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, true)
         end
         if simulator.parameters.isLog
             println("Collision times: ", simulator.nCollisionEvent)

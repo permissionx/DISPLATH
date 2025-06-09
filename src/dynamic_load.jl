@@ -78,7 +78,7 @@ function LoadCell(cell::GridCell, simulator::Simulator)
 end
 
 
-function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, pAtomsIndex::Vector{Int64}, simulator::Simulator)
+function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filterIndexes::Vector{Int64}, simulator::Simulator)
     cellGrid = simulator.cellGrid
     box = simulator.box
     targets = Vector{Atom}()
@@ -95,7 +95,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, pAto
         push!(simulator.exploredCells, neighborCell)
         infiniteFlag = false
         for neighborAtom in neighborCell.allAtoms
-            if neighborAtom.index == atom.index || neighborAtom.index in pAtomsIndex    
+            if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
                 continue
             end
             Pertubation!(neighborAtom, simulator)
@@ -170,7 +170,8 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
             simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])
     end
     sumE_t = sum(E_tList)
-    η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * sumE_t)
+    sumQ = sum(QList)
+    η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ))
     E_tList *= η
     # Update atoms_t (target atoms)         
     avePPoint = Vector{Float64}([0.0,0.0,0.0])
@@ -186,7 +187,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
             LeaveLatticePoint_dynamicLoad!(atom_t, simulator)
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
-            #DisplaceAtom_dynamicLoad!(atom_t, tCoordinate, simulator)  
+            #DisplaceAtom!(atom_t, tCoordinate, simulator)  
             #SetEnergy!(atom_t, E_tList[i])
         else
             SetEnergy!(atom_t, 0.0)
@@ -202,33 +203,31 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     avePPoint /= N_t
     x_p = η * sum(x_pList)
     pCoordinate = avePPoint - x_p * atom_p.velocityDirection
-    #DisplaceAtom_dynamicLoad!(atom_p, pCoordinate, simulator)
-    DisplaceAtom_dynamicLoad!(atom_p, avePPoint, simulator)
+    #DisplaceAtom!(atom_p, pCoordinate, simulator)
+    DisplaceAtom!(atom_p, avePPoint, simulator) 
     velocity = (sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum)  / atom_p.mass
     SetVelocityDirection!(atom_p, velocity)
     
-    SetEnergy!(atom_p, atom_p.energy - (sumE_t + sum(QList)) * η)
+    SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ) * η)
     #if atom_p.type == 2 
     #    Log("$(sumE_t),$(sum(QList))\n", fileName="loss/$(simulator.nCascade)")
     #end
 end 
 
-function DisplaceAtom_dynamicLoad!(atom::Atom, coordinate::Vector{Float64}, simulator::Simulator)
-    cell = simulator.cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
-    d = cell.atomicDensity
-    DisplaceAtom!(atom, coordinate, simulator)
-    cell.atomicDensity = d
-end
+
 
 function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
     pAtoms = Vector{Atom}([atom_p])
     pAtomsIndex = [a.index for a in pAtoms]
     parameters = simulator.parameters
+    if parameters.isDumpInCascade
+        Dump_dynamicLoad(simulator, "Cascade_$(simulator.nCascade).dump", 0, false)
+    end
     while true
         targetsList = Vector{Vector{Atom}}()
         deleteIndexes = Vector{Int64}()
         for (na, pAtom) in enumerate(pAtoms)
-            targets = ShotTarget_dynamicLoad(pAtom, pAtomsIndex, simulator)
+            targets = ShotTarget_dynamicLoad(pAtom, [pAtomsIndex; pAtom.lastTargets], simulator)
             if length(targets) == 0.0
                 empty!(pAtom.lastTargets)
                 delete_dynamicLoad!(simulator, pAtom)
@@ -247,7 +246,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 Collision_dynamicLoad!(pAtom, targets, simulator)
                 for target in targets
                     if target.energy > 0.0   
-                        DisplaceAtom_dynamicLoad!(target, target.coordinate, simulator)
+                        DisplaceAtom!(target, target.coordinate, simulator)
                         push!(nextPAtoms, target)
                     end
                 end
@@ -268,7 +267,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         end 
         simulator.nCollisionEvent += 1
         if parameters.isDumpInCascade
-            Dump_dynamicLoad(simulator, "Cascade.dump", simulator.nCollisionEvent, true, true)
+            Dump_dynamicLoad(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, true)
         end
         if parameters.isLog
             println("Collision times: ", simulator.nCollisionEvent)
@@ -380,7 +379,7 @@ end
 
 
 
-function ShotTarget_dynamicLoad(atom::Atom, pAtomsIndex::Vector{Int64}, simulator::Simulator)
+function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
     cellGrid = simulator.cellGrid
     periodic = simulator.parameters.periodic    
     cell = cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
@@ -390,9 +389,7 @@ function ShotTarget_dynamicLoad(atom::Atom, pAtomsIndex::Vector{Int64}, simulato
             IterPushCellNeighbors!(cellGrid, cell)
             cell.isPushedNeighbor = true
         end
-        (targets, isInfinity) = GetTargetsFromNeighbor_dynamicLoad(atom, cell, pAtomsIndex, simulator)
-        # delete repeated targets in lastTargets
-        filter!(t->!(t.index in atom.lastTargets), targets)
+        (targets, isInfinity) = GetTargetsFromNeighbor_dynamicLoad(atom, cell, filterIndexes, simulator)
         if length(targets) > 0
             for cell in simulator.exploredCells
                 cell.isExplored = false
@@ -483,7 +480,7 @@ function Dump_dynamicLoad(simulator::Simulator, fileName::String, step::Int64, i
 end
 
 
-function Restore_dynamicLoad(simulator::Simulator)
+function Restore_dynamicLoad!(simulator::Simulator)
     cells = simulator.cellGrid.cells
     for atom in [simulator.atoms; simulator.vacancies]
         if atom.isAlive

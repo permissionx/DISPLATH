@@ -35,7 +35,7 @@ end
 
 function FindTurningPoint(p_squared::Float64, E_r::Float64,type_p::Int64, type_t::Int64,  guessStart::Float64, constantsByType::ConstantsByType)
     rLeft = guessStart
-    rRight = 20
+    rRight = 100
     while (rRight - rLeft) > 1e-14
         rMid = (rLeft + rRight) / 2
         g_squared = 1 - p_squared / (rMid * rMid) - V(rMid, type_p, type_t, constantsByType) / E_r

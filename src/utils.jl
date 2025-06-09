@@ -11,7 +11,7 @@ function DefectStatics(simulator::Simulator)
             push!(interstitials, atoms[idx])
         end
     end
-    for idx in simulator.atomNumberWhenStore:length(simulator.atoms)
+    for idx in simulator.numberOfAtomsWhenStored:length(simulator.atoms)
         push!(interstitials, atoms[idx])
     end
     return vacancies, interstitials

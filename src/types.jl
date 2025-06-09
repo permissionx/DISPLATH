@@ -162,8 +162,8 @@ struct Parameters
     #optional 
     periodic::Vector{Bool}
     isOrthogonal::Bool
-    E_p_power_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
-    p_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
+    EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
+    pRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     stopEnergy::Float64
     DebyeTemperature::Float64
     pLMax::Float64     
@@ -196,8 +196,8 @@ function Parameters(
     # optional
     periodic::Vector{Bool} = [true, true, false],
     isOrthogonal::Bool = true,
-    E_p_power_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -1.0:0.045:8.0,
-    p_range::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = 0.0:0.01:5.0,
+    EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -1.0:0.045:8.0,
+    pRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = 0.0:0.01:5.0,
     stopEnergy::Float64 = 10.0, 
     DebyeTemperature::Float64 = 1000.0, 
     pLMax::Float64 = 2.0, 
@@ -222,7 +222,7 @@ function Parameters(
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict, 
                       periodic, isOrthogonal,
-                      E_p_power_range, p_range, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, isLog,
+                      EPowerRange, pRange, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, isLog,
                       DTEMode, soapParameters, DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
                       isDynamicLoad, nCascadeEveryLoad)
@@ -239,7 +239,7 @@ mutable struct Simulator
     constantsByType::ConstantsByType
     isStore::Bool
     displacedAtoms::Vector{Int64}
-    atomNumberWhenStore::Int64
+    numberOfAtomsWhenStored::Int64
     nCascade::Int64
     nCollisionEvent::Int64
     exploredCells::Vector{GridCell}

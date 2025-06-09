@@ -61,8 +61,8 @@ function SaveθτData(type_p::Int64, type_t::Int64,
     name_t = typeDict[type_t].name
     fileName = parameters.θτRepository*"/$(name_p)_$(name_t).thetatau"  
     open(fileName, "w") do f
-        write(f, "# E_p_power_range: $(parameters.E_p_power_range)\n")
-        write(f, "# p_range: $(parameters.p_range)\n")
+        write(f, "# EPowerRange: $(parameters.EPowerRange)\n")
+        write(f, "# pRange: $(parameters.pRange)\n")
         write(f, "# Generated at: $(Dates.now())\n\n")
         write(f, "@ P type: $(name_p) & T type: $(name_t)\n") # to be modified: not neccessry because of the file name has indicated the elements. 
         write(f, "E axis length: $(length(E_p_axis))\n") 
@@ -204,7 +204,7 @@ function DumpDefects(simulator::Simulator, fileName::String, step::Int64, isAppe
         write(file, "ITEM: TIMESTEP\n")
         write(file, string(step), "\n")
         write(file, "ITEM: NUMBER OF ATOMS\n")
-        write(file, string(length(simulator.displacedAtoms)*2), "\n")
+        write(file, string(length(simulator.displacedAtoms)*2+simulator.numberOfAtoms-simulator.numberOfAtomsWhenStored), "\n")
         write(file, "ITEM: BOX BOUNDS ")
         for d in 1:3
             if simulator.parameters.periodic[d] 
@@ -225,6 +225,10 @@ function DumpDefects(simulator::Simulator, fileName::String, step::Int64, isAppe
             latticePoint = simulator.latticePoints[atomIndex]  
             write(file, "$(latticePoint.index) $(latticePoint.type+length(keys(simulator.parameters.typeDict))) \
             $(latticePoint.coordinate[1]) $(latticePoint.coordinate[2]) $(latticePoint.coordinate[3])\n")
+        end
+        for atom in simulator.atoms[simulator.numberOfAtomsWhenStored+1:simulator.numberOfAtoms]
+            write(file, "$(atom.index) $(atom.type) \
+            $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3])\n")
         end
     end
 end

@@ -203,22 +203,22 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
         println("θ and τ functions for $(parameters.typeDict[type_p].name) to $(parameters.typeDict[type_t].name) Loaded.")
     catch
         println("Loading θ and τ data for $(parameters.typeDict[type_p].name) to $(parameters.typeDict[type_t].name) failed.")
-        E_p_power_range = parameters.E_p_power_range    
-        p_range = parameters.p_range
-        nE = length(E_p_power_range)
-        np = length(p_range)
+        EPowerRange = parameters.EPowerRange    
+        pRange = parameters.pRange
+        nE = length(EPowerRange)
+        np = length(pRange)
         θMatrix = Array{Float64, 2}(undef, nE, np)
         τMatrix = Array{Float64, 2}(undef, nE, np)
-        @showprogress desc="Waiting for generating θ and τ data: " for (i, E_p_power) in enumerate(E_p_power_range)
+        @showprogress desc="Waiting for generating θ and τ data: " for (i, E_p_power) in enumerate(EPowerRange)
             E_p = 10.0^E_p_power
-            for (j, p) in enumerate(p_range)
+            for (j, p) in enumerate(pRange)
                 θ, τ = BCA.θτ(E_p, mass_p, mass_t, type_p, type_t, p, constantsByType)
                 θMatrix[i, j] = θ
                 τMatrix[i, j] = τ
             end
         end
-        E_p_axis = [10.0^E_p_power for E_p_power in E_p_power_range]
-        p_axis = collect(p_range)    
+        E_p_axis = [10.0^E_p_power for E_p_power in EPowerRange]
+        p_axis = collect(pRange)    
         SaveθτData(type_p, type_t, θMatrix, τMatrix, E_p_axis, p_axis, parameters)
     end
 
@@ -228,25 +228,27 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
     return θFunction, τFunction
 end
 
-
-
-function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    println("Initializing the simulator...")
-    box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
-    simulator = Simulator(box, inputGridVectors, parameters)
-    _initSimulatorAtoms!(simulator, parameters)
-    return simulator    
-end 
-
 function Simulator_dynamicLoad(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
     println("Initializing the simulator...")
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
+    ranges = parameters.latticeRanges 
+    atomNumber = (ranges[1,2] - ranges[1,1]) * (ranges[2,2] - ranges[2,1]) * (ranges[3,2] - ranges[3,1]) * length(parameters.basisTypes)
+    println("$(atomNumber) atoms in the box.") 
     simulator = Simulator(box, inputGridVectors, parameters)
     vectors = parameters.primaryVectors     
     unitCellVolume = abs(dot(cross(vectors[:,1], vectors[:,2]), vectors[:,3]))
     for cell in simulator.cellGrid.cells
         cell.atomicDensity = length(parameters.basisTypes) / unitCellVolume
     end
+    println("Simulator initialized.\n")
+    return simulator    
+end 
+
+function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    println("Initializing the simulator...")
+    box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
+    simulator = Simulator(box, inputGridVectors, parameters)
+    _initSimulatorAtoms!(simulator, parameters)
     return simulator    
 end 
 
@@ -263,7 +265,7 @@ function _initSimulatorAtoms!(simulator::Simulator, parameters::Parameters)
     latticeRanges = parameters.latticeRanges
     basis = parameters.basis
     basisTypes = parameters.basisTypes
-    atomNumber = latticeRanges[2,2] * latticeRanges[2,2] * latticeRanges[2,2] * length(basisTypes)
+    atomNumber = (latticeRanges[1,2] - latticeRanges[1,1]) * (latticeRanges[2,2] - latticeRanges[2,1]) * (latticeRanges[3,2] - latticeRanges[3,1]) * length(basisTypes)
     @showprogress desc="Creating atoms ($(atomNumber)): " for x in latticeRanges[1,1]:latticeRanges[1,2]-1
         for y in latticeRanges[2,1]:latticeRanges[2,2]-1    
             for z in latticeRanges[3,1]:latticeRanges[3,2]-1
@@ -327,7 +329,9 @@ end
 function push!(cell::GridCell, atom::Atom, simulator::Simulator)
     atom.cellIndex .= cell.index
     push!(cell.atoms, atom)
-    cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume
+    if !simulator.parameters.isDynamicLoad
+        cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume
+    end
 end 
 
 
@@ -359,11 +363,22 @@ function delete!(cell::GridCell, atom::Atom, simulator::Simulator)
     end
     deleteat!(cell.atoms, findfirst(a -> a.index == atom.index, cell.atoms))
     atom.cellIndex = Vector{Int64}([-1, -1, -1])
-    cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume  
+    if !simulator.parameters.isDynamicLoad
+        cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume  
+    end
 end
 
 
 function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
+    if atom.type == 3 && newPosition[3] - atom.coordinate[3] < -10
+        @show atom.coordinate
+        @show newPosition
+        @show simulator.nCollisionEvent
+        println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+    end
+    if atom.type == 3
+        Log("$(newPosition[3])\n",fileName="z.csv",type="a")
+    end
     for d in 1:3
         # need to adappt non-periodic condition
         if newPosition[d] < 0
@@ -444,7 +459,7 @@ end
 
 
 
-function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, pAtomsIndex::Vector{Int64}, simulator::Simulator)
+function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::Vector{Int64}, simulator::Simulator)
     cellGrid = simulator.cellGrid
     box = simulator.box
     targets = Vector{Atom}()
@@ -460,7 +475,7 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, pAtomsIndex::Vec
         push!(simulator.exploredCells, neighborCell)
         infiniteFlag = false
         for neighborAtom in neighborCell.atoms
-            if neighborAtom.index == atom.index || neighborAtom.index in pAtomsIndex    
+            if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
                 continue
             end
             Pertubation!(neighborAtom, simulator)
@@ -608,19 +623,19 @@ end
 
 
 function AddToStore!(atom::Atom, simulator::Simulator)
-    if simulator.isStore && atom.index <= simulator.atomNumberWhenStore
+    if simulator.isStore && atom.index <= simulator.numberOfAtomsWhenStored
         push!(simulator.displacedAtoms, atom.index)
     end 
 end
 
 function DeleteFromStore!(atom::Atom, simulator::Simulator)
-    if simulator.isStore && atom.index <= simulator.atomNumberWhenStore
+    if simulator.isStore && atom.index <= simulator.numberOfAtomsWhenStored
         deleteat!(simulator.displacedAtoms, findfirst(==(atom.index), simulator.displacedAtoms))
     end
 end 
 
 function Restore!(simulator::Simulator)
-    for atom in simulator.atoms[simulator.atomNumberWhenStore+1:end]
+    for atom in simulator.atoms[simulator.numberOfAtomsWhenStored+1:end]
         # Delete ions remained in the system from their cells.
         # Ions in simulator.atoms will be deleted latter by setting simulator.atoms = simulator.atoms[1:maxAtomID]. 
         if atom.isAlive
@@ -635,7 +650,7 @@ function Restore!(simulator::Simulator)
         latticePoint = simulator.latticePoints[atom.index]
         SetOnLatticePoint!(atom, latticePoint, simulator)
     end
-    maxAtomID = simulator.atomNumberWhenStore
+    maxAtomID = simulator.numberOfAtomsWhenStored
     simulator.atoms = simulator.atoms[1:maxAtomID]
     simulator.maxAtomID = maxAtomID
     simulator.numberOfAtoms  = maxAtomID
@@ -651,7 +666,7 @@ function Save!(simulator::Simulator)
         end
     end
     simulator.isStore = true
-    simulator.atomNumberWhenStore = simulator.numberOfAtoms
+    simulator.numberOfAtomsWhenStored = simulator.numberOfAtoms
 end 
 
 
@@ -734,18 +749,17 @@ function SetCoordinate!(atom::Atom, coordinate::Vector{Float64})
 end 
 
 
-const ħ = 1.054571817e-34        # reduced Planck constant (J·s)
-const kB = 1.380649e-23          # Boltzmann constant (J/K)
-const amu_to_kg = 1.66053906660e-27  # atomic mass unit to kg
-function TemperatureToSigma(T::Float64, θD::Float64, mass_amu::Float64)
-    mass = mass_amu * amu_to_kg
-    xD = θD / T
-    integrand(x) = x / (exp(x) - 1)
-    integral, _ = quadgk(integrand, 0.0, xD)
-    φ = integral / xD
-    u2 = (3 * ħ^2) / (mass * kB * θD) * φ
-    # Convert from meters to Angstroms (1 m = 10^10 Å)
-    return 0.07 # sqrt(u2) * 1e10
+
+function TemperatureToSigma(T::Float64, ΘD::Float64, M_u::Float64)
+    ħ  = 1.054_571_817e-34   # J·s
+    kB = 1.380_649e-23       # J/K
+    Å  = 1e-10               # meter
+    M = M_u * 1.660_539_066e-27             
+    a  = ħ^2 / (2*M*kB*ΘD)
+    y  = ΘD / T
+    integ = quadgk(x -> x/(exp(x)-1), 0, y)[1]
+    u2 = a * (0.25 + (T/ΘD)^2 * integ)       # m²
+    return sqrt(u2) / Å                     # Å
 end
 
 
