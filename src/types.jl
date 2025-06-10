@@ -22,6 +22,8 @@ mutable struct Atom
     dte::Float64
     bde::Float64
 
+    numberOfEmptyCells::Int64
+
     # for atom_t
     pValue::Dict{Int64, Float64}
     pPoint::Dict{Int64, Vector{Float64}}

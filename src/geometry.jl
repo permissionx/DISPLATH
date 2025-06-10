@@ -28,6 +28,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     velocityDirection = Float64[0.0,0.0,0.0]  # length： 0 or one
     energy = 0.0
     radius, mass, Z, dte, bde, _, _ = TypeToProperties(type, parameters.typeDict)
+    numberOfEmptyCells = 0
     pValue = Dict{Int64, Float64}() # key is the index of the atom_p
     pVector = Dict{Int64, Vector{Float64}}()
     pPoint = Dict{Int64, Vector{Float64}}()  
@@ -42,7 +43,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     lattcieCoordinate = Vector{Float64}(undef, 3)
     return Atom(index, isAlive, type, coordinate, cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
-                dte, bde,
+                dte, bde, numberOfEmptyCells,
                 pValue, pVector, pPoint, pL, lastTargets,
                 latticePointIndex,
                 frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, 
@@ -370,15 +371,6 @@ end
 
 
 function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
-    if atom.type == 3 && newPosition[3] - atom.coordinate[3] < -10
-        @show atom.coordinate
-        @show newPosition
-        @show simulator.nCollisionEvent
-        println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-    end
-    if atom.type == 3
-        Log("$(newPosition[3])\n",fileName="z.csv",type="a")
-    end
     for d in 1:3
         # need to adappt non-periodic condition
         if newPosition[d] < 0
@@ -493,7 +485,7 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::V
         end
     end
     if infiniteFlag
-        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n")
+        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n", simulator)
     end
     if isempty(candidateTargets)
         return (targets, infiniteFlag)
@@ -759,7 +751,9 @@ function TemperatureToSigma(T::Float64, ΘD::Float64, M_u::Float64)
     y  = ΘD / T
     integ = quadgk(x -> x/(exp(x)-1), 0, y)[1]
     u2 = a * (0.25 + (T/ΘD)^2 * integ)       # m²
-    return sqrt(u2) / Å                     # Å
+    σ = sqrt(u2) / Å
+    println(σ)
+    return 0.7                     # Å
 end
 
 

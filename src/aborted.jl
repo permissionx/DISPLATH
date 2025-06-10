@@ -47,7 +47,7 @@ function GetTargetsFromNeighbor_dynamicLoad_aborted(atom::Atom, gridCell::GridCe
         push!(simulator.exploredCells, neighborCell)
     end
     if infiniteFlag
-        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n")
+        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n", simulator)
     end
     return (targets, infiniteFlag)
 end
@@ -104,7 +104,7 @@ function GetTargetsFromNeighbor_aborted(atom::Atom, gridCell::GridCell, simulato
         push!(simulator.exploredCells, neighborCell)
     end
     if infiniteFlag
-        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n")
+        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n", simulator)
     end
     return (targets, infiniteFlag)
 end

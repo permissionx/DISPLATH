@@ -148,7 +148,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     
     SetEnergy!(atom_p, atom_p.energy - (sumE_t + sum(QList)) * η)
     #if atom_p.type == 2 
-    #    Log("$(sumE_t),$(sum(QList))\n", fileName="loss/$(simulator.nCascade)")
+    #    Log("$(sumE_t),$(sum(QList))\n", simulator, fileName="loss/$(simulator.nCascade)")
     #end
 
 
@@ -219,9 +219,6 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
         simulator.nCollisionEvent += 1
         if simulator.parameters.isDumpInCascade
             DumpDefects(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, true)
-        end
-        if simulator.parameters.isLog
-            println("Collision times: ", simulator.nCollisionEvent)
         end
         if length(nextPAtoms) > 0
             pAtoms = nextPAtoms

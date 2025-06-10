@@ -113,7 +113,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filt
         end
     end
     if infiniteFlag
-        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n")
+        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n", simulator)
     end
     if isempty(candidateTargets)
         return (targets, infiniteFlag)
@@ -152,7 +152,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     E_tList = Vector{Float64}(undef, N_t)
     x_pList = Vector{Float64}(undef, N_t)
     x_tList = Vector{Float64}(undef, N_t)
-    QList = Vector{Float64}(undef, N_t)
+    Q_locList = Vector{Float64}(undef, N_t)
     pL = 0.0
     for atom_t in atoms_t
         l = atom_t.pL[atom_p.index]
@@ -162,16 +162,31 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
         pL += l
     end
     pL /= N_t   
+    if atom_p.numberOfEmptyCells > 1
+        # This is an approximation, the pL is not accurate, but for most situations in bulk simulation, numberOfEmptyCells is 0.
+        pL *= (atom_p.numberOfEmptyCells - 1) / atom_p.numberOfEmptyCells
+    end
+    atom_t = atoms_t[1]
+    N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity
+    Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
+                         pL, N, simulator.constantsByType)
+    atom_p.energy -= Q_nl_v
     for (i, atom_t) in enumerate(atoms_t)
         p = atom_t.pValue[atom_p.index]
         N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity 
-        tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], QList[i] = CollisionParams(
-            atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, pL, N, simulator.constantsByType,
+        tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
+            atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
             simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])
+        if atom_p.type == 3
+            Log("$(E_tList[i])\n", simulator, fileName="Et.csv")
+        end
     end
     sumE_t = sum(E_tList)
-    sumQ = sum(QList)
-    η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ))
+    sumQ_loc = sum(Q_locList)
+    η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ_loc))
+    if atom_p.type == 3
+        Log("$(η)\n", simulator, fileName="eta.csv")
+    end
     E_tList *= η
     # Update atoms_t (target atoms)         
     avePPoint = Vector{Float64}([0.0,0.0,0.0])
@@ -203,15 +218,15 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     avePPoint /= N_t
     x_p = η * sum(x_pList)
     pCoordinate = avePPoint - x_p * atom_p.velocityDirection
-    #DisplaceAtom!(atom_p, pCoordinate, simulator)
-    DisplaceAtom!(atom_p, avePPoint, simulator) 
+    DisplaceAtom!(atom_p, pCoordinate, simulator)
+    #DisplaceAtom!(atom_p, avePPoint, simulator) 
     velocity = (sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum)  / atom_p.mass
     SetVelocityDirection!(atom_p, velocity)
     
-    SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ) * η)
-    #if atom_p.type == 2 
-    #    Log("$(sumE_t),$(sum(QList))\n", fileName="loss/$(simulator.nCascade)")
-    #end
+    SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ_loc) * η)
+    if atom_p.type == 3
+        Log("$(sumE_t),$(sumQ_loc+Q_nl_v)\n", simulator, fileName="E_loss.csv")
+    end
 end 
 
 
@@ -241,6 +256,12 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         UniqueTargets!(targetsList, pAtoms)
         nextPAtoms = Vector{Atom}()
         for (pAtom, targets) in zip(pAtoms, targetsList)
+            if pAtom.type == 3
+                Log("$(length(targets))\n", simulator, fileName="targetNumber.csv")
+                for target in targets
+                    Log("$(target.pValue[1])\n", simulator, fileName="pValue.csv")
+                end
+            end
             if length(targets) > 0
                 pAtom.lastTargets = [t.index for t in targets]
                 Collision_dynamicLoad!(pAtom, targets, simulator)
@@ -268,9 +289,6 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         simulator.nCollisionEvent += 1
         if parameters.isDumpInCascade
             Dump_dynamicLoad(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, true)
-        end
-        if parameters.isLog
-            println("Collision times: ", simulator.nCollisionEvent)
         end
         if length(nextPAtoms) > 0
             pAtoms = nextPAtoms
@@ -383,6 +401,7 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
     cellGrid = simulator.cellGrid
     periodic = simulator.parameters.periodic    
     cell = cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
+    atom.numberOfEmptyCells = 0
     #accCrossFlag = Vector{Int64}([0,0,0])
     while true
         if ! cell.isPushedNeighbor
@@ -397,6 +416,7 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
             empty!(simulator.exploredCells)
             return targets
         else
+            atom.numberOfEmptyCells += 1
             dimension, direction = AtomOutFaceDimension(atom, cell)
             neighborIndex = Vector{Int8}([0,0,0])
             neighborIndex[dimension] = direction == 1 ? Int8(-1) : Int8(1)
@@ -409,6 +429,7 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
                 for cell in simulator.exploredCells
                     cell.isExplored = false
                 end
+                atom.numberOfEmptyCells = 0
                 empty!(simulator.exploredCells)
                 return Vector{Atom}() # means find nothing  
             end 

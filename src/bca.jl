@@ -4,7 +4,7 @@ using QuadGK
 using Base.MathConstants
 using Main: ConstantsByType
 
-export CollisionParams
+export CollisionParams, Q_nl
 
 qe_squared = Float64(14.399764) # square of element charge, unit: eV*angstrom
 
@@ -113,7 +113,7 @@ end
 
 
 function CollisionParams(energy_p::Float64, mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::Int64,
-                         p::Float64, pL::Float64, N::Float64, constantsByType::ConstantsByType,
+                         p::Float64, constantsByType::ConstantsByType,
                          θFunction::Function, τFunction::Function)
     #=
     energy_p = 100.0
@@ -137,13 +137,19 @@ function CollisionParams(energy_p::Float64, mass_p::Float64, mass_t::Float64, ty
     E_t_v = E_t(mass_p, mass_t, energy_p, θ_v)
     x_p_v = x_p(mass_p, mass_t, p, θ_v, τ_v)
     x_t_v = x_t(p, θ_v, x_p_v)
-    Q_v = QLoss.Q(energy_p, type_p, type_t, E_r_v, p, pL, N, constantsByType)
+    Q_loc_v = QLoss.Q_loc(energy_p, type_p, type_t, E_r_v, p, constantsByType)
     #println("E_r: ", E_r_v,"\n", "rStart: ", rStart,"\n", "θ: ", θ_v,"\n","τ: ", τ_v,"\n", "tanφ: ", tanφ_v,"\n", "tanψ: ", tanψ_v,"\n", "E_t: ", E_t_v,"\n", "x_p: ", x_p_v,"\n", "x_t: ", x_t_v,"\n", "Q: ", Q_v)
     #println("\n")
-    return tanφ_v, tanψ_v,  E_t_v, x_p_v, x_t_v, Q_v
+    return tanφ_v, tanψ_v,  E_t_v, x_p_v, x_t_v, Q_loc_v
 end
 
 
+function Q_nl(energy_p::Float64, mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::Int64,
+                         pL::Float64, N::Float64, constantsByType::ConstantsByType)
+    E_r_v = E_r(energy_p, mass_p, mass_t)
+    Q_nl_v = QLoss.Q_nl(energy_p, type_p, type_t, E_r_v, pL, N, constantsByType)
+    return Q_nl_v
+end
 
 
 module QLoss
@@ -174,27 +180,34 @@ function x_loc(x_nl::Float64)
 end
 
 
-function Q_nl(type_p::Int64, type_t::Int64, S_e::Float64, x_nl::Float64, x_loc::Float64, pL::Float64, N::Float64, constantsByType::ConstantsByType)
+function Q_nl_f(type_p::Int64, type_t::Int64, S_e::Float64, x_nl::Float64, x_loc::Float64, pL::Float64, N::Float64, constantsByType::ConstantsByType)
     # constant:  pMax (half of lattice constant)
     termRight = x_nl + x_loc * constantsByType.Q_nl[[type_p, type_t]]
     return S_e * N * termRight * pL 
 end 
 
-function Q_loc(type_p::Int64, type_t::Int64, S_e::Float64, x_loc::Float64, p::Float64, constantsByType::ConstantsByType)
+function Q_loc_f(type_p::Int64, type_t::Int64, S_e::Float64, x_loc::Float64, p::Float64, constantsByType::ConstantsByType)
     termUp = x_loc * S_e * exp(-p / constantsByType.a[[type_p, type_t]])
     termDown = constantsByType.Q_loc[[type_p, type_t]]
     return termUp * termDown
 end
 
 
-function Q(energy_p::Float64, type_p::Int64, type_t::Int64, E_r::Float64, p::Float64, pL::Float64, N::Float64, constantsByType::ConstantsByType)
+function Q_loc(energy_p::Float64, type_p::Int64, type_t::Int64, E_r::Float64, p::Float64, constantsByType::ConstantsByType)
     S_e_v = S_e(energy_p, type_p, type_t, constantsByType)
     x_nl_v = x_nl(type_p, type_t, E_r, constantsByType)
     x_loc_v = x_loc(x_nl_v)
-    Q_nl_v = Q_nl(type_p, type_t, S_e_v, x_nl_v, x_loc_v, pL, N, constantsByType)
-    Q_loc_v = Q_loc(type_p, type_t, S_e_v, x_loc_v, p, constantsByType)
+    Q_loc_v = Q_loc_f(type_p, type_t, S_e_v, x_loc_v, p, constantsByType)
     # println("S_e: ", S_e_v, "\n", "x_nl: ", x_nl_v, "\n", "x_loc: ", x_loc_v, "\n", "Q_nl: ", Q_nl_v, "\n", "Q_loc: ", Q_loc_v)
-    return Q_nl_v + Q_loc_v 
+    return Q_loc_v 
+end 
+
+function Q_nl(energy_p::Float64, type_p::Int64, type_t::Int64, E_r::Float64, pL::Float64, N::Float64, constantsByType::ConstantsByType)
+    S_e_v = S_e(energy_p, type_p, type_t, constantsByType)
+    x_nl_v = x_nl(type_p, type_t, E_r, constantsByType)
+    x_loc_v = x_loc(x_nl_v)
+    Q_nl_v = Q_nl_f(type_p, type_t, S_e_v, x_nl_v, x_loc_v, pL, N, constantsByType)
+    return Q_nl_v
 end 
 
 end

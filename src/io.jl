@@ -46,9 +46,11 @@ end
 
 
 
-function Log(string::String; fileName::String="log", type::String="a")
-    open(fileName, type) do file
-        write(file, string)
+function Log(string::String, simulator::Simulator; fileName::String="log", type::String="a")
+    if simulator.parameters.isLog
+        open(fileName, type) do file
+            write(file, string)
+        end
     end
 end
 
