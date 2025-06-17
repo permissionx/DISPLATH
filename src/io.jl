@@ -1,9 +1,8 @@
-function Dump(simulator::Simulator, fileName::String, step::Int64, isAppend::Bool=false, isDebug::Bool=false)
+function Dump(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)
     if !simulator.parameters.isOrthogonal        
         error("The box is not orthogonal, please use the orthogonal box.")
     end
-    write_flag = isAppend ? "a" : "w"
-    open(fileName, write_flag) do file
+    open(fileName, type) do file
         write(file, "ITEM: TIMESTEP\n")
         write(file, string(step), "\n")
         write(file, "ITEM: NUMBER OF ATOMS\n")
@@ -46,13 +45,14 @@ end
 
 
 
-function Log(string::String, simulator::Simulator; fileName::String="log", type::String="a")
-    if simulator.parameters.isLog
+function Log(string::String, simulator::Simulator; fileName::String="log", type::String="a", forceWrite::Bool=false)
+    if simulator.parameters.isLog || forceWrite
         open(fileName, type) do file
             write(file, string)
         end
     end
 end
+
 
 function SaveθτData(type_p::Int64, type_t::Int64, 
                        θMatrix::Matrix{Float64}, τMatrix::Matrix{Float64}, 
@@ -78,6 +78,13 @@ function SaveθτData(type_p::Int64, type_t::Int64,
     end
 end
 
+function parse_range(str)
+    parts = split(str, ":")
+    start = parse(Float64, parts[1])
+    step = parse(Float64, parts[2])
+    stop  = parse(Float64, parts[3])
+    return start:step:stop
+end
 
 function LoadθτData(type_p::Int64, type_t::Int64, parameters::Parameters)
     typeDict = parameters.typeDict
@@ -117,6 +124,30 @@ function LoadθτData(type_p::Int64, type_t::Int64, parameters::Parameters)
                 else
                     i += 1
                 end
+            elseif startswith(lines[i], "# E_p_power_range")
+                word = split(lines[i])[end]
+                EPowerRange = parse_range(word)
+                if EPowerRange != parameters.EPowerRange
+                    println("Warning: The EPowerRange in the file $(name_p)_$(name_t).thetatau is not the same as the EPowerRange in the parameters.")
+                    println("Generate new thetatau file? (y/n)")
+                    answer = readline()
+                    if answer == "y"
+                        error()
+                    end
+                end
+                i += 1
+            elseif startswith(lines[i], "# p_range")
+                word = split(lines[i])[end]
+                pRange = parse_range(word)
+                if pRange != parameters.pRange
+                    println("Warning: The pRange in the file $(name_p)_$(name_t).thetatau is not the same as the pRange in the parameters.")
+                    println("Generate new thetatau file? (y/n)")
+                    answer = readline()
+                    if answer == "y"
+                        error()
+                    end
+                end
+                i += 1
             else
                 i += 1
             end
@@ -165,44 +196,11 @@ end
 
 
 
-function DumpVacancies(simulator::Simulator, fileName::String, step::Int64, isAppend::Bool=false)
-    if !simulator.parameters.isOrthogonal        
-        error("The box is not orthogonal, please use the orthogonal box.")
-    end
-    vacancyLattices = ExtractVacancyLattices(simulator)
-    write_flag = isAppend ? "a" : "w"
-    open(fileName, write_flag) do file
-        write(file, "ITEM: TIMESTEP\n")
-        write(file, string(step), "\n")
-        write(file, "ITEM: NUMBER OF ATOMS\n")
-        write(file, string(length(vacancyLattices)), "\n")
-        write(file, "ITEM: BOX BOUNDS ")
-        for d in 1:3
-            if simulator.parameters.periodic[d] 
-                write(file, "pp ")
-            else
-                write(file, "ff ")
-            end
-        end
-        write(file, "\n")
-        for d in 1:3
-            write(file, "0 $(simulator.box.vectors[d,d])\n")
-        end
-        write(file, "ITEM: ATOMS id type x y z cx cy cz\n")
-        for latticePoint in vacancyLattices
-            write(file, "$(latticePoint.index) $(latticePoint.type) \
-            $(latticePoint.coordinate[1]) $(latticePoint.coordinate[2]) $(latticePoint.coordinate[3]) \
-            $(latticePoint.cellIndex[1]) $(latticePoint.cellIndex[2]) $(latticePoint.cellIndex[3])\n")
-        end
-    end
-end
-
-function DumpDefects(simulator::Simulator, fileName::String, step::Int64, isAppend::Bool=false)
+function DumpDefects(simulator::Simulator, fileName::String, step::Int64, type::String="a")
     if !simulator.isStore
         error("The defects are not stored, please set isStore to true.")
     end
-    write_flag = isAppend ? "a" : "w"
-    open(fileName, write_flag) do file
+    open(fileName, type) do file
         write(file, "ITEM: TIMESTEP\n")
         write(file, string(step), "\n")
         write(file, "ITEM: NUMBER OF ATOMS\n")
@@ -229,6 +227,32 @@ function DumpDefects(simulator::Simulator, fileName::String, step::Int64, isAppe
             $(latticePoint.coordinate[1]) $(latticePoint.coordinate[2]) $(latticePoint.coordinate[3])\n")
         end
         for atom in simulator.atoms[simulator.numberOfAtomsWhenStored+1:simulator.numberOfAtoms]
+            write(file, "$(atom.index) $(atom.type) \
+            $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3])\n")
+        end
+    end
+end
+
+function DumpAtoms(atoms::Vector{Atom}, simulator::Simulator, fileName::String, step::Int64, type::String="a")
+    open(fileName, type) do file
+        write(file, "ITEM: TIMESTEP\n")
+        write(file, string(step), "\n")
+        write(file, "ITEM: NUMBER OF ATOMS\n")
+        write(file, string(length(atoms)), "\n")
+        write(file, "ITEM: BOX BOUNDS ")
+        for d in 1:3
+            if simulator.parameters.periodic[d] 
+                write(file, "pp ")
+            else
+                write(file, "ff ")
+            end
+        end
+        write(file, "\n")
+        for d in 1:3
+            write(file, "0 $(simulator.box.vectors[d,d])\n")
+        end
+        write(file, "ITEM: ATOMS id type x y z\n")
+        for atom in atoms
             write(file, "$(atom.index) $(atom.type) \
             $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3])\n")
         end

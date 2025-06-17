@@ -6,7 +6,7 @@ using Main: ConstantsByType
 
 export CollisionParams, Q_nl
 
-qe_squared = Float64(14.399764) # square of element charge, unit: eV*angstrom
+const qe_squared = Float64(14.399764) # square of element charge, unit: eV*angstrom
 
 function Φ(x::Float64)
     A = Vector{Float64}([0.1818, 0.5099, 0.2802, 0.02817])
@@ -55,7 +55,7 @@ function Integrate_g_θ(p_squared::Float64, E_r::Float64, type_p::Int64, type_t:
     result = quadgk(r -> 1 / (r * r * g(r, p_squared, E_r, type_p, type_t, constantsByType)),
         rStart, rStart+10000,
         rtol=1e-8)[1]
-    return result
+    return result+1/(rStart+10000)
 end
 
 
@@ -115,17 +115,6 @@ end
 function CollisionParams(energy_p::Float64, mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::Int64,
                          p::Float64, constantsByType::ConstantsByType,
                          θFunction::Function, τFunction::Function)
-    #=
-    energy_p = 100.0
-    mass_p = 4.0
-    mass_t = 12.0
-    type_p = 1
-    type_t = 2
-    p = 2.0
-    pL = 1.0
-    N = 1.0
-    =#
-    #p_squared = p * p
     E_r_v = E_r(energy_p, mass_p, mass_t)
     #rStart = FindTurningPoint(p_squared, E_r_v, type_p, type_t, p, constantsByType)
     #θ_v = θ(p, p_squared, E_r_v, type_p, type_t, rStart, constantsByType)
@@ -138,8 +127,6 @@ function CollisionParams(energy_p::Float64, mass_p::Float64, mass_t::Float64, ty
     x_p_v = x_p(mass_p, mass_t, p, θ_v, τ_v)
     x_t_v = x_t(p, θ_v, x_p_v)
     Q_loc_v = QLoss.Q_loc(energy_p, type_p, type_t, E_r_v, p, constantsByType)
-    #println("E_r: ", E_r_v,"\n", "rStart: ", rStart,"\n", "θ: ", θ_v,"\n","τ: ", τ_v,"\n", "tanφ: ", tanφ_v,"\n", "tanψ: ", tanψ_v,"\n", "E_t: ", E_t_v,"\n", "x_p: ", x_p_v,"\n", "x_t: ", x_t_v,"\n", "Q: ", Q_v)
-    #println("\n")
     return tanφ_v, tanψ_v,  E_t_v, x_p_v, x_t_v, Q_loc_v
 end
 

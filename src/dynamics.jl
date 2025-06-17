@@ -13,7 +13,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
                 cell.isExplored = false
             end
             empty!(simulator.exploredCells)
-            return targets
+            return targets, true
         else
             dimension, direction = AtomOutFaceDimension(atom, cell)
             neighborIndex = Vector{Int8}([0,0,0])
@@ -28,7 +28,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
                     cell.isExplored = false
                 end
                 empty!(simulator.exploredCells)
-                return Vector{Atom}() # means find nothing  
+                return Vector{Atom}(), false # means find nothing  
             end 
             index = neighborInfo.index
             cell = cellGrid.cells[index[1], index[2], index[3]]
@@ -74,28 +74,35 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     E_tList = Vector{Float64}(undef, N_t)
     x_pList = Vector{Float64}(undef, N_t)
     x_tList = Vector{Float64}(undef, N_t)
-    QList = Vector{Float64}(undef, N_t)
+    Q_locList = Vector{Float64}(undef, N_t)
     pL = 0.0
     for atom_t in atoms_t
         l = atom_t.pL[atom_p.index]
-        #if l > simulator.parameters.pLMax 
-        #    l = simulator.parameters.pLMax
-        #end
         pL += l
     end
     pL /= N_t   
+    if atom_p.numberOfEmptyCells > 1
+        # This is an approximation, the pL is not accurate, but for most situations in bulk simulation, numberOfEmptyCells is 0.
+        pL *= (atom_p.numberOfEmptyCells - 1) / atom_p.numberOfEmptyCells
+    end
+    atom_t = atoms_t[1]
+    N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity
+    Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
+                         pL, N, simulator.constantsByType)  
+    atom_p.energy -= Q_nl_v
     for (i, atom_t) in enumerate(atoms_t)
         p = atom_t.pValue[atom_p.index]
         N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity 
-        tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], QList[i] = CollisionParams(
-            atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, pL, N, simulator.constantsByType,
+        tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
+            atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
             simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])
-        # debug: turn off the inelastic collision
-        #println("DEBUG:\n tanφ: $(tanφList[i])\n tanψ: $(tanψList[i])\n E_t: $(E_tList[i])\n x_p: $(x_pList[i])\n x_t: $(x_tList[i])\n Q: $(QList[i])")
+        if atom_p.type == 3
+            Log("$(E_tList[i])\n", simulator, fileName="Et.csv")
+        end
     end
     sumE_t = sum(E_tList)
-    sumQ = sum(QList)
-    η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t+sumQ))
+    sumQ_loc = sum(Q_locList)
+    η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ_loc))
     E_tList *= η
     # Update atoms_t (target atoms)         
     avePPoint = Vector{Float64}([0.0,0.0,0.0])
@@ -140,19 +147,16 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     # initMomentum = sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection   # Check momentum conservation 
 
     avePPoint /= N_t
-    x_p = η * sum(x_pList)
+    x_p = η * sum(x_pList) / N_t  # important modification
     pCoordinate = avePPoint - x_p * atom_p.velocityDirection
     DisplaceAtom!(atom_p, pCoordinate, simulator)
     velocity = (sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum)  / atom_p.mass
     SetVelocityDirection!(atom_p, velocity)
     
-    SetEnergy!(atom_p, atom_p.energy - (sumE_t + sum(QList)) * η)
+    SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ_loc) * η)
     #if atom_p.type == 2 
     #    Log("$(sumE_t),$(sum(QList))\n", simulator, fileName="loss/$(simulator.nCascade)")
     #end
-
-
-
 
     # Check momentum conservation 
     #afterMomentum = sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection
@@ -165,14 +169,82 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     #exit()
 end 
 
-
-
-
 function Cascade!(atom_p::Atom, simulator::Simulator)
     pAtoms = Vector{Atom}([atom_p])
     pAtomsIndex = [a.index for a in pAtoms]
+    parameters = simulator.parameters
+    simulator.nCollisionEvent = 0
+    DumpInCascade(simulator, "w")
+    while true
+        targetsList = Vector{Vector{Atom}}()
+        deleteIndexes = Int64[]
+        othersTargetIndexes = Int64[]
+        for (na, pAtom) in enumerate(pAtoms)
+            targets, isAlive = ShotTarget(pAtom, [pAtomsIndex; pAtom.lastTargets; othersTargetIndexes], simulator)
+            if !isAlive
+                empty!(pAtom.lastTargets)
+                delete!(simulator, pAtom)
+                push!(deleteIndexes, na)
+                continue
+            end
+            push!(targetsList, targets)
+            append!(othersTargetIndexes, [t.index for t in targets])
+        end
+        deleteat!(pAtoms, deleteIndexes)
+        pAtomsIndex = [a.index for a in pAtoms]
+        #UniqueTargets!(targetsList, pAtoms)
+        nextPAtoms = Vector{Atom}()
+        for (pAtom, targets) in zip(pAtoms, targetsList)
+            if pAtom.type == 3
+                Log("$(length(targets))\n", simulator, fileName="targetNumber.csv")
+                for target in targets
+                    Log("$(target.pValue[1])\n", simulator, fileName="pValue.csv")
+                end
+            end
+            if length(targets) > 0
+                pAtom.lastTargets = [t.index for t in targets]
+                Collision!(pAtom, targets, simulator)
+                for target in targets
+                    if target.energy > 0.0   
+                        DisplaceAtom!(target, target.coordinate, simulator)
+                        push!(nextPAtoms, target)
+                    end
+                end
+                if pAtom.energy > parameters.stopEnergy 
+                    push!(nextPAtoms, pAtom)
+                else
+                    pAtom.lastTargets = Vector{Int64}()
+                    Stop!(pAtom, simulator)
+                end
+            else
+                push!(nextPAtoms, pAtom)
+            end
+        end
+        for targets in targetsList
+            for target in targets
+                EmptyP!(target)
+            end
+        end 
+        simulator.nCollisionEvent += 1
+        DumpInCascade(simulator, "a")
+        if length(nextPAtoms) > 0
+            pAtoms = nextPAtoms
+            sort!(pAtoms, by = a -> a.energy, rev = true)
+            pAtomsIndex = [a.index for a in pAtoms]
+        else
+            break
+        end
+    end
+    simulator.nCascade += 1
+end
+
+
+
+function Cascade_aborted!(atom_p::Atom, simulator::Simulator)
+    pAtoms = Vector{Atom}([atom_p])
+    pAtomsIndex = [a.index for a in pAtoms]
     if simulator.parameters.isDumpInCascade
-        DumpDefects(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, false)
+        DumpDefects(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, "w")
     end
     while true
         targetsList = Vector{Vector{Atom}}()
@@ -231,7 +303,7 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
 end
 
 
-function UniqueTargets!(targetsList::Vector{Vector{Atom}}, pAtoms::Vector{Atom})
+function UniqueTargets_aborted!(targetsList::Vector{Vector{Atom}}, pAtoms::Vector{Atom})
     targetToListDict = Dict{Int64, Vector{Int64}}()
     for (i, targets) in enumerate(targetsList)
         for target in targets
@@ -262,3 +334,68 @@ function UniqueTargets!(targetsList::Vector{Vector{Atom}}, pAtoms::Vector{Atom})
     end
 end
 
+function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::Vector{Int64}, simulator::Simulator)
+    cellGrid = simulator.cellGrid
+    box = simulator.box
+    targets = Vector{Atom}()
+    infiniteFlag = true
+    candidateTargets = Vector{Atom}()
+    pMax = simulator.pMax
+    for (_, neighborCellInfo) in gridCell.neighborCellsInfo
+        index = neighborCellInfo.index
+        neighborCell = cellGrid.cells[index[1], index[2], index[3]]
+        if neighborCell.isExplored
+            continue
+        end
+        neighborCell.isExplored = true
+        push!(simulator.exploredCells, neighborCell)
+        infiniteFlag = false
+        for neighborAtom in neighborCell.atoms
+            if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
+                continue
+            end
+            Pertubation!(neighborAtom, simulator)
+            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
+                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
+                if p >= pMax
+                    DeleteP!(neighborAtom, atom.index)
+                    if neighborAtom.latticePointIndex != -1
+                        SetCoordinate!(neighborAtom, simulator.latticePoints[neighborAtom.latticePointIndex].coordinate)
+                    end
+                    continue
+                end
+                push!(candidateTargets, neighborAtom)
+            end
+        end
+    end
+    if infiniteFlag
+        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n", simulator)
+    end
+    if isempty(candidateTargets)
+        return (targets, infiniteFlag)
+    end
+    # Find target with minimum pL value using Julia's built-in findmin
+    _, minIdx = findmin(t -> t.pL[atom.index], candidateTargets)
+    nearestTarget = candidateTargets[minIdx]    
+    push!(targets, nearestTarget)
+    for candidateTarget in candidateTargets
+        if candidateTarget.index == nearestTarget.index
+            continue
+        end
+        matchFlag = true
+        for target in targets            
+            if !SimultaneousCriteria(atom, candidateTarget, target, simulator)
+                matchFlag = false
+                DeleteP!(candidateTarget, atom.index)
+                if candidateTarget.latticePointIndex != -1
+                    SetCoordinate!(candidateTarget, simulator.latticePoints[candidateTarget.latticePointIndex].coordinate)
+                end
+                break
+            end
+        end
+        if matchFlag
+            push!(targets, candidateTarget)
+        end
+    end    
+    return (targets, infiniteFlag)
+end

@@ -5,8 +5,9 @@ using LinearAlgebra
 using Interpolations   
 using Dates
 using ProgressMeter
-using PyCall
+#using PyCall
 using QuadGK
+using Base.Threads
 # @pyimport dscribe.descriptors as descriptors
 
 function Box(Vectors::Matrix{Float64})
@@ -106,7 +107,8 @@ function CreateCellGrid(box::Box, inputVectors::Matrix{Float64}, parameters::Par
     println("Cell grid: $(sizes[1]) x $(sizes[2]) x $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells with each cell size of $(vectors[1,1]) $(vectors[2,2]) $(vectors[3,3]).")
     
     cells = Array{GridCell, 3}(undef, sizes[1], sizes[2], sizes[3])
-    @showprogress desc="Creating cell grid: " for x in 1:sizes[1]
+    #@showprogress desc="Creating cell grid: " for x in 1:sizes[1]
+    @threads for x in 1:sizes[1]
         for y in 1:sizes[2]
             for z in 1:sizes[3]
                 ranges = Matrix{Float64}(undef, 3, 2)
@@ -155,20 +157,21 @@ function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Paramet
     qMax = Dict{Vector{Int64}, Float64}()
     sigma = Dict{Int64, Float64}()
     for p in types
+        radius_p, mass_p, Z_p, _, _, α_p, β_p = TypeToProperties(p, typeDict)
         for t in types
-            radius_p, mass_p, Z_p, _, _, α_p, β_p = TypeToProperties(p, typeDict)
             radius_t, _, Z_t, _, _, _, _ = TypeToProperties(t, typeDict)
             V_upterm[[p,t]] = BCA.ConstantFunctions.V_upterm(Z_p, Z_t)
             a_U[[p,t]] = BCA.ConstantFunctions.a_U(Z_p, Z_t)
-            E_m[p] = BCA.ConstantFunctions.E_m(Z_p, mass_p)
             S_e_upTerm[[p,t]] = BCA.ConstantFunctions.S_e_upTerm(p, Z_p, Z_t, mass_p, α_p)
             x_nl[[p,t]] = BCA.ConstantFunctions.x_nl(p, Z_p, Z_t, β_p)
             a[[p,t]] = BCA.ConstantFunctions.a(Z_p, Z_t)
             Q_nl[[p,t]] = BCA.ConstantFunctions.Q_nl(Z_p, Z_t, parameters.pMax)
             Q_loc[[p,t]] = BCA.ConstantFunctions.Q_loc(Z_p, Z_t)
             qMax[[p,t]] = radius_p + radius_t
-            sigma[p] = TemperatureToSigma(parameters.temperature, parameters.DebyeTemperature, mass_p)
         end
+        E_m[p] = BCA.ConstantFunctions.E_m(Z_p, mass_p)
+        print("Vibration σ for type $(p): ")
+        sigma[p] = TemperatureToSigma(parameters.temperature, parameters.DebyeTemperature, mass_p)
     end
     return ConstantsByType(V_upterm, a_U, E_m, S_e_upTerm, S_e_downTerm, x_nl, a, Q_nl, Q_loc, qMax, sigma)
 end
@@ -210,7 +213,7 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
         np = length(pRange)
         θMatrix = Array{Float64, 2}(undef, nE, np)
         τMatrix = Array{Float64, 2}(undef, nE, np)
-        @showprogress desc="Waiting for generating θ and τ data: " for (i, E_p_power) in enumerate(EPowerRange)
+        @showprogress desc="Generating θ and τ data: " for (i, E_p_power) in enumerate(EPowerRange)
             E_p = 10.0^E_p_power
             for (j, p) in enumerate(pRange)
                 θ, τ = BCA.θτ(E_p, mass_p, mass_t, type_p, type_t, p, constantsByType)
@@ -428,92 +431,21 @@ function VectorDifference(v1::Vector{Float64}, v2::Vector{Float64}, crossFlag::V
 end
 
 
-function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::Vector{Int8}, box::Box)
+function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::Vector{Int8}, box::Box, pMax::Float64)
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
-    t = sum(dv .* atom_p.velocityDirection) / sum(atom_p.velocityDirection .* atom_p.velocityDirection)
+    #@show dv
+    #for d in dv
+    #    if abs(d) > pMax
+    #        return Inf
+    #    end
+    #end
+    t = dot(dv, atom_p.velocityDirection)
     atom_t.pL[atom_p.index] = t
     atom_t.pPoint[atom_p.index] = atom_p.coordinate + t * atom_p.velocityDirection
     atom_t.pVector[atom_p.index] = atom_t.pPoint[atom_p.index] - atom_t.coordinate
-    atom_t.pValue[atom_p.index] = norm(atom_t.pVector[atom_p.index])
-end
-
-function GetAllNeighbors(gridCell::GridCell, simulator::Simulator)
-    cellGrid = simulator.cellGrid
-    neighbors = Vector{Atom}()
-    for (_, neighborCellInfo) in gridCell.neighborCellsInfo
-        index = neighborCellInfo.index 
-        neighborCell = cellGrid.cells[index[1], index[2], index[3]]
-        append!(neighbors, neighborCell.atoms)
-    end
-    return neighbors
-end
-
-
-
-
-function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::Vector{Int64}, simulator::Simulator)
-    cellGrid = simulator.cellGrid
-    box = simulator.box
-    targets = Vector{Atom}()
-    infiniteFlag = true
-    candidateTargets = Vector{Atom}()
-    for (_, neighborCellInfo) in gridCell.neighborCellsInfo
-        index = neighborCellInfo.index
-        neighborCell = cellGrid.cells[index[1], index[2], index[3]]
-        if neighborCell.isExplored
-            continue
-        end
-        neighborCell.isExplored = true
-        push!(simulator.exploredCells, neighborCell)
-        infiniteFlag = false
-        for neighborAtom in neighborCell.atoms
-            if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
-                continue
-            end
-            Pertubation!(neighborAtom, simulator)
-            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
-                ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
-                if neighborAtom.pValue[atom.index] >= simulator.parameters.pMax
-                    DeleteP!(neighborAtom, atom.index)
-                    if neighborAtom.latticePointIndex != -1
-                        SetCoordinate!(neighborAtom, simulator.latticePoints[neighborAtom.latticePointIndex].coordinate)
-                    end
-                    continue
-                end
-                push!(candidateTargets, neighborAtom)
-            end
-        end
-    end
-    if infiniteFlag
-        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n", simulator)
-    end
-    if isempty(candidateTargets)
-        return (targets, infiniteFlag)
-    end
-    # Find target with minimum pL value using Julia's built-in findmin
-    _, minIdx = findmin(t -> t.pL[atom.index], candidateTargets)
-    nearestTarget = candidateTargets[minIdx]    
-    push!(targets, nearestTarget)
-    for candidateTarget in candidateTargets
-        if candidateTarget.index == nearestTarget.index
-            continue
-        end
-        matchFlag = true
-        for target in targets            
-            if !SimultaneousCriteria(atom, candidateTarget, target, simulator)
-                matchFlag = false
-                DeleteP!(candidateTarget, atom.index)
-                if candidateTarget.latticePointIndex != -1
-                    SetCoordinate!(candidateTarget, simulator.latticePoints[candidateTarget.latticePointIndex].coordinate)
-                end
-                break
-            end
-        end
-        if matchFlag
-            push!(targets, candidateTarget)
-        end
-    end    
-    return (targets, infiniteFlag)
+    p = norm(atom_t.pVector[atom_p.index])
+    atom_t.pValue[atom_p.index] = p
+    return p
 end
 
 
@@ -548,8 +480,14 @@ end
 
 
 function SetVelocityDirection!(atom::Atom, velocity::Vector{Float64})
-    atom.velocityDirection = velocity / norm(velocity)
+    n = norm(velocity)
+    if isnan(n) || n == Inf
+        atom.velocityDirection = [0.0, 0.0, 0.0]
+    else
+        atom.velocityDirection = velocity / n
+    end
 end
+
 
 function SetEnergy!(atom::Atom, energy::Float64)
     if energy < 0.0
@@ -714,7 +652,7 @@ function GetEnvironmentIndex(latticePoint::LatticePoint, simulator::Simulator)
     return index + 1
 end 
 
-function GaussianDeltaX(sigma::Float64)
+function GaussianDeltaX_old(sigma::Float64)
     u1 = 0.0
     r2 = 0.0
     while true
@@ -727,6 +665,11 @@ function GaussianDeltaX(sigma::Float64)
     end
     return u1 * sqrt(-2 * log(r2) / r2) * sigma
 end
+
+function GaussianDeltaX(sigma::Float64)
+    return randn() * sigma
+end
+
 
 function Pertubation!(atom::Atom, simulator::Simulator)
     if simulator.parameters.temperature > 0 
@@ -752,8 +695,8 @@ function TemperatureToSigma(T::Float64, ΘD::Float64, M_u::Float64)
     integ = quadgk(x -> x/(exp(x)-1), 0, y)[1]
     u2 = a * (0.25 + (T/ΘD)^2 * integ)       # m²
     σ = sqrt(u2) / Å
-    println(σ)
-    return 0.7                     # Å
+    print("$(round(σ; sigdigits=2)) Å\n")
+    return σ                    # Å
 end
 
 

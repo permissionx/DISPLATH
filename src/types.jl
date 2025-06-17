@@ -1,4 +1,4 @@
-using PyCall
+#using PyCall
 
 mutable struct Box
     vectors::Matrix{Float64}
@@ -170,9 +170,10 @@ struct Parameters
     DebyeTemperature::Float64
     pLMax::Float64     
     isDumpInCascade::Bool
+    dumpFolder::String
     isLog::Bool
     DTEMode::Int64 
-    soapParameters::Vector{Float64}
+    #soapParameters::Vector{Float64}
     DTEFile::String
     isKMC::Bool
     nu_0_dict::Dict{Int64, Float64}
@@ -204,9 +205,10 @@ function Parameters(
     DebyeTemperature::Float64 = 1000.0, 
     pLMax::Float64 = 2.0, 
     isDumpInCascade::Bool = false, 
+    dumpFolder::String = ".",
     isLog::Bool = false,
     DTEMode::Int64 = 1,
-    soapParameters::Vector{Float64} = [2.6, 8.0, 6.0],
+    #soapParameters::Vector{Float64} = [2.6, 8.0, 6.0],
     DTEFile::String="",
     isKMC::Bool = false,
     nu_0_dict::Dict{Int64, Float64} = Dict{Int64, Float64}(), # Hz, s^-1
@@ -224,8 +226,10 @@ function Parameters(
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict, 
                       periodic, isOrthogonal,
-                      EPowerRange, pRange, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, isLog,
-                      DTEMode, soapParameters, DTEFile,
+                      EPowerRange, pRange, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, dumpFolder, isLog,
+                      DTEMode, 
+                      #soapParameters, 
+                      DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
                       isDynamicLoad, nCascadeEveryLoad)
 end 
@@ -247,7 +251,7 @@ mutable struct Simulator
     exploredCells::Vector{GridCell}
     θFunctions::Dict{Vector{Int64}, Function}
     τFunctions::Dict{Vector{Int64}, Function}
-    soap::PyObject
+    #soap::PyObject
     environmentCut::Float64
     DTEData::Vector{Vector{Float64}}
     #for kmc 
@@ -270,7 +274,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     cellGrid = CreateCellGrid(box, inputGridVectors, parameters)
     constantsByType = InitConstantsByType(parameters.typeDict, parameters)
     θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
-    soap = InitSoap(parameters)
+    #soap = InitSoap(parameters)
     if parameters.DTEMode == 2
         environmentCut, DTEData = LoadDTEData(parameters)
     else
@@ -284,7 +288,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     vacancies = Vector{Atom}()
     nCollisionEvent = 0
     numberOfVacancies = 0
-    maxVacancyID = 0
+    maxVacancyID = 1E6
     minLatticeAtomID = 0
 
 
@@ -296,7 +300,8 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      0,nCollisionEvent,
                      Vector{GridCell}(),
                      θFunctions, τFunctions,
-                     soap, environmentCut, DTEData, 
+                     #soap, 
+                     environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
                      loadedCells, vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
                      parameters)  

@@ -5,6 +5,7 @@ function GetTargetsFromNeighbor_dynamicLoad_aborted(atom::Atom, gridCell::GridCe
     box = simulator.box
     targets = Vector{Atom}()
     infiniteFlag = true
+    pMax = simulator.parameters.pMax
     for (_, neighborCellInfo) in gridCell.neighborCellsInfo
         index = neighborCellInfo.index
         neighborCell = cellGrid.cells[index[1], index[2], index[3]]
@@ -17,14 +18,14 @@ function GetTargetsFromNeighbor_dynamicLoad_aborted(atom::Atom, gridCell::GridCe
             if neighborAtom.index == atom.index
                 continue
             end
-            Pertubation!(neighborAtom, simulator)
+            #Pertubation!(neighborAtom, simulator)
             if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0
-                ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
+                ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
                 if neighborAtom.pValue[atom.index] >= simulator.parameters.pMax
                     DeleteP!(neighborAtom, atom.index)
-                    if atom.isNewlyLoaded == true
-                        SetCoordinate!(atom, atom.latticeCoordinate)
-                    end
+                    #if atom.isNewlyLoaded == true
+                    #    SetCoordinate!(atom, atom.latticeCoordinate)
+                    #end
                     continue
                 end
                 matchFlag = true
@@ -32,9 +33,9 @@ function GetTargetsFromNeighbor_dynamicLoad_aborted(atom::Atom, gridCell::GridCe
                     if !SimultaneousCriteria(atom, neighborAtom, target, simulator)
                         matchFlag = false
                         DeleteP!(neighborAtom, atom.index)
-                        if atom.isNewlyLoaded == true
-                            SetCoordinate!(atom, atom.latticeCoordinate)
-                        end
+                        #if atom.isNewlyLoaded == true
+                        #    SetCoordinate!(atom, atom.latticeCoordinate)
+                        #end
                         break
                     end
                 end
@@ -74,9 +75,9 @@ function GetTargetsFromNeighbor_aborted(atom::Atom, gridCell::GridCell, simulato
             if neighborAtom.index == atom.index
                 continue
             end
-            Pertubation!(neighborAtom, simulator)
+            #Pertubation!(neighborAtom, simulator)
             if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
-                ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
+                ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
                 if neighborAtom.pValue[atom.index] >= simulator.parameters.pMax
                     DeleteP!(neighborAtom, atom.index)
                     if neighborAtom.latticePointIndex != -1

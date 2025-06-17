@@ -1,5 +1,6 @@
 using LinearAlgebra
 import Base: push!
+include("debug.jl")
 include("types.jl")
 include("elements.jl")
 include("bca.jl")  # In namespace BCA: BCA->(QLoss, Constants)
@@ -10,6 +11,7 @@ include("kmc.jl")
 include("dynamics.jl")
 include("dynamic_load.jl")
 include("utils.jl")
+using .Recorder
 
 
 # modules

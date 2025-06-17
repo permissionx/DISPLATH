@@ -50,9 +50,10 @@ function LoadCell(cell::GridCell, simulator::Simulator)
                             coordinate[3] >= z_min && coordinate[3] <= z_max)
                             atom = Atom(basisTypes[i], coordinate, parameters)
                             atom.latticeCoordinate .= atom.coordinate
+                            Pertubation!(atom, simulator)
                             atom.cellIndex .= cell.index
-                            simulator.minLatticeAtomID -= 1
-                            atom.index = simulator.minLatticeAtomID
+                            # We'll assign IDs later to avoid race conditions
+                            atom.index = 0  # temporary value
                             atom.isNewlyLoaded = true
                             push!(atoms, atom)
                         end
@@ -69,12 +70,12 @@ function LoadCell(cell::GridCell, simulator::Simulator)
                 end
             end
         end
+        # Note: IDs will be assigned later outside the multithreaded section
+        
         cell.latticeAtoms = atoms
         cell.isLoaded = true
-        push!(simulator.loadedCells, cell)
     end
-    cell.allAtoms = [cell.latticeAtoms; cell.atoms]
-    #println(length(cell.allAtoms))
+    cell.allAtoms = [cell.latticeAtoms; cell.atoms] 
 end
 
 
@@ -82,39 +83,62 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filt
     cellGrid = simulator.cellGrid
     box = simulator.box
     targets = Vector{Atom}()
-    infiniteFlag = true
-    candidateTargets = Vector{Atom}()
-    for (_, neighborCellInfo) in gridCell.neighborCellsInfo
+    pMax = simulator.parameters.pMax
+    nthreads = Threads.nthreads()
+    cands_tls = [Atom[] for _ in 1:nthreads]
+    neighborCellInfoes = collect(values(gridCell.neighborCellsInfo))
+    loadedFlags_tls = [false for _ in 1:27]
+    infiniteFlag_tls = [true for _ in 1:27]
+    @threads for n in 1:length(neighborCellInfoes)
+        neighborCellInfo = neighborCellInfoes[n]
+        buf = cands_tls[Threads.threadid()]
         index = neighborCellInfo.index
         neighborCell = cellGrid.cells[index[1], index[2], index[3]]
         if neighborCell.isExplored
             continue
         end
+        if neighborCell.isLoaded
+            loadedFlags_tls[n] = true
+        end
         LoadCell(neighborCell, simulator)
         neighborCell.isExplored = true
-        push!(simulator.exploredCells, neighborCell)
-        infiniteFlag = false
+        infiniteFlag_tls[n] = false
         for neighborAtom in neighborCell.allAtoms
             if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
                 continue
             end
-            Pertubation!(neighborAtom, simulator)
+            #Pertubation!(neighborAtom, simulator)
             if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
-                ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
-                if neighborAtom.pValue[atom.index] >= simulator.parameters.pMax
+                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
+                if p >= pMax
                     DeleteP!(neighborAtom, atom.index)
-                    if atom.isNewlyLoaded
-                        SetCoordinate!(atom, atom.latticeCoordinate)
-                    end
+                    #if atom.isNewlyLoaded
+                    #    SetCoordinate!(atom, atom.latticeCoordinate)
+                    #end
                     continue
                 end
-                push!(candidateTargets, neighborAtom)
+                push!(buf, neighborAtom)
             end
         end
     end
-    if infiniteFlag
-        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n", simulator)
+    candidateTargets = reduce(vcat, cands_tls)
+    infiniteFlag = reduce(&, infiniteFlag_tls)
+    
+    for (neighborCellInfo, flag) in zip(neighborCellInfoes, loadedFlags_tls)
+        idx = neighborCellInfo.index
+        cell = simulator.cellGrid.cells[idx[1],idx[2],idx[3]]
+        push!(simulator.exploredCells, cell)
+        if flag == false
+            push!(simulator.loadedCells, cell)
+            for atom in cell.latticeAtoms
+                simulator.minLatticeAtomID -= 1
+                atom.index = simulator.minLatticeAtomID
+            end
+        end
     end
+    #if infiniteFlag
+    #    Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n", simulator)
+    #end
     if isempty(candidateTargets)
         return (targets, infiniteFlag)
     end
@@ -131,9 +155,9 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filt
             if !SimultaneousCriteria(atom, candidateTarget, target, simulator)
                 matchFlag = false
                 DeleteP!(candidateTarget, atom.index)
-                if candidateTarget.isNewlyLoaded == true
-                    SetCoordinate!(candidateTarget, candidateTarget.latticeCoordinate)
-                end
+                #if candidateTarget.isNewlyLoaded == true
+                #    SetCoordinate!(candidateTarget, candidateTarget.latticeCoordinate)
+                #end
                 break
             end
         end
@@ -156,9 +180,6 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     pL = 0.0
     for atom_t in atoms_t
         l = atom_t.pL[atom_p.index]
-        #if l > simulator.parameters.pLMax 
-        #    l = simulator.parameters.pLMax
-        #end
         pL += l
     end
     pL /= N_t   
@@ -177,16 +198,13 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
         tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
             atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
             simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])
-        if atom_p.type == 3
-            Log("$(E_tList[i])\n", simulator, fileName="Et.csv")
-        end
+        #@show E_tList[i], p 
+        #@show atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p
+        #@show tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i]
     end
     sumE_t = sum(E_tList)
     sumQ_loc = sum(Q_locList)
     η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ_loc))
-    if atom_p.type == 3
-        Log("$(η)\n", simulator, fileName="eta.csv")
-    end
     E_tList *= η
     # Update atoms_t (target atoms)         
     avePPoint = Vector{Float64}([0.0,0.0,0.0])
@@ -202,13 +220,9 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
             LeaveLatticePoint_dynamicLoad!(atom_t, simulator)
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
-            #DisplaceAtom!(atom_t, tCoordinate, simulator)  
-            #SetEnergy!(atom_t, E_tList[i])
+            DisplaceAtom!(atom_t, tCoordinate, simulator)  
         else
             SetEnergy!(atom_t, 0.0)
-            if atom_t.isNewlyLoaded
-                SetCoordinate!(atom_t, atom_t.latticeCoordinate)
-            end
         end
         avePPoint += atom_t.pPoint[atom_p.index]
         momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
@@ -216,54 +230,65 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
 
     # Update atom_p
     avePPoint /= N_t
-    x_p = η * sum(x_pList)
+    x_p = η * sum(x_pList) / N_t  # important modification
     pCoordinate = avePPoint - x_p * atom_p.velocityDirection
     DisplaceAtom!(atom_p, pCoordinate, simulator)
-    #DisplaceAtom!(atom_p, avePPoint, simulator) 
     velocity = (sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum)  / atom_p.mass
     SetVelocityDirection!(atom_p, velocity)
     
+    #@show sumE_t, sumQ_loc, Q_nl_v, η, atom_p.energy
+    DumpAtoms([atom_p; atoms_t], simulator, "dumps/t2.dump", simulator.nCollisionEvent)
     SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ_loc) * η)
-    if atom_p.type == 3
-        Log("$(sumE_t),$(sumQ_loc+Q_nl_v)\n", simulator, fileName="E_loss.csv")
-    end
+    #if atom_p.type == 3
+        #@record E_loss.csv "$(sumE_t),$(sumQ_loc+Q_nl_v)"
+    #end
 end 
 
+function DumpInCascade_dynamicLoad(simulator::Simulator, type::String="a")
+    if simulator.parameters.isDumpInCascade
+        Dump_dynamicLoad(simulator, "$(simulator.parameters.dumpFolder)/Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, type)
+    end
+end
 
 
 function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
     pAtoms = Vector{Atom}([atom_p])
     pAtomsIndex = [a.index for a in pAtoms]
     parameters = simulator.parameters
-    if parameters.isDumpInCascade
-        Dump_dynamicLoad(simulator, "Cascade_$(simulator.nCascade).dump", 0, false)
-    end
+    simulator.nCollisionEvent = 0
+    DumpInCascade_dynamicLoad(simulator, "w")
     while true
         targetsList = Vector{Vector{Atom}}()
-        deleteIndexes = Vector{Int64}()
+        deleteIndexes = Int64[]
+        othersTargetIndexes = Int64[]
         for (na, pAtom) in enumerate(pAtoms)
-            targets = ShotTarget_dynamicLoad(pAtom, [pAtomsIndex; pAtom.lastTargets], simulator)
-            if length(targets) == 0.0
+            targets, isAlive = ShotTarget_dynamicLoad(pAtom, [pAtomsIndex; pAtom.lastTargets; othersTargetIndexes], simulator)
+            if !isAlive
                 empty!(pAtom.lastTargets)
                 delete_dynamicLoad!(simulator, pAtom)
                 push!(deleteIndexes, na)
                 continue
             end
             push!(targetsList, targets)
+            append!(othersTargetIndexes, [t.index for t in targets])
         end
         deleteat!(pAtoms, deleteIndexes)
         pAtomsIndex = [a.index for a in pAtoms]
-        UniqueTargets!(targetsList, pAtoms)
+        #UniqueTargets!(targetsList, pAtoms)
         nextPAtoms = Vector{Atom}()
         for (pAtom, targets) in zip(pAtoms, targetsList)
-            if pAtom.type == 3
-                Log("$(length(targets))\n", simulator, fileName="targetNumber.csv")
-                for target in targets
-                    Log("$(target.pValue[1])\n", simulator, fileName="pValue.csv")
-                end
-            end
+            #if pAtom.type == 3
+            #    @record target_number_s length(targets)
+            ##    DumpAtoms([targets;pAtom], simulator, "dumps/s.dump", simulator.nCollisionEvent)
+            #end
             if length(targets) > 0
                 pAtom.lastTargets = [t.index for t in targets]
+                #if pAtom.type == 3
+                #    @record target_number_2 length(targets)
+                #    for target in targets
+                #        @record p_value_2 target.pValue[pAtom.index]
+                #    end
+                #end
                 Collision_dynamicLoad!(pAtom, targets, simulator)
                 for target in targets
                     if target.energy > 0.0   
@@ -281,17 +306,19 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 push!(nextPAtoms, pAtom)
             end
         end
+        #if simulator.nCollisionEvent >= 20
+        #    break
+        #end 
         for targets in targetsList
             for target in targets
                 EmptyP!(target)
             end
         end 
         simulator.nCollisionEvent += 1
-        if parameters.isDumpInCascade
-            Dump_dynamicLoad(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, true)
-        end
+        DumpInCascade_dynamicLoad(simulator, "a")
         if length(nextPAtoms) > 0
             pAtoms = nextPAtoms
+            sort!(pAtoms, by = a -> a.energy, rev = true)
             pAtomsIndex = [a.index for a in pAtoms]
         else
             break
@@ -408,13 +435,13 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
             IterPushCellNeighbors!(cellGrid, cell)
             cell.isPushedNeighbor = true
         end
-        (targets, isInfinity) = GetTargetsFromNeighbor_dynamicLoad(atom, cell, filterIndexes, simulator)
+        targets, isInfinity = GetTargetsFromNeighbor_dynamicLoad(atom, cell, filterIndexes, simulator)
         if length(targets) > 0
             for cell in simulator.exploredCells
                 cell.isExplored = false
             end
             empty!(simulator.exploredCells)
-            return targets
+            return targets, true
         else
             atom.numberOfEmptyCells += 1
             dimension, direction = AtomOutFaceDimension(atom, cell)
@@ -431,7 +458,7 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
                 end
                 atom.numberOfEmptyCells = 0
                 empty!(simulator.exploredCells)
-                return Vector{Atom}() # means find nothing  
+                return Vector{Atom}(), false # means find nothing  
             end 
             index = neighborInfo.index
             cell = cellGrid.cells[index[1], index[2], index[3]]
@@ -440,12 +467,11 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
 end
 
 
-function Dump_dynamicLoad(simulator::Simulator, fileName::String, step::Int64, isAppend::Bool=false, isDebug::Bool=false)
+function Dump_dynamicLoad(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)
     if !simulator.parameters.isOrthogonal        
         error("The box is not orthogonal, please use the orthogonal box.")
     end
-    write_flag = isAppend ? "a" : "w"
-    open(fileName, write_flag) do file
+    open(fileName, type) do file
         write(file, "ITEM: TIMESTEP\n")
         write(file, string(step), "\n")
         write(file, "ITEM: NUMBER OF ATOMS\n")
@@ -503,18 +529,28 @@ end
 
 function Restore_dynamicLoad!(simulator::Simulator)
     cells = simulator.cellGrid.cells
+    parameters = simulator.parameters
     for atom in [simulator.atoms; simulator.vacancies]
         if atom.isAlive
             cellIndex = atom.cellIndex
             cell = cells[cellIndex[1], cellIndex[2], cellIndex[3]]
+            if cell.isLoaded && atom.type >= length(keys(simulator.parameters.typeDict)) 
+                latticeAtom = Atom(atom.type-length(keys(simulator.parameters.typeDict)), atom.coordinate, parameters)
+                latticeAtom.latticeCoordinate .= atom.coordinate
+                Pertubation!(latticeAtom, simulator)
+                latticeAtom.cellIndex .= cell.index
+                simulator.minLatticeAtomID -= 1
+                latticeAtom.index = simulator.minLatticeAtomID
+                latticeAtom.isNewlyLoaded = true
+                push!(cell.latticeAtoms, latticeAtom)
+            end
             empty!(cell.atoms)
         end
     end
     empty!(simulator.atoms)
     empty!(simulator.vacancies)
     simulator.maxAtomID = 0
-    simulator.maxVacancyID = 0 
-    simulator.minLatticeAtomID = 0
+    simulator.maxVacancyID = 1E6 
     simulator.numberOfAtoms = 0
     simulator.numberOfVacancies = 0
 end
