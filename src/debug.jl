@@ -7,7 +7,7 @@ const _buf = Dict{Symbol, IOBuffer}()
 
 function _ensure(sym::Symbol)
     haskey(_fh, sym) && return
-    io = open(string(sym), "w")    
+    io = open("rec." * string(sym) , "w")    
     _fh[sym]  = io
     _buf[sym] = IOBuffer()
 end
@@ -29,6 +29,7 @@ macro record(file, value)
     end
 end
 
+
 atexit() do
     for s in keys(_fh)
         _flush!(s); close(_fh[s])
@@ -37,4 +38,3 @@ end
 
 end
 
-using .Recorder

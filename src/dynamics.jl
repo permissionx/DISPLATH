@@ -4,7 +4,7 @@ using Printf
 function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
     cellGrid = simulator.cellGrid
     periodic = simulator.parameters.periodic    
-    cell = cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
+    cell = cellGrid.cells[atom.cellIndex...]
     while true
         (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, filterIndexes, simulator)
         # delete repeated targets in lastTargets
@@ -18,7 +18,8 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
             dimension, direction = AtomOutFaceDimension(atom, cell)
             neighborIndex = Vector{Int8}([0,0,0])
             neighborIndex[dimension] = direction == 1 ? Int8(-1) : Int8(1)
-            neighborInfo = cell.neighborCellsInfo[neighborIndex]
+            neighborIndex .+= 2
+            neighborInfo = cell.neighborCellsInfo[neighborIndex...]
             crossFlag = neighborInfo.cross
             if crossFlag[dimension] != 0 && periodic[dimension]
                 atom.coordinate[dimension] -= crossFlag[dimension] * simulator.box.vectors[dimension, dimension]
@@ -31,7 +32,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
                 return Vector{Atom}(), false # means find nothing  
             end 
             index = neighborInfo.index
-            cell = cellGrid.cells[index[1], index[2], index[3]]
+            cell = cellGrid.cells[index...]
         end
     end
 end
@@ -303,36 +304,6 @@ function Cascade_aborted!(atom_p::Atom, simulator::Simulator)
 end
 
 
-function UniqueTargets_aborted!(targetsList::Vector{Vector{Atom}}, pAtoms::Vector{Atom})
-    targetToListDict = Dict{Int64, Vector{Int64}}()
-    for (i, targets) in enumerate(targetsList)
-        for target in targets
-            try 
-                push!(targetToListDict[target.index], i)
-            catch 
-                targetToListDict[target.index] = Vector{Int64}([i])
-            end
-        end
-    end
-    for (targetIndex, targetsListIndex) in targetToListDict
-        if length(targetsListIndex) > 1
-            maxEnergy = -1.0
-            maxArg = 0
-            for index in targetsListIndex
-                energy = pAtoms[index].energy
-                if energy > maxEnergy
-                    maxEnergy = energy
-                    maxArg = index
-                end
-            end
-            for index in targetsListIndex
-                if index != maxArg 
-                    filter!(t -> t.index != targetIndex, targetsList[index])
-                end
-            end
-        end
-    end
-end
 
 function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::Vector{Int64}, simulator::Simulator)
     cellGrid = simulator.cellGrid
@@ -341,9 +312,9 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::V
     infiniteFlag = true
     candidateTargets = Vector{Atom}()
     pMax = simulator.pMax
-    for (_, neighborCellInfo) in gridCell.neighborCellsInfo
+    for neighborCellInfo in gridCell.neighborCellsInfo
         index = neighborCellInfo.index
-        neighborCell = cellGrid.cells[index[1], index[2], index[3]]
+        neighborCell = cellGrid.cells[index...]
         if neighborCell.isExplored
             continue
         end

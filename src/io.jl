@@ -1,4 +1,4 @@
-function Dump(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)
+function Output_(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)
     if !simulator.parameters.isOrthogonal        
         error("The box is not orthogonal, please use the orthogonal box.")
     end
@@ -196,7 +196,7 @@ end
 
 
 
-function DumpDefects(simulator::Simulator, fileName::String, step::Int64, type::String="a")
+function OutputDefects(simulator::Simulator, fileName::String, step::Int64, type::String="a")
     if !simulator.isStore
         error("The defects are not stored, please set isStore to true.")
     end
@@ -233,7 +233,7 @@ function DumpDefects(simulator::Simulator, fileName::String, step::Int64, type::
     end
 end
 
-function DumpAtoms(atoms::Vector{Atom}, simulator::Simulator, fileName::String, step::Int64, type::String="a")
+function OutputAtoms(atoms::Vector{Atom}, simulator::Simulator, fileName::String, step::Int64, type::String="a")
     open(fileName, type) do file
         write(file, "ITEM: TIMESTEP\n")
         write(file, string(step), "\n")
@@ -251,10 +251,115 @@ function DumpAtoms(atoms::Vector{Atom}, simulator::Simulator, fileName::String, 
         for d in 1:3
             write(file, "0 $(simulator.box.vectors[d,d])\n")
         end
-        write(file, "ITEM: ATOMS id type x y z\n")
+        write(file, "ITEM: ATOMS id type x y z vx vy vz e\n")
         for atom in atoms
             write(file, "$(atom.index) $(atom.type) \
-            $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3])\n")
+            $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3]) \
+            $(atom.velocityDirection[1]) $(atom.velocityDirection[2]) $(atom.velocityDirection[3]) \
+            $(atom.energy)\n")
         end
     end
+end
+
+module Output
+using Main: Simulator
+export @dump, @record
+
+FLUSH_BYTES = 8_192
+const _fh = Dict{String, IO}()
+const _buf = Dict{String, IOBuffer}()
+
+function _dumpTitle(buf::IOBuffer, simulator::Simulator, step::Int64, atomNumber::Int64)
+    print(buf, "ITEM: TIMESTEP\n")
+    print(buf, string(step), "\n")
+    print(buf, "ITEM: NUMBER OF ATOMS\n")
+    print(buf, string(atomNumber), "\n")
+    print(buf, "ITEM: BOX BOUNDS ")
+    for d in 1:3
+        if simulator.parameters.periodic[d] 
+            print(buf, "pp ")
+        else
+            print(buf, "ff ")
+        end
+    end
+    print(buf, "\n")
+    for d in 1:3
+        print(buf, "0 $(simulator.box.vectors[d,d])\n")
+    end
+end
+
+
+function _ensure(file::String)
+    haskey(_fh, file) && return
+    io = open(file, "w")
+    _fh[file] = io
+    _buf[file] = IOBuffer()
+end
+
+function _flush!(file::String)
+    buf = _buf[file]; io = _fh[file]
+    write(io, take!(buf)); flush(io)
+end
+
+macro dump(file, atoms, properties=[], stepProperty=:nCascade)
+    # for example: properties = ["vx", "vy", "vz", "e"]
+    quote
+        local _file = $(esc(file))
+        Output._ensure(_file)
+        local buf = Output._buf[_file]
+        Output._dumpTitle(buf, $(esc(:simulator)), $(esc(:simulator)).$(stepProperty), length($(esc(atoms))))
+        print(buf, "ITEM: ATOMS id type x y z ")
+        for p in $(esc(properties))
+            print(buf, p * " ")
+        end
+        print(buf, "\n")
+        for atom in $(esc(atoms))
+            print(buf, string(atom.index) * " " * string(atom.type) * " " * string(atom.coordinate[1]) * " " * string(atom.coordinate[2]) * " " * string(atom.coordinate[3]) * " ")
+            for p in $(esc(properties))
+                if p[1] == 'v'
+                    if p[2] == 'x'
+                        print(buf, string(atom.velocityDirection[1]) * " ")
+                    elseif p[2] == 'y'
+                        print(buf, string(atom.velocityDirection[2]) * " ")
+                    elseif p[2] == 'z'
+                        print(buf, string(atom.velocityDirection[3]) * " ")
+                    else
+                        error("Invalid velocity property: $p")
+                    end
+                elseif p[1] == 'e'
+                    print(buf, string(atom.energy) * " ")
+                else
+                    error("Invalid property: $p")
+                end
+            end
+            print(buf, "\n")
+        end
+        if position(buf) >= Output.FLUSH_BYTES
+            Output._flush!(_file)
+        end
+    end
+end
+
+macro record(file, value, isSmall=false)
+    quote
+        local _file = $(esc(file))    
+        Output._ensure(_file)
+        local buf = Output._buf[_file]
+        print(buf, $(esc(value)), '\n')
+        if !$(isSmall)
+            if Output.position(buf) ≥ Output.FLUSH_BYTES
+                Output._flush!(_file)
+            end
+        else
+            Output._flush!(_file)
+        end
+    end
+end
+
+atexit() do
+    for s in keys(_fh)
+        _flush!(s); close(_fh[s])
+    end
+end
+
 end

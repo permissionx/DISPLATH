@@ -66,10 +66,10 @@ function GetNeighborArray(atom::Atom, simulator::Simulator)
     elementNames = Vector{String}([simulator.parameters.typeDict[atom.type].name])
     typeDict = simulator.parameters.typeDict
     cellGrid = simulator.cellGrid
-    theCell = cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
-    for (_, neighborInfo) in theCell.neighborCellsInfo
+    theCell = cellGrid.cells[atom.cellIndex...]
+    for neighborInfo in theCell.neighborCellsInfo
         index = neighborInfo.index
-        cell = cellGrid.cells[index[1], index[2], index[3]]
+        cell = cellGrid.cells[index...]
         for cellAtom in cell.atoms
             if cellAtom.index != atom.index
                 coordinate = cellAtom.coordinate'

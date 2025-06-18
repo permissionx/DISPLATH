@@ -63,8 +63,8 @@ end
 
 
 struct NeighborCellInfo
-    index::Vector{Int64}
-    cross::Vector{Int8} # 0 for no cross, 1 for hi, -1 for lo, eg. [0,0,1] for top 
+    index::NTuple{3, Int64}
+    cross::NTuple{3, Int8} # 0 for no cross, 1 for hi, -1 for lo, eg. (0,0,1) for top 
 end
 
 
@@ -76,7 +76,8 @@ mutable struct GridCell
     latticePoints::Vector{LatticePoint}  
     ranges::Matrix{Float64}
     centerCoordinate::Vector{Float64}
-    neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo}
+    #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo}
+    neighborCellsInfo::Array{NeighborCellInfo, 3}
     isExplored::Bool
     atomicDensity::Float64
     # for dynamic load
@@ -96,7 +97,8 @@ function GridCell(
     latticePoints::Vector{LatticePoint},
     ranges::Matrix{Float64},
     centerCoordinate::Vector{Float64},
-    neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo},
+    #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo},
+    neighborCellsInfo::Array{NeighborCellInfo, 3},
     isExplored::Bool,
     atomicDensity::Float64)           
     vertexMatrix = Matrix{Float64}(undef, 6, 3)
@@ -162,6 +164,7 @@ struct Parameters
     pMax::Float64
     vacancyRecoverDistance_squared::Float64
     typeDict::Dict{Int64, Element}
+    seed::Int64
     #optional 
     periodic::Vector{Bool}
     isOrthogonal::Bool
@@ -196,7 +199,8 @@ function Parameters(
     θτRepository::String,
     pMax::Float64,  
     vacancyRecoverDistance::Float64, 
-    typeDict::Dict{Int64, Element};
+    typeDict::Dict{Int64, Element}, 
+    seed::Int64;
     # optional
     periodic::Vector{Bool} = [true, true, false],
     isOrthogonal::Bool = true,
@@ -225,7 +229,7 @@ function Parameters(
     end
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
-                      θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict, 
+                      θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict, seed,
                       periodic, isOrthogonal,
                       EPowerRange, pRange, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, dumpFolder, isLog,
                       DTEMode, 

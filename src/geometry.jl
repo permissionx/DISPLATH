@@ -1,14 +1,4 @@
-import Base: push!
-import Base: delete!
-using .BCA.ConstantFunctions
-using LinearAlgebra
-using Interpolations   
-using Dates
-using ProgressMeter
-#using PyCall
-using QuadGK
-using Base.Threads
-# @pyimport dscribe.descriptors as descriptors
+
 
 function Box(Vectors::Matrix{Float64})
     # need to improve to detact if it is orithogonal. 
@@ -86,9 +76,11 @@ function IterPushCellNeighbors!(cellGrid::CellGrid, gridCell::GridCell)
                     neighborIndex[d] = index
                     neighborCross[d] = cross
                 end
-                
+                neighborIndex = Tuple(neighborIndex)
+                neighborCross = Tuple(neighborCross)
                 neighborCellInfo = NeighborCellInfo(neighborIndex, neighborCross)
-                gridCell.neighborCellsInfo[neighborKeys] = neighborCellInfo
+                idx = (delta_x + 2, delta_y + 2, delta_z + 2)
+                gridCell.neighborCellsInfo[idx...] = neighborCellInfo
             end
         end
     end
@@ -124,7 +116,7 @@ function CreateCellGrid(box::Box, inputVectors::Matrix{Float64}, parameters::Par
                 end
                 cells[x, y, z] = GridCell(Vector{Int64}([x,y,z]), Vector{Atom}(), Vector{LatticePoint}(), 
                                           ranges, centerCoordinate, 
-                                          Dict{Vector{Int8}, NeighborCellInfo}(), false, 0.0)
+                                          Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
             end
         end    
     end
@@ -320,13 +312,13 @@ function push!(simulator::Simulator, atom::Atom)
     simulator.numberOfAtoms += 1
     cellIndex = WhichCell(atom.coordinate, simulator.cellGrid)
     atom.cellIndex .= cellIndex
-    push!(simulator.cellGrid.cells[cellIndex[1], cellIndex[2], cellIndex[3]].atoms, atom)
+    push!(simulator.cellGrid.cells[cellIndex...].atoms, atom)
 end 
 
 
 function push!(simulator::Simulator, latticePoint::LatticePoint)
     push!(simulator.latticePoints, latticePoint)
-    push!(simulator.cellGrid.cells[latticePoint.cellIndex[1], latticePoint.cellIndex[2], latticePoint.cellIndex[3]].latticePoints, latticePoint)
+    push!(simulator.cellGrid.cells[latticePoint.cellIndex...].latticePoints, latticePoint)
     simulator.atoms[latticePoint.atomIndex].latticePointIndex = latticePoint.index
 end 
 
@@ -340,7 +332,7 @@ end
 
 
 function delete!(simulator::Simulator, atom::Atom)
-    originalCell = simulator.cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
+    originalCell = simulator.cellGrid.cells[atom.cellIndex...]
     deleteat!(originalCell.atoms, findfirst(a -> a.index == atom.index, originalCell.atoms))
     simulator.numberOfAtoms -= 1
     atom.isAlive = false 
@@ -398,26 +390,26 @@ function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simu
 end
 
 
-function ComputeDistance_squared(coordinate1::Vector{Float64}, coordinate2::Vector{Float64}, crossFlag::Vector{Int8}, box::Box)
+function ComputeDistance_squared(coordinate1::Vector{Float64}, coordinate2::Vector{Float64}, crossFlag::NTuple{3, Int8}, box::Box)
     dv = VectorDifference(coordinate1, coordinate2, crossFlag, box)
     distance_squared = dv[1]* dv[1] + dv[2]*dv[2] + dv[3]  * dv[3]
     return distance_squared
 end
 
 
-function ComputeDistance(coordinate1::Vector{Float64}, coordinate2::Vector{Float64}, crossFlag::Vector{Int8}, box::Box)
+function ComputeDistance(coordinate1::Vector{Float64}, coordinate2::Vector{Float64}, crossFlag::NTuple{3, Int8}, box::Box)
     return sqrt(ComputeDistance_squared(coordinate1, coordinate2, crossFlag, box))
 end
 
 
-function ComputeVDistance(atom_p::Atom, atom_t::Atom, crossFlag::Vector{Int8}, box::Box)
+function ComputeVDistance(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::Box)
     # v for atom_p
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
     return dv' * atom_p.velocityDirection
 end
 
 
-function VectorDifference(v1::Vector{Float64}, v2::Vector{Float64}, crossFlag::Vector{Int8}, box::Box)
+function VectorDifference(v1::Vector{Float64}, v2::Vector{Float64}, crossFlag::NTuple{3, Int8}, box::Box)
     # return v2 - v1
     if crossFlag == Vector{Int64}([0,0,0])
         return v2 - v1
@@ -431,7 +423,7 @@ function VectorDifference(v1::Vector{Float64}, v2::Vector{Float64}, crossFlag::V
 end
 
 
-function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::Vector{Int8}, box::Box, pMax::Float64)
+function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::Box, pMax::Float64)
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
     #@show dv
     #for d in dv
@@ -466,7 +458,7 @@ end
 
 
 function ChangeCell!(atom::Atom, nextCellIndex::Vector{Int64}, simulator::Simulator)
-    originalCell = simulator.cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
+    originalCell = simulator.cellGrid.cells[atom.cellIndex...]
     delete!(originalCell, atom, simulator)
     nextCell = simulator.cellGrid.cells[nextCellIndex[1], nextCellIndex[2], nextCellIndex[3]]
     push!(nextCell, atom, simulator)
@@ -493,13 +485,13 @@ end
 
 function GetNeighborVacancy(atom::Atom, simulator::Simulator)
     cells = simulator.cellGrid.cells        
-    cell = cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]]
+    cell = cells[atom.cellIndex...]
     nearestVacancyDistance_squared = Inf
     nearestVacancyIndex = -1
-    for (_, neighborCellInfo) in cell.neighborCellsInfo
+    for neighborCellInfo in cell.neighborCellsInfo
         index = neighborCellInfo.index
         cross = neighborCellInfo.cross
-        neighborCell = cells[index[1], index[2], index[3]]
+        neighborCell = cells[index...]
         for latticePoint in neighborCell.latticePoints
             if latticePoint.atomIndex == -1
                 dr2 = ComputeDistance_squared(atom.coordinate, latticePoint.coordinate, cross, simulator.box)
@@ -536,7 +528,7 @@ function SetOnLatticePoint!(atom::Atom, latticePoint::LatticePoint, simulator::S
         ChangeCell!(atom, latticePoint.cellIndex, simulator)
     elseif !atom.isAlive
         atom.isAlive = true
-        nextCell = simulator.cellGrid.cells[latticePoint.cellIndex[1], latticePoint.cellIndex[2], latticePoint.cellIndex[3]]
+        nextCell = simulator.cellGrid.cells[latticePoint.cellIndex...]
         push!(nextCell, atom, simulator)
     end 
     if simulator.parameters.isKMC && isUpdateEnv
@@ -563,7 +555,7 @@ function Restore!(simulator::Simulator)
         # Delete ions remained in the system from their cells.
         # Ions in simulator.atoms will be deleted latter by setting simulator.atoms = simulator.atoms[1:maxAtomID]. 
         if atom.isAlive
-            delete!(simulator.cellGrid.cells[atom.cellIndex[1], atom.cellIndex[2], atom.cellIndex[3]], atom, simulator)
+            delete!(simulator.cellGrid.cells[atom.cellIndex...], atom, simulator)
         end
     end
     for index in Set(simulator.displacedAtoms)
@@ -596,15 +588,15 @@ end
 
 function GetEnvironmentLatticePoints(latticePoint::LatticePoint, simulator::Simulator)
     cellIndex = latticePoint.cellIndex
-    theCell = simulator.cellGrid.cells[cellIndex[1], cellIndex[2], cellIndex[3]]
+    theCell = simulator.cellGrid.cells[cellIndex...]
     cells = simulator.cellGrid.cells
     cut_squared = simulator.environmentCut^2
     box = simulator.box
     environmentLatticePointsIndex = Vector{Int64}()
     dVectors = Vector{Vector{Float64}}()
-    for (_, neighborCellInfo) in theCell.neighborCellsInfo
+    for neighborCellInfo in theCell.neighborCellsInfo
         index, cross = neighborCellInfo.index, neighborCellInfo.cross
-        cell = cells[index[1], index[2], index[3]]
+        cell = cells[index...]
         latticePoints = cell.latticePoints
         for neighborLatticePoint in latticePoints
             neighborLatticePointIndex = neighborLatticePoint.index
@@ -646,22 +638,9 @@ function GetEnvironmentIndex(latticePoint::LatticePoint, simulator::Simulator)
     return index + 1
 end 
 
-function GaussianDeltaX_old(sigma::Float64)
-    u1 = 0.0
-    r2 = 0.0
-    while true
-        u1 = rand()*2-1
-        u2 = rand()*2-1
-        r2 = u1 * u1 + u2 * u2
-        if r2 <= 1 && r2 > 0
-            break
-        end
-    end
-    return u1 * sqrt(-2 * log(r2) / r2) * sigma
-end
 
 function GaussianDeltaX(sigma::Float64)
-    return randn() * sigma
+    return randn(THREAD_RNG[Threads.threadid()]) * sigma
 end
 
 
