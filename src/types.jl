@@ -25,10 +25,10 @@ mutable struct Atom
     numberOfEmptyCells::Int64
 
     # for atom_t
-    pValue::Dict{Int64, Float64}
-    pPoint::Dict{Int64, Vector{Float64}}
-    pVector::Dict{Int64, Vector{Float64}}
-    pL::Dict{Int64, Float64}
+    pValue::Float64
+    pPoint::Vector{Float64}
+    pVector::Vector{Float64}
+    pL::Float64
 
     # for atom_p
     lastTargets::Vector{Int64}
@@ -45,6 +45,7 @@ mutable struct Atom
     # for dynamic load 
     isNewlyLoaded::Bool
     latticeCoordinate::Vector{Float64}
+
 end
 
 

@@ -19,6 +19,8 @@ using .Recorder
 
 #simulator, atom_p, atom_t = test_collision()
 
+# todo:
+# Permutation at first in static load 
 
 # 近似：
 # 1. 多个碰撞一个

@@ -30,11 +30,11 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     energy = 0.0
     radius, mass, Z, dte, bde, _, _ = TypeToProperties(type, parameters.typeDict)
     numberOfEmptyCells = 0
-    pValue = Dict{Int64, Float64}() # key is the index of the atom_p
-    pVector = Dict{Int64, Vector{Float64}}()
-    pPoint = Dict{Int64, Vector{Float64}}()  
+    pValue = 0.0
+    pVector = Vector{Float64}(undef, 3)
+    pPoint = Vector{Float64}(undef, 3)  
     lastTargets = Vector{Int64}()
-    pL = Dict{Int64, Float64}()
+    pL = 0.0
     latticePointIndex = -1
     frequency = 0.0
     frequencies = Vector{Float64}()
@@ -440,33 +440,27 @@ function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::Vector{Int8}, box::Box
     #    end
     #end
     t = dot(dv, atom_p.velocityDirection)
-    atom_t.pL[atom_p.index] = t
-    atom_t.pPoint[atom_p.index] = atom_p.coordinate + t * atom_p.velocityDirection
-    atom_t.pVector[atom_p.index] = atom_t.pPoint[atom_p.index] - atom_t.coordinate
-    p = norm(atom_t.pVector[atom_p.index])
-    atom_t.pValue[atom_p.index] = p
+    atom_t.pL = t
+    atom_t.pPoint = atom_p.coordinate + t * atom_p.velocityDirection
+    atom_t.pVector = atom_t.pPoint - atom_t.coordinate
+    p = norm(atom_t.pVector)
+    atom_t.pValue = p
     return p
 end
 
 
 function DeleteP!(atom_t::Atom, atom_pIndex::Int64)
-    delete!(atom_t.pValue, atom_pIndex)
-    delete!(atom_t.pPoint, atom_pIndex)
-    delete!(atom_t.pVector, atom_pIndex)
-    delete!(atom_t.pL, atom_pIndex)
+    atom_t.pValue = 0.0
 end
 
 function EmptyP!(atom_t::Atom)
-    empty!(atom_t.pValue)
-    empty!(atom_t.pPoint)
-    empty!(atom_t.pVector)
-    empty!(atom_t.pL)
+    atom_t.pValue = 0.0
 end
 
 
 function SimultaneousCriteria(atom::Atom, neighborAtom::Atom, addedTarget::Atom, simulator::Simulator)
-    flagP = abs(neighborAtom.pValue[atom.index] - addedTarget.pValue[atom.index]) <= simulator.parameters.pMax
-    flagQ = abs(neighborAtom.pL[atom.index] - addedTarget.pL[atom.index]) <= simulator.constantsByType.qMax[[neighborAtom.type, addedTarget.type]]
+    flagP = abs(neighborAtom.pValue - addedTarget.pValue) <= simulator.parameters.pMax
+    flagQ = abs(neighborAtom.pL - addedTarget.pL) <= simulator.constantsByType.qMax[[neighborAtom.type, addedTarget.type]]
     return flagP && flagQ
 end
 
@@ -696,7 +690,7 @@ function TemperatureToSigma(T::Float64, ΘD::Float64, M_u::Float64)
     u2 = a * (0.25 + (T/ΘD)^2 * integ)       # m²
     σ = sqrt(u2) / Å
     print("$(round(σ; sigdigits=2)) Å\n")
-    return σ                    # Å
+    return 5.0 #σ                    # Å
 end
 
 

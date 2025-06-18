@@ -109,6 +109,17 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filt
             end
             #Pertubation!(neighborAtom, simulator)
             if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
+                #if neighborAtom.index == -3597381
+                #    @show atom.index
+                #    @show filterIndexes
+                #end
+               #if neighborAtom.pValue > 0.0
+               #    @show neighborAtom.index
+               #    @show neighborAtom.pValue
+               #    @show atom.index
+               #    @show filterIndexes
+               #    throw(ErrorException("pValue is too large"))
+               #end
                 p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
                 if p >= pMax
                     DeleteP!(neighborAtom, atom.index)
@@ -143,7 +154,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filt
         return (targets, infiniteFlag)
     end
     # Find target with minimum pL value using Julia's built-in findmin
-    _, minIdx = findmin(t -> t.pL[atom.index], candidateTargets)
+    _, minIdx = findmin(t -> t.pL, candidateTargets)
     nearestTarget = candidateTargets[minIdx]    
     push!(targets, nearestTarget)
     for candidateTarget in candidateTargets
@@ -169,6 +180,14 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filt
 end
 
 function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+    for atom in atoms_t
+        if atom.pValue > simulator.parameters.pMax
+            @show atom.pValue
+            @show atom.index 
+            @show atom_p.index 
+            throw(ErrorException("pValue is too large"))
+        end
+    end
     N_t = length(atoms_t)
     cellGrid = simulator.cellGrid
     tanφList = Vector{Float64}(undef, N_t)
@@ -179,7 +198,8 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     Q_locList = Vector{Float64}(undef, N_t)
     pL = 0.0
     for atom_t in atoms_t
-        l = atom_t.pL[atom_p.index]
+        @record pL "$(atom_t.pL)"
+        l = atom_t.pL
         pL += l
     end
     pL /= N_t   
@@ -193,28 +213,29 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
                          pL, N, simulator.constantsByType)
     atom_p.energy -= Q_nl_v
     for (i, atom_t) in enumerate(atoms_t)
-        p = atom_t.pValue[atom_p.index]
+        p = atom_t.pValue
         N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity 
         tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
             atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
             simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])
-        #@show E_tList[i], p 
-        #@show atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p
-        #@show tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i]
     end
     sumE_t = sum(E_tList)
     sumQ_loc = sum(Q_locList)
     η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ_loc))
     E_tList *= η
+    #@record eta "$(η)"
+    #@record E_tList "$([E_tList[i] for i in 1:N_t])"
+    #@record pValue "$([atoms_t[i].pValue for i in 1:N_t])"
     # Update atoms_t (target atoms)         
     avePPoint = Vector{Float64}([0.0,0.0,0.0])
     momentum = Vector{Float64}([0.0,0.0,0.0])
     for (i, atom_t) in enumerate(atoms_t)
-        if atom_t.pValue[atom_p.index] != 0
-            velocityDirectionTmp = -atom_t.pVector[atom_p.index] / atom_t.pValue[atom_p.index] * tanψList[i] + atom_p.velocityDirection
+        if atom_t.pValue != 0
+            velocityDirectionTmp = -atom_t.pVector / atom_t.pValue * tanψList[i] + atom_p.velocityDirection
         else
             velocityDirectionTmp = atom_p.velocityDirection
         end   
+        @record pValue "$(atom_t.pValue)"
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
         if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.1
             LeaveLatticePoint_dynamicLoad!(atom_t, simulator)
@@ -224,7 +245,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
         else
             SetEnergy!(atom_t, 0.0)
         end
-        avePPoint += atom_t.pPoint[atom_p.index]
+        avePPoint += atom_t.pPoint
         momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
     end
 
@@ -237,7 +258,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     SetVelocityDirection!(atom_p, velocity)
     
     #@show sumE_t, sumQ_loc, Q_nl_v, η, atom_p.energy
-    DumpAtoms([atom_p; atoms_t], simulator, "dumps/t2.dump", simulator.nCollisionEvent)
+    #DumpAtoms([atom_p; atoms_t], simulator, "dumps/t2.dump", simulator.nCollisionEvent)
     SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ_loc) * η)
     #if atom_p.type == 3
         #@record E_loss.csv "$(sumE_t),$(sumQ_loc+Q_nl_v)"
@@ -534,7 +555,7 @@ function Restore_dynamicLoad!(simulator::Simulator)
         if atom.isAlive
             cellIndex = atom.cellIndex
             cell = cells[cellIndex[1], cellIndex[2], cellIndex[3]]
-            if cell.isLoaded && atom.type >= length(keys(simulator.parameters.typeDict)) 
+            if cell.isLoaded && atom.type > length(keys(simulator.parameters.typeDict)) 
                 latticeAtom = Atom(atom.type-length(keys(simulator.parameters.typeDict)), atom.coordinate, parameters)
                 latticeAtom.latticeCoordinate .= atom.coordinate
                 Pertubation!(latticeAtom, simulator)

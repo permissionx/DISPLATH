@@ -1,6 +1,6 @@
 module Recorder     
 export @record   
-const FLUSH_BYTES = 8_192           
+const FLUSH_BYTES = 8_192      
 
 const _fh  = Dict{Symbol, IO}()     
 const _buf = Dict{Symbol, IOBuffer}()

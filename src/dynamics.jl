@@ -77,7 +77,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     Q_locList = Vector{Float64}(undef, N_t)
     pL = 0.0
     for atom_t in atoms_t
-        l = atom_t.pL[atom_p.index]
+        l = atom_t.pL
         pL += l
     end
     pL /= N_t   
@@ -91,7 +91,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
                          pL, N, simulator.constantsByType)  
     atom_p.energy -= Q_nl_v
     for (i, atom_t) in enumerate(atoms_t)
-        p = atom_t.pValue[atom_p.index]
+        p = atom_t.pValue
         N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity 
         tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
             atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
@@ -114,8 +114,8 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     #    write(buf, "0.0\n")
     #end
     for (i, atom_t) in enumerate(atoms_t)
-        if atom_t.pValue[atom_p.index] != 0
-            velocityDirectionTmp = -atom_t.pVector[atom_p.index] / atom_t.pValue[atom_p.index] * tanψList[i] + atom_p.velocityDirection
+        if atom_t.pValue != 0
+            velocityDirectionTmp = -atom_t.pVector / atom_t.pValue * tanψList[i] + atom_p.velocityDirection
         else
             velocityDirectionTmp = atom_p.velocityDirection
         end   
@@ -139,7 +139,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
                 SetCoordinate!(atom_t, simulator.latticePoints[atom_t.latticePointIndex].coordinate)
             end
         end
-        avePPoint += atom_t.pPoint[atom_p.index]
+        avePPoint += atom_t.pPoint
         momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
     end
 
@@ -375,7 +375,7 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::V
         return (targets, infiniteFlag)
     end
     # Find target with minimum pL value using Julia's built-in findmin
-    _, minIdx = findmin(t -> t.pL[atom.index], candidateTargets)
+    _, minIdx = findmin(t -> t.pL, candidateTargets)
     nearestTarget = candidateTargets[minIdx]    
     push!(targets, nearestTarget)
     for candidateTarget in candidateTargets
