@@ -82,7 +82,6 @@ mutable struct GridCell
     atomicDensity::Float64
     # for dynamic load
     vertexMatrix::Matrix{Float64}
-    allAtoms::Vector{Atom}
     latticeAtoms::Vector{Atom}
     isLoaded::Bool
     vacancies::Vector{Atom}
@@ -108,7 +107,6 @@ function GridCell(
     vertexMatrix[4,:] = [ranges[1,2], ranges[2,1], ranges[3,2]]
     vertexMatrix[5,:] = [ranges[1,1], ranges[2,2], ranges[3,1]]
     vertexMatrix[6,:] = [ranges[1,1], ranges[2,2], ranges[3,2]]
-    allAtoms = Vector{Atom}()
     latticeAtoms = Vector{Atom}()
     isLoaded = false
     vacancies = Vector{Atom}()
@@ -116,7 +114,7 @@ function GridCell(
     atomRange = Vector{UnitRange{Int64}}()
     isPushedNeighbor = false
     return GridCell(index, atoms, latticePoints, ranges, centerCoordinate, neighborCellsInfo, isExplored, atomicDensity, 
-                    vertexMatrix, allAtoms, latticeAtoms, isLoaded, vacancies, isSavedAtomRange, atomRange, isPushedNeighbor)     
+                    vertexMatrix, latticeAtoms, isLoaded, vacancies, isSavedAtomRange, atomRange, isPushedNeighbor)     
 end
 
 mutable struct CellGrid
@@ -271,6 +269,8 @@ mutable struct Simulator
     maxVacancyID::Int64
     minLatticeAtomID::Int64
 
+    # for debug
+    debugAtom::Atom
 
     parameters::Parameters
 end
@@ -295,6 +295,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     numberOfVacancies = 0
     maxVacancyID = 1E6
     minLatticeAtomID = 0
+    debugAtom = Atom(1, [0.0,0.0,0.0], parameters)
 
 
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
@@ -309,6 +310,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
                      loadedCells, vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
+                     debugAtom,
                      parameters)  
 end
 

@@ -1,5 +1,3 @@
-
-
 function Box(Vectors::Matrix{Float64})
     # need to improve to detact if it is orithogonal. 
     println("Box with size of $(Vectors[1,1]) $(Vectors[2,2]) $(Vectors[3,3]) created.")
@@ -658,20 +656,37 @@ end
 
 
 
-function TemperatureToSigma(T::Float64, ΘD::Float64, M_u::Float64)
-    ħ  = 1.054_571_817e-34   # J·s
-    kB = 1.380_649e-23       # J/K
-    Å  = 1e-10               # meter
-    M = M_u * 1.660_539_066e-27             
-    a  = ħ^2 / (2*M*kB*ΘD)
-    y  = ΘD / T
-    integ = quadgk(x -> x/(exp(x)-1), 0, y)[1]
-    u2 = a * (0.25 + (T/ΘD)^2 * integ)       # m²
-    σ = sqrt(u2) / Å
-    print("$(round(σ; sigdigits=2)) Å\n")
-    return 5.0 #σ                    # Å
+#function TemperatureToSigma(T::Float64, ΘD::Float64, M_u::Float64)
+#    ħ  = 1.054_571_817e-34   # J·s
+#    kB = 1.380_649e-23       # J/K
+#    Å  = 1e-10               # meter
+#    M = M_u * 1.660_539_066e-27             
+#    a  = ħ^2 / (2*M*kB*ΘD)
+#    y  = ΘD / T
+#    integ = quadgk(x -> x/(exp(x)-1), 0, y)[1]
+#    u2 = a * (0.25 + (T/ΘD)^2 * integ)       # m²
+#    σ = sqrt(u2) / Å
+#    print("$(round(σ; sigdigits=2)) Å\n")
+#    return 1.0 #σ                    # Å
+#end
+
+
+function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-10, rtol=1e-8)
+    ħ   = 1.054_571_817e-34      # J·s
+    kB  = 1.380_649_000e-23      # J/K
+    amu = 1.660_539_066_60e-27   # kg
+
+    M = m_rel * amu
+    y_max = θ_D / T            
+
+    # 积分 ∫ x/(e^x-1) dx
+    integrand(x) = x / (exp(x) - 1)
+    I, _ = quadgk(integrand, 0.0, y_max; atol, rtol)
+
+    σ2 = 3 * ħ^2 / (M * kB * θ_D) * (0.25 + (T/θ_D)^2 * I)
+    σ  = sqrt(σ2) * 1e10         # m → Å
+
+    print("$(round(σ; sigdigits=4)) Å\n")
+    return σ
 end
-
-
-
 

@@ -83,7 +83,6 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     end
     pL /= N_t   
     if atom_p.numberOfEmptyCells > 1
-        # This is an approximation, the pL is not accurate, but for most situations in bulk simulation, numberOfEmptyCells is 0.
         pL *= (atom_p.numberOfEmptyCells - 1) / atom_p.numberOfEmptyCells
     end
     atom_t = atoms_t[1]
@@ -104,16 +103,10 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     sumE_t = sum(E_tList)
     sumQ_loc = sum(Q_locList)
     η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ_loc))
-    E_tList *= η
-    # Update atoms_t (target atoms)         
+    E_tList *= η     
     avePPoint = Vector{Float64}([0.0,0.0,0.0])
     momentum = Vector{Float64}([0.0,0.0,0.0])
-    # for cross section calculations
-    #global tid
-    #global buf
-    #if (! (tid in [atom_t.index for atom_t in atoms_t])) && simulator.nCollisionEvent == 1
-    #    write(buf, "0.0\n")
-    #end
+
     for (i, atom_t) in enumerate(atoms_t)
         if atom_t.pValue != 0
             velocityDirectionTmp = -atom_t.pVector / atom_t.pValue * tanψList[i] + atom_p.velocityDirection
@@ -121,10 +114,6 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             velocityDirectionTmp = atom_p.velocityDirection
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
-        # for cross section calculations
-        #if atom_t.index == tid && simulator.nCollisionEvent == 1
-        #    @printf(buf, "%f\n", E_tList[i])
-        #end
         if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.1
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
@@ -135,7 +124,6 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             end     
         else 
             SetEnergy!(atom_t, 0.0)
-            # this is for undoing the pertubation 
             if atom_t.latticePointIndex != -1
                 SetCoordinate!(atom_t, simulator.latticePoints[atom_t.latticePointIndex].coordinate)
             end
@@ -143,9 +131,6 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
         avePPoint += atom_t.pPoint
         momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
     end
-
-    # Update atom_p
-    # initMomentum = sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection   # Check momentum conservation 
 
     avePPoint /= N_t
     x_p = η * sum(x_pList) / N_t  # important modification
@@ -155,19 +140,6 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     SetVelocityDirection!(atom_p, velocity)
     
     SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ_loc) * η)
-    #if atom_p.type == 2 
-    #    Log("$(sumE_t),$(sum(QList))\n", simulator, fileName="loss/$(simulator.nCascade)")
-    #end
-
-    # Check momentum conservation 
-    #afterMomentum = sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection
-    #for i in 1:length(atoms_t)
-    #    afterMomentum += sqrt(2 * atoms_t[i].mass * E_tList[i]) * atoms_t[i].velocityDirection  # debug
-    #end
-    #open("p.debug.log", "a") do f
-    #    write(f, "$(simulator.nCascade),$(N_t),$(initMomentum[1]),$(initMomentum[2]),$(initMomentum[3]),$(afterMomentum[1]),$(afterMomentum[2]),$(afterMomentum[3])\n")
-    #end
-    #exit()
 end 
 
 function Cascade!(atom_p::Atom, simulator::Simulator)
@@ -193,7 +165,6 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
         end
         deleteat!(pAtoms, deleteIndexes)
         pAtomsIndex = [a.index for a in pAtoms]
-        #UniqueTargets!(targetsList, pAtoms)
         nextPAtoms = Vector{Atom}()
         for (pAtom, targets) in zip(pAtoms, targetsList)
             if pAtom.type == 3
@@ -240,68 +211,6 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
 end
 
 
-
-function Cascade_aborted!(atom_p::Atom, simulator::Simulator)
-    pAtoms = Vector{Atom}([atom_p])
-    pAtomsIndex = [a.index for a in pAtoms]
-    if simulator.parameters.isDumpInCascade
-        DumpDefects(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, "w")
-    end
-    while true
-        targetsList = Vector{Vector{Atom}}()
-        deleteIndexes = Vector{Int64}()
-        for (na, pAtom) in enumerate(pAtoms)
-            targets = ShotTarget(pAtom, [pAtomsIndex; pAtom.lastTargets], simulator)
-            if length(targets) == 0.0
-                pAtom.lastTargets = Vector{Int64}()
-                delete!(simulator, pAtom)
-                push!(deleteIndexes, na)
-                continue
-            end
-            push!(targetsList, targets)
-        end
-        deleteat!(pAtoms, deleteIndexes)
-        pAtomsIndex = [a.index for a in pAtoms]
-        UniqueTargets!(targetsList, pAtoms)
-        nextPAtoms = Vector{Atom}()
-        for (pAtom, targets) in zip(pAtoms, targetsList)
-            if length(targets) > 0
-                pAtom.lastTargets = [t.index for t in targets]
-                Collision!(pAtom, targets, simulator)
-                for target in targets
-                    if target.energy > 0.0   
-                        DisplaceAtom!(target, target.coordinate, simulator)
-                        push!(nextPAtoms, target)
-                    end
-                end
-                if pAtom.energy > simulator.parameters.stopEnergy   
-                    push!(nextPAtoms, pAtom)
-                else
-                    pAtom.lastTargets = Vector{Int64}()
-                    Stop!(pAtom, simulator)
-                end
-            else
-                push!(nextPAtoms, pAtom)
-            end
-        end
-        for targets in targetsList
-            for target in targets
-                EmptyP!(target)
-            end
-        end 
-        simulator.nCollisionEvent += 1
-        if simulator.parameters.isDumpInCascade
-            DumpDefects(simulator, "Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, true)
-        end
-        if length(nextPAtoms) > 0
-            pAtoms = nextPAtoms
-            pAtomsIndex = [a.index for a in pAtoms]
-        else
-            break
-        end
-    end
-    simulator.nCascade += 1
-end
 
 
 
