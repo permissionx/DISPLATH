@@ -5,6 +5,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
     cellGrid = simulator.cellGrid
     periodic = simulator.parameters.periodic    
     cell = cellGrid.cells[atom.cellIndex...]
+    atom.numberOfEmptyCells = 0
     while true
         (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, filterIndexes, simulator)
         # delete repeated targets in lastTargets
@@ -15,6 +16,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
             empty!(simulator.exploredCells)
             return targets, true
         else
+            atom.numberOfEmptyCells += 1
             dimension, direction = AtomOutFaceDimension(atom, cell)
             neighborIndex = Vector{Int8}([0,0,0])
             neighborIndex[dimension] = direction == 1 ? Int8(-1) : Int8(1)
@@ -38,9 +40,10 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
 end
 
 
+
+
 function AtomOutFaceDimension(atom::Atom, cell::GridCell)
     coordinate = atom.coordinate
-
     for d in 1:3
         if atom.velocityDirection[d] >= 0
             rangeIndex = 2
@@ -67,6 +70,64 @@ function AtomOutFaceDimension(atom::Atom, cell::GridCell)
 end
 
 
+function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::Vector{Int64}, simulator::Simulator)
+    cellGrid = simulator.cellGrid
+    box = simulator.box
+    targets = Vector{Atom}()
+    infiniteFlag = true
+    candidateTargets = Vector{Atom}()
+    pMax = simulator.pMax
+    for neighborCellInfo in gridCell.neighborCellsInfo
+        index = neighborCellInfo.index
+        neighborCell = cellGrid.cells[index...]
+        if neighborCell.isExplored
+            continue
+        end
+        neighborCell.isExplored = true
+        push!(simulator.exploredCells, neighborCell)
+        infiniteFlag = false
+        for neighborAtom in neighborCell.atoms
+            if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
+                continue
+            end
+            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
+                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
+                if p >= pMax
+                    continue
+                end
+                push!(candidateTargets, neighborAtom)
+            end
+        end
+    end
+    if infiniteFlag
+        @record "log" "Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)"
+    end
+    if isempty(candidateTargets)
+        return (targets, infiniteFlag)
+    end
+    # Find target with minimum pL value using Julia's built-in findmin
+    _, minIdx = findmin(t -> t.pL, candidateTargets)
+    nearestTarget = candidateTargets[minIdx]    
+    push!(targets, nearestTarget)
+    for candidateTarget in candidateTargets
+        if candidateTarget.index == nearestTarget.index
+            continue
+        end
+        matchFlag = true
+        for target in targets            
+            if !SimultaneousCriteria(atom, candidateTarget, target, simulator)
+                matchFlag = false
+                break
+            end
+        end
+        if matchFlag
+            push!(targets, candidateTarget)
+        end
+    end    
+    return (targets, infiniteFlag)
+end
+
+
 function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     N_t = length(atoms_t)
     cellGrid = simulator.cellGrid
@@ -83,7 +144,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     end
     pL /= N_t   
     if atom_p.numberOfEmptyCells > 1
-        pL *= (atom_p.numberOfEmptyCells - 1) / atom_p.numberOfEmptyCells
+        pL *= 1 / atom_p.numberOfEmptyCells
     end
     atom_t = atoms_t[1]
     N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity
@@ -96,9 +157,6 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
         tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
             atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
             simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])
-        if atom_p.type == 3
-            Log("$(E_tList[i])\n", simulator, fileName="Et.csv")
-        end
     end
     sumE_t = sum(E_tList)
     sumQ_loc = sum(Q_locList)
@@ -124,9 +182,6 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             end     
         else 
             SetEnergy!(atom_t, 0.0)
-            if atom_t.latticePointIndex != -1
-                SetCoordinate!(atom_t, simulator.latticePoints[atom_t.latticePointIndex].coordinate)
-            end
         end
         avePPoint += atom_t.pPoint
         momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
@@ -147,8 +202,10 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
     pAtomsIndex = [a.index for a in pAtoms]
     parameters = simulator.parameters
     simulator.nCollisionEvent = 0
-    DumpInCascade(simulator, "w")
+    simulator.nCascade += 1
+    DumpInCascade(simulator)
     while true
+        simulator.nCollisionEvent += 1
         targetsList = Vector{Vector{Atom}}()
         deleteIndexes = Int64[]
         othersTargetIndexes = Int64[]
@@ -167,12 +224,6 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
         pAtomsIndex = [a.index for a in pAtoms]
         nextPAtoms = Vector{Atom}()
         for (pAtom, targets) in zip(pAtoms, targetsList)
-            if pAtom.type == 3
-                Log("$(length(targets))\n", simulator, fileName="targetNumber.csv")
-                for target in targets
-                    Log("$(target.pValue[1])\n", simulator, fileName="pValue.csv")
-                end
-            end
             if length(targets) > 0
                 pAtom.lastTargets = [t.index for t in targets]
                 Collision!(pAtom, targets, simulator)
@@ -192,13 +243,7 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
                 push!(nextPAtoms, pAtom)
             end
         end
-        for targets in targetsList
-            for target in targets
-                EmptyP!(target)
-            end
-        end 
-        simulator.nCollisionEvent += 1
-        DumpInCascade(simulator, "a")
+        DumpInCascade(simulator)
         if length(nextPAtoms) > 0
             pAtoms = nextPAtoms
             sort!(pAtoms, by = a -> a.energy, rev = true)
@@ -207,75 +252,11 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
             break
         end
     end
-    simulator.nCascade += 1
 end
 
-
-
-
-
-function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::Vector{Int64}, simulator::Simulator)
-    cellGrid = simulator.cellGrid
-    box = simulator.box
-    targets = Vector{Atom}()
-    infiniteFlag = true
-    candidateTargets = Vector{Atom}()
-    pMax = simulator.pMax
-    for neighborCellInfo in gridCell.neighborCellsInfo
-        index = neighborCellInfo.index
-        neighborCell = cellGrid.cells[index...]
-        if neighborCell.isExplored
-            continue
-        end
-        neighborCell.isExplored = true
-        push!(simulator.exploredCells, neighborCell)
-        infiniteFlag = false
-        for neighborAtom in neighborCell.atoms
-            if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
-                continue
-            end
-            Pertubation!(neighborAtom, simulator)
-            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
-                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
-                if p >= pMax
-                    DeleteP!(neighborAtom, atom.index)
-                    if neighborAtom.latticePointIndex != -1
-                        SetCoordinate!(neighborAtom, simulator.latticePoints[neighborAtom.latticePointIndex].coordinate)
-                    end
-                    continue
-                end
-                push!(candidateTargets, neighborAtom)
-            end
-        end
+function DumpInCascade(simulator::Simulator)
+    if simulator.parameters.isDumpInCascade
+        @dump "Cascade_$(simulator.nCascade).dump" simulator.atoms []
     end
-    if infiniteFlag
-        Log("Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)\n", simulator)
-    end
-    if isempty(candidateTargets)
-        return (targets, infiniteFlag)
-    end
-    # Find target with minimum pL value using Julia's built-in findmin
-    _, minIdx = findmin(t -> t.pL, candidateTargets)
-    nearestTarget = candidateTargets[minIdx]    
-    push!(targets, nearestTarget)
-    for candidateTarget in candidateTargets
-        if candidateTarget.index == nearestTarget.index
-            continue
-        end
-        matchFlag = true
-        for target in targets            
-            if !SimultaneousCriteria(atom, candidateTarget, target, simulator)
-                matchFlag = false
-                DeleteP!(candidateTarget, atom.index)
-                if candidateTarget.latticePointIndex != -1
-                    SetCoordinate!(candidateTarget, simulator.latticePoints[candidateTarget.latticePointIndex].coordinate)
-                end
-                break
-            end
-        end
-        if matchFlag
-            push!(targets, candidateTarget)
-        end
-    end    
-    return (targets, infiniteFlag)
 end
+

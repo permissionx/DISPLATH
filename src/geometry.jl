@@ -98,6 +98,7 @@ function CreateCellGrid(box::Box, inputVectors::Matrix{Float64}, parameters::Par
     
     cells = Array{GridCell, 3}(undef, sizes[1], sizes[2], sizes[3])
     #@showprogress desc="Creating cell grid: " for x in 1:sizes[1]
+    println("Creating cell grid...")
     @threads for x in 1:sizes[1]
         for y in 1:sizes[2]
             for z in 1:sizes[3]
@@ -205,7 +206,7 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
         τMatrix = Array{Float64, 2}(undef, nE, np)
         @showprogress desc="Generating θ and τ data: " for (i, E_p_power) in enumerate(EPowerRange)
             E_p = 10.0^E_p_power
-            for (j, p) in enumerate(pRange)
+            @threads for (j, p) in enumerate(pRange)  # need to cheak if correct 
                 θ, τ = BCA.θτ(E_p, mass_p, mass_t, type_p, type_t, p, constantsByType)
                 θMatrix[i, j] = θ
                 τMatrix[i, j] = τ
@@ -279,6 +280,9 @@ function _initSimulatorAtoms!(simulator::Simulator, parameters::Parameters)
     for cell in simulator.cellGrid.cells
         cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume
     end 
+    for atom in simulator.atoms
+        Pertubation!(atom, simulator)
+    end
     println("Simulator initialized.\n")
 end
 
@@ -439,13 +443,6 @@ function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::
 end
 
 
-function DeleteP!(atom_t::Atom, atom_pIndex::Int64)
-    atom_t.pValue = 0.0
-end
-
-function EmptyP!(atom_t::Atom)
-    atom_t.pValue = 0.0
-end
 
 
 function SimultaneousCriteria(atom::Atom, neighborAtom::Atom, addedTarget::Atom, simulator::Simulator)
@@ -533,6 +530,7 @@ function SetOnLatticePoint!(atom::Atom, latticePoint::LatticePoint, simulator::S
         latticePointIndexs = Set([latticePoint.environment;latticePoint.index])
         UpdateEvents!(latticePointIndexs, simulator)
     end
+    Pertubation!(atom, simulator)
 end
 
 
@@ -653,22 +651,6 @@ end
 function SetCoordinate!(atom::Atom, coordinate::Vector{Float64})
     atom.coordinate .= coordinate
 end 
-
-
-
-#function TemperatureToSigma(T::Float64, ΘD::Float64, M_u::Float64)
-#    ħ  = 1.054_571_817e-34   # J·s
-#    kB = 1.380_649e-23       # J/K
-#    Å  = 1e-10               # meter
-#    M = M_u * 1.660_539_066e-27             
-#    a  = ħ^2 / (2*M*kB*ΘD)
-#    y  = ΘD / T
-#    integ = quadgk(x -> x/(exp(x)-1), 0, y)[1]
-#    u2 = a * (0.25 + (T/ΘD)^2 * integ)       # m²
-#    σ = sqrt(u2) / Å
-#    print("$(round(σ; sigdigits=2)) Å\n")
-#    return 1.0 #σ                    # Å
-#end
 
 
 function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-10, rtol=1e-8)

@@ -111,7 +111,6 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filt
             if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
                 p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
                 if p >= pMax
-                    DeleteP!(neighborAtom, atom.index)
                     continue
                 end
                 push!(buf, neighborAtom)
@@ -143,9 +142,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filt
     nearestTarget = candidateTargets[minIdx]   
     push!(targets, nearestTarget)
 
-    if atom.type == 2
-        @record "nearestTarget.csv" "$(nearestTarget.pL)" 
-    end
+
     for candidateTarget in candidateTargets
         if candidateTarget.index == nearestTarget.index
             continue
@@ -154,7 +151,6 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, gridCell::GridCell, filt
         for target in targets   
             if !SimultaneousCriteria(atom, candidateTarget, target, simulator)
                 matchFlag = false
-                DeleteP!(candidateTarget, atom.index)
                 break
             end
         end
@@ -182,7 +178,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     pL /= N_t   
     if atom_p.numberOfEmptyCells > 1
         # This is an approximation, the pL is not accurate, but for most situations in bulk simulation, numberOfEmptyCells is 0.
-        pL *= (atom_p.numberOfEmptyCells - 1) / atom_p.numberOfEmptyCells
+        pL *= 1 / atom_p.numberOfEmptyCells
     end
     atom_t = atoms_t[1]
     N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity
@@ -232,7 +228,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ_loc) * η)
 end 
 
-function DumpInCascade_dynamicLoad(simulator::Simulator, type::String="a")
+function DumpInCascade_dynamicLoad(simulator::Simulator)
     if simulator.parameters.isDumpInCascade
         @dump "Cascade_$(simulator.nCascade).dump" [simulator.atoms; simulator.vacancies] []
         #Dump_dynamicLoad(simulator, "$(simulator.parameters.dumpFolder)/Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, type)
@@ -246,7 +242,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
     parameters = simulator.parameters
     simulator.nCollisionEvent = 0
     simulator.nCascade += 1
-    DumpInCascade_dynamicLoad(simulator, "w")
+    DumpInCascade_dynamicLoad(simulator)
     while true
         simulator.nCollisionEvent += 1
         targetsList = Vector{Vector{Atom}}()
@@ -286,12 +282,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 push!(nextPAtoms, pAtom)
             end
         end
-        for targets in targetsList
-            for target in targets
-                EmptyP!(target)
-            end
-        end 
-        DumpInCascade_dynamicLoad(simulator, "a")
+        DumpInCascade_dynamicLoad(simulator)
         if length(nextPAtoms) > 0
             pAtoms = nextPAtoms
             sort!(pAtoms, by = a -> a.energy, rev = true)
@@ -357,6 +348,7 @@ function Stop_dynamicLoad!(atom::Atom, simulator::Simulator)
             delete_dynamicLoad!(simulator, nearestVacancy, isDeleteVacancy = true)
         else
             SetCoordinate!(atom, nearestVacancy.coordinate)
+            Pertubation!(atom, simulator)
             ChangeCell!(atom, nearestVacancy.cellIndex, simulator)
         end
     end

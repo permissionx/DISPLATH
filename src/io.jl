@@ -1,4 +1,4 @@
-function Output_(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)
+function Dump(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)
     if !simulator.parameters.isOrthogonal        
         error("The box is not orthogonal, please use the orthogonal box.")
     end
@@ -43,15 +43,6 @@ function Output_(simulator::Simulator, fileName::String, step::Int64, type::Stri
 end
 
 
-
-
-function Log(string::String, simulator::Simulator; fileName::String="log", type::String="a", forceWrite::Bool=false)
-    if simulator.parameters.isLog || forceWrite
-        open(fileName, type) do file
-            write(file, string)
-        end
-    end
-end
 
 
 function SaveθτData(type_p::Int64, type_t::Int64, 
