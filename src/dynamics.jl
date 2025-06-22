@@ -76,7 +76,7 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::V
     targets = Vector{Atom}()
     infiniteFlag = true
     candidateTargets = Vector{Atom}()
-    pMax = simulator.pMax
+    pMax = simulator.parameters.pMax
     for neighborCellInfo in gridCell.neighborCellsInfo
         index = neighborCellInfo.index
         neighborCell = cellGrid.cells[index...]

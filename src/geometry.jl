@@ -206,7 +206,7 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
         τMatrix = Array{Float64, 2}(undef, nE, np)
         @showprogress desc="Generating θ and τ data: " for (i, E_p_power) in enumerate(EPowerRange)
             E_p = 10.0^E_p_power
-            @threads for (j, p) in enumerate(pRange)  # need to cheak if correct 
+            for (j, p) in enumerate(pRange)  # need to cheak if correct 
                 θ, τ = BCA.θτ(E_p, mass_p, mass_t, type_p, type_t, p, constantsByType)
                 θMatrix[i, j] = θ
                 τMatrix[i, j] = τ

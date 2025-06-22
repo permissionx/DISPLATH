@@ -45,5 +45,6 @@ examples/benchmark_I2DM/I2DM/OUTPUT
 my_calculations
 test
 archive
+archives/
 .vscode
 *.so
