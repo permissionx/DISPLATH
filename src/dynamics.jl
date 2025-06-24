@@ -151,6 +151,9 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
                          pL, N, simulator.constantsByType)  
     atom_p.energy -= Q_nl_v
+    if atom_p.energy < 0.1 && atom_p.energy + Q_nl_v >= 0.1
+        atom_p.energy = 0.11
+    end
     for (i, atom_t) in enumerate(atoms_t)
         p = atom_t.pValue
         N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity 
@@ -239,7 +242,7 @@ function Cascade!(atom_p::Atom, simulator::Simulator)
                     pAtom.lastTargets = Vector{Int64}()
                     Stop!(pAtom, simulator)
                 end
-            else
+            else      
                 push!(nextPAtoms, pAtom)
             end
         end

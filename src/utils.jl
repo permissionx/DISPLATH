@@ -1,4 +1,7 @@
 function DefectStatics(simulator::Simulator)
+    if !simulator.isStore
+        error("simulator must be stored when counting defects")
+    end
     latticePoints = simulator.latticePoints
     atoms = simulator.atoms
     vacancies = Vector{LatticePoint}()
