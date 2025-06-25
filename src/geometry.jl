@@ -204,7 +204,10 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
         np = length(pRange)
         θMatrix = Array{Float64, 2}(undef, nE, np)
         τMatrix = Array{Float64, 2}(undef, nE, np)
-        @showprogress desc="Generating θ and τ data: " for (i, E_p_power) in enumerate(EPowerRange)
+        N = length(EPowerRange)
+        @showprogress @threads for i in 1:N
+            E_p_power = EPowerRange[i]
+        #@threads for (i, E_p_power) in enumerate(EPowerRange)
             E_p = 10.0^E_p_power
             for (j, p) in enumerate(pRange)  # need to cheak if correct 
                 θ, τ = BCA.θτ(E_p, mass_p, mass_t, type_p, type_t, p, constantsByType)
@@ -641,7 +644,7 @@ end
 
 
 function Pertubation!(atom::Atom, simulator::Simulator)
-    if simulator.parameters.temperature > 0 
+    if simulator.parameters.temperature > 0.0
         for d in 1:3
             atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
         end
@@ -654,12 +657,16 @@ end
 
 
 function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-10, rtol=1e-8)
+    if T == 0.0
+        println("0.0")
+        return 0
+    end
     ħ   = 1.054_571_817e-34      # J·s
     kB  = 1.380_649_000e-23      # J/K
     amu = 1.660_539_066_60e-27   # kg
 
     M = m_rel * amu
-    y_max = θ_D / T            
+    y_max = θ_D / T      
 
     # 积分 ∫ x/(e^x-1) dx
     integrand(x) = x / (exp(x) - 1)

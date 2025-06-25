@@ -9,7 +9,7 @@ function Element(name::String, dte::Float64, bde::Float64)
     elseif name == "Be"
         return Element(name, 1.12, 9.0, 4.0, dte, bde, 1.5, 0.44)
     elseif name == "B"
-        return Element(name, 0.87, 11.0, 5.0, dte, bde, 1.5, 0.44)
+        return Element(name, 0.87, 11.0, 5.0, dte, bde, 1.9, 0.44)
     elseif name == "C"
         return Element(name, 0.67, 12.0, 6.0, dte, bde, 1.0, 0.44)
     elseif name == "N"
