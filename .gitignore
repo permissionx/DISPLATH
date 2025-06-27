@@ -49,3 +49,7 @@ archives/
 .vscode
 *.so
 err.*
+log
+*.thetatau
+nohup.out
+err.dte
