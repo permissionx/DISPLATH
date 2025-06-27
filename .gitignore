@@ -48,3 +48,4 @@ archive
 archives/
 .vscode
 *.so
+err.*
