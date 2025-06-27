@@ -295,16 +295,20 @@ end
 macro dump(file, atoms, properties=[], stepProperty=:nCascade)
     # for example: properties = ["vx", "vy", "vz", "e"]
     quote
+        atomNumber = sum([a.isAlive for a in $(esc(atoms))])
         local _file = $(esc(file))
         Output._ensure(_file)
         local buf = Output._buf[_file]
-        Output._dumpTitle(buf, $(esc(:simulator)), $(esc(:simulator)).$(stepProperty), length($(esc(atoms))))
+        Output._dumpTitle(buf, $(esc(:simulator)), $(esc(:simulator)).$(stepProperty), atomNumber)
         print(buf, "ITEM: ATOMS id type x y z ")
         for p in $(esc(properties))
             print(buf, p * " ")
         end
         print(buf, "\n")
         for atom in $(esc(atoms))
+            if !atom.isAlive
+                continue
+            end
             print(buf, string(atom.index) * " " * string(atom.type) * " " * string(atom.coordinate[1]) * " " * string(atom.coordinate[2]) * " " * string(atom.coordinate[3]) * " ")
             for p in $(esc(properties))
                 if p[1] == 'v'

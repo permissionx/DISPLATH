@@ -97,9 +97,7 @@ function CreateCellGrid(box::Box, inputVectors::Matrix{Float64}, parameters::Par
     println("Cell grid: $(sizes[1]) x $(sizes[2]) x $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells with each cell size of $(vectors[1,1]) $(vectors[2,2]) $(vectors[3,3]).")
     
     cells = Array{GridCell, 3}(undef, sizes[1], sizes[2], sizes[3])
-    #@showprogress desc="Creating cell grid: " for x in 1:sizes[1]
-    println("Creating cell grid...")
-    @threads for x in 1:sizes[1]
+    @showprogress desc="Creating cell grid: " @threads for x in 1:sizes[1]
         for y in 1:sizes[2]
             for z in 1:sizes[3]
                 ranges = Matrix{Float64}(undef, 3, 2)

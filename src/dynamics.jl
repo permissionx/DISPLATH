@@ -179,7 +179,6 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
             DisplaceAtom!(atom_t, tCoordinate, simulator)  
-            #SetEnergy!(atom_t, E_tList[i])
             if atom_t.latticePointIndex != -1
                 LeaveLatticePoint!(atom_t, simulator)
             end     
@@ -259,7 +258,7 @@ end
 
 function DumpInCascade(simulator::Simulator)
     if simulator.parameters.isDumpInCascade
-        @dump "Cascade_$(simulator.nCascade).dump" simulator.atoms []
+        @dump "Cascade_$(simulator.nCascade).dump" simulator.atoms ["vx", "vy", "vz", "e"]
     end
 end
 

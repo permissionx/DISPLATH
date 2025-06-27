@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH -J arcs
+#SBATCH --partition=collegeofscience
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=64
+#SBATCH -t 168:00:00
+#SBATCH -o result.out
+#SBATCH -e result.err
+#SBATCH --cpus-per-task=1
+#SBATCH --exclusive
+
+ulimit -s unlimited
+srun hostname | sort > machinefile.${SLURM_JOB_ID}
+echo "NPROCS $SLURM_NPROCS"
+
+source /beegfs/home/xuke/intel/oneapi/setvars.sh
+julia -t 27 run.jl > out
+
+rm machinefile.${SLURM_JOB_ID}
+echo "$SLURM_JOB_ID $SLURM_JOB_NAME $(pwd)" >> ~/.slurm_log
