@@ -53,3 +53,4 @@ log
 *.thetatau
 nohup.out
 err.dte
+.git_backup
