@@ -60,7 +60,7 @@ end
 #    )
 #    return soap
 #end
-#test
+#test2
 function GetNeighborArray(atom::Atom, simulator::Simulator)
     coordinates = atom.coordinate'  
     elementNames = Vector{String}([simulator.parameters.typeDict[atom.type].name])
