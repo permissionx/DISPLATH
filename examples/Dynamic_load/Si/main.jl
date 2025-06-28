@@ -1,6 +1,8 @@
 home = "/beegfs/home/xuke/Researches/Irradiation_Li-Tianzhao/4.DISPLATH/DISPLATH/"
-include(home * "src/main.jl")
-using Profile
+const BAlpha = 1.5
+const IS_DYNAMIC_LOAD = true
+include(home * "src/DISPLATH.jl")
+
 
 # Box and atoms 
 a = 5.431
@@ -29,43 +31,38 @@ typeDict = Dict(
     2 => Element("B", 1.0, 0.5)     # B for ion bombardment    
 )
 seed = 43
+const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
 
 temperature = 300.0
 DebyeTemperature = 645.0
 isDumpInCascade = false
-isDynamicLoad = true
 stopEnergy = 20.0
 nCascadeEveryLoad = 10
-const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
 parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis,
-                        θτRepository, pMax, vacancyRecoverDistance, typeDict, seed; 
+                        θτRepository, pMax, vacancyRecoverDistance, typeDict; 
                         temperature=temperature, DebyeTemperature=DebyeTemperature, 
-                        isDumpInCascade=isDumpInCascade, isDynamicLoad=isDynamicLoad,
-                        stopEnergy=stopEnergy, nCascadeEveryLoad=nCascadeEveryLoad)
+                        isDumpInCascade=isDumpInCascade, stopEnergy=stopEnergy, 
+                        nCascadeEveryLoad=nCascadeEveryLoad)
 
 # Run
-simulator = Simulator_dynamicLoad(boxSizes, inputGridVectors, parameters)
-
-#energy = 100000.0
+simulator = Simulator(boxSizes, inputGridVectors, parameters)
 
 
-for n in 1:10
+
+for n in 1:1
     energy = 100_000.0 - (n-1) * 10_000.0
-    for i in 1:1000
-        Restore_dynamicLoad!(simulator)
+    for i in 1:1
+        Restore!(simulator)
         offset = [boxSizes[1]/2*a, boxSizes[2]/2*a, boxSizes[3]*a-2]
         rp = RandomPointInCircle(30.0)
-        @assert length(rp) == 3 "RandomPointInCircle返回长度不是3"
-        @assert eltype(rp) == Float64 "RandomPointInCircle返回类型不是Float64"
         ionPosition = Vector{Float64}(rp) + offset
         ion = Atom(2, ionPosition, parameters)
         SetVelocityDirection!(ion, [0.12,0.,-1.])
         SetEnergy!(ion,energy)
         push!(simulator, ion)
-        @time Cascade_dynamicLoad!(ion, simulator)
+        @time Cascade!(ion, simulator)
         z = simulator.atoms[1].coordinate[3]
-        @record  "out/R_p.$(n).csv" "$(a*latticeRanges[3,2]-z)" isSmall=true
-        all_atoms = [simulator.atoms; simulator.vacancies]
-        @dump  "out/defects.$(n).dump" all_atoms ["vx", "vy", "vz", "e"]
+        @record  "R_p.$(n).csv" "$(a*latticeRanges[3,2]-z)" isSmall=true
+        @dump  "defects.$(n).dump" [simulator.atoms; simulator.vacancies] ["vx", "vy", "vz", "e"]
     end
 end

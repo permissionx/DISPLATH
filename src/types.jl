@@ -12,7 +12,7 @@ mutable struct Atom
     isAlive::Bool
     type::Int64
     coordinate::Vector{Float64}
-    cellIndex::Vector{Int64}
+    cellIndex::Tuple{Int64, Int64, Int64}
     radius::Float64
     mass::Float64
     velocityDirection::Vector{Float64}
@@ -55,7 +55,7 @@ mutable struct LatticePoint
     index::Int64
     type::Int64  # Initial Type, will not change
     coordinate::Vector{Float64}
-    cellIndex::Vector{Int64}
+    cellIndex::Tuple{Int64, Int64, Int64}
     environment::Vector{Int64}
 
     atomIndex::Int64 # -1 for vacancy
@@ -68,14 +68,12 @@ struct NeighborCellInfo
 end
 
 
-
-mutable struct GridCell
+mutable struct Cell
     # only for orthogonal box
-    index::Vector{Int64}
+    index::Tuple{Int64, Int64, Int64}
     atoms::Vector{Atom}
     latticePoints::Vector{LatticePoint}  
     ranges::Matrix{Float64}
-    centerCoordinate::Vector{Float64}
     #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo}
     neighborCellsInfo::Array{NeighborCellInfo, 3}
     isExplored::Bool
@@ -90,12 +88,25 @@ mutable struct GridCell
     isPushedNeighbor::Bool
 end
 
-function GridCell(
-    index::Vector{Int64},
+const EMPTY_GRIDCELL = Cell(
+    (0,0,0),                          # index
+    Atom[],                         # atoms
+    LatticePoint[],                 # latticePoints
+    zeros(3,2),                     # ranges
+    Array{NeighborCellInfo,3}(undef,3,3,3),
+    false, 0.0,                     # isExplored / density
+    zeros(6,3),                     # vertexMatrix
+    Atom[], false, Atom[],
+    false, UnitRange{Int}[], false
+)
+Base.zero(::Type{Cell}) = EMPTY_GRIDCELL
+
+
+function Cell(
+    index::Tuple{Int64, Int64, Int64},
     atoms::Vector{Atom},
     latticePoints::Vector{LatticePoint},
     ranges::Matrix{Float64},
-    centerCoordinate::Vector{Float64},
     #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo},
     neighborCellsInfo::Array{NeighborCellInfo, 3},
     isExplored::Bool,
@@ -113,12 +124,21 @@ function GridCell(
     isSavedAtomRange = false
     atomRange = Vector{UnitRange{Int64}}()
     isPushedNeighbor = false
-    return GridCell(index, atoms, latticePoints, ranges, centerCoordinate, neighborCellsInfo, isExplored, atomicDensity, 
+    return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
                     vertexMatrix, latticeAtoms, isLoaded, vacancies, isSavedAtomRange, atomRange, isPushedNeighbor)     
 end
 
-mutable struct CellGrid
-    cells::Array{GridCell, 3}
+
+macro cell_storage_type()
+    if IS_DYNAMIC_LOAD
+        return :(SparseVector{Cell})
+    else
+        return :(Array{Cell, 3})
+    end
+end
+
+mutable struct Grid
+    cells::@cell_storage_type()
     vectors::Matrix{Float64}
     sizes::Vector{Int64}      
     cellVolume::Float64
@@ -162,7 +182,6 @@ struct Parameters
     pMax::Float64
     vacancyRecoverDistance_squared::Float64
     typeDict::Dict{Int64, Element}
-    seed::Int64
     #optional 
     periodic::Vector{Bool}
     isOrthogonal::Bool
@@ -183,7 +202,6 @@ struct Parameters
     temperature_kb::Float64
     perfectEnvIndex::Int64
     irrdiationFrequency::Float64
-    isDynamicLoad::Bool
     nCascadeEveryLoad::Int64
 end
 
@@ -197,8 +215,7 @@ function Parameters(
     θτRepository::String,
     pMax::Float64,  
     vacancyRecoverDistance::Float64, 
-    typeDict::Dict{Int64, Element}, 
-    seed::Int64;
+    typeDict::Dict{Int64, Element};
     # optional
     periodic::Vector{Bool} = [true, true, false],
     isOrthogonal::Bool = true,
@@ -218,7 +235,6 @@ function Parameters(
     temperature::Float64 = 0.0,   # K
     perfectEnvIndex::Int64 = 0,
     irrdiationFrequency::Float64 = 0.0,
-    isDynamicLoad = false,
     nCascadeEveryLoad = 1)
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
@@ -227,14 +243,14 @@ function Parameters(
     end
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
-                      θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict, seed,
+                      θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal,
                       EPowerRange, pRange, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, dumpFolder, isLog,
                       DTEMode, 
                       #soapParameters, 
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      isDynamicLoad, nCascadeEveryLoad)
+                      nCascadeEveryLoad)
 end 
 
 
@@ -242,7 +258,7 @@ mutable struct Simulator
     atoms::Vector{Atom}
     latticePoints::Vector{LatticePoint}
     box::Box
-    cellGrid::CellGrid
+    grid::Grid
     maxAtomID::Int64
     numberOfAtoms::Int64
     constantsByType::ConstantsByType
@@ -251,7 +267,7 @@ mutable struct Simulator
     numberOfAtomsWhenStored::Int64
     nCascade::Int64
     nCollisionEvent::Int64
-    exploredCells::Vector{GridCell}
+    exploredCells::Vector{Cell}
     θFunctions::Dict{Vector{Int64}, Function}
     τFunctions::Dict{Vector{Int64}, Function}
     #soap::PyObject
@@ -263,7 +279,7 @@ mutable struct Simulator
     frequencies::Vector{Float64}
     mobileAtoms::Vector{Atom}
     #for dynamic load
-    loadedCells::Vector{GridCell}
+    loadedCells::Vector{Cell}
     vacancies::Vector{Atom}
     numberOfVacancies::Int64
     maxVacancyID::Int64
@@ -276,7 +292,7 @@ mutable struct Simulator
 end
 
 function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    cellGrid = CreateCellGrid(box, inputGridVectors, parameters)
+    grid = CreateGrid(box, inputGridVectors)
     constantsByType = InitConstantsByType(parameters.typeDict, parameters)
     θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
     #soap = InitSoap(parameters)
@@ -289,7 +305,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     frequency = 0.0
     frequencies = Vector{Float64}()
     mobileAtoms = Vector{Atom}()
-    loadedCells = Vector{GridCell}()
+    loadedCells = Vector{Cell}()
     vacancies = Vector{Atom}()
     nCollisionEvent = 0
     numberOfVacancies = 0
@@ -299,12 +315,12 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
 
 
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
-                     box, cellGrid, 
+                     box, grid, 
                      0, 0, 
                      constantsByType,
                      false, Vector{Int64}(), 0, 
                      0,nCollisionEvent,
-                     Vector{GridCell}(),
+                     Vector{Cell}(),
                      θFunctions, τFunctions,
                      #soap, 
                      environmentCut, DTEData, 

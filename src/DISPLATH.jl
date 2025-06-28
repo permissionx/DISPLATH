@@ -8,6 +8,7 @@ using LinearAlgebra
 using Interpolations   
 using Dates
 using ProgressMeter
+using SparseArrays
 
 
 #using PyCall
