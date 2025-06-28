@@ -1,6 +1,6 @@
 function Box(Vectors::Matrix{Float64})
-    # need to improve to detact if it is orithogonal. 
-    println("Box with size of $(Vectors[1,1]) $(Vectors[2,2]) $(Vectors[3,3]) created.")
+    # println("\n🚀 Initializing the simulator...\n")  # 删除多余的初始化输出
+    println("📦 Box created! Size: $(round(Vectors[1,1]; digits=3)) × $(round(Vectors[2,2]; digits=3)) × $(round(Vectors[3,3]; digits=3)) Å\n")
     return Box(Vectors, inv(Vectors'), true)
 end 
 
@@ -94,7 +94,8 @@ function CreateCellGrid(box::Box, inputVectors::Matrix{Float64}, parameters::Par
         sizes[d] = Int64(floor(box.vectors[d,d] / inputVectors[d,d]))
         vectors[d,d] = box.vectors[d,d] / sizes[d]
     end
-    println("Cell grid: $(sizes[1]) x $(sizes[2]) x $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells with each cell size of $(vectors[1,1]) $(vectors[2,2]) $(vectors[3,3]).")
+    println("🧩 Cell grid: $(sizes[1]) × $(sizes[2]) × $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells, each size: $(round(vectors[1,1]; digits=3)) × $(round(vectors[2,2]; digits=3)) × $(round(vectors[3,3]; digits=3)) Å\n")
+    println("----------------------------------------")
     
     cells = Array{GridCell, 3}(undef, sizes[1], sizes[2], sizes[3])
     @showprogress desc="Creating cell grid: " @threads for x in 1:sizes[1]
@@ -124,7 +125,7 @@ function CreateCellGrid(box::Box, inputVectors::Matrix{Float64}, parameters::Par
             IterPushCellNeighbors!(cellGrid, cell)
         end
     end
-    println("Cell grid created.")
+    println("✅ Cell grid created!\n----------------------------------------\n")
     return cellGrid
 end
 
@@ -132,7 +133,7 @@ end
 
 
 
-function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Parameters) 
+function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Parameters)
     V_upterm = Dict{Vector{Int64}, Float64}()
     a_U = Dict{Vector{Int64}, Float64}()
     E_m = Dict{Int64, Float64}()
@@ -145,6 +146,7 @@ function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Paramet
     types = keys(typeDict)
     qMax = Dict{Vector{Int64}, Float64}()
     sigma = Dict{Int64, Float64}()
+    println("Vibration σ for each type:")
     for p in types
         radius_p, mass_p, Z_p, _, _, α_p, β_p = TypeToProperties(p, typeDict)
         for t in types
@@ -159,9 +161,10 @@ function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Paramet
             qMax[[p,t]] = radius_p + radius_t
         end
         E_m[p] = BCA.ConstantFunctions.E_m(Z_p, mass_p)
-        print("Vibration σ for type $(p): ")
         sigma[p] = TemperatureToSigma(parameters.temperature, parameters.DebyeTemperature, mass_p)
+        println("  • Type $(p): σ = $(round(sigma[p]; digits=4)) Å")
     end
+    println("\n----------------------------------------")
     return ConstantsByType(V_upterm, a_U, E_m, S_e_upTerm, S_e_downTerm, x_nl, a, Q_nl, Q_loc, qMax, sigma)
 end
 
@@ -170,18 +173,18 @@ function InitθτFunctions(parameters::Parameters, constantsByType::ConstantsByT
     typeDict = parameters.typeDict
     θFunctions = Dict{Vector{Int64}, Function}()
     τFunctions = Dict{Vector{Int64}, Function}()
-    
+    println("📥 θ and τ functions loading:")
     for type_p in keys(typeDict)
         for type_t in keys(typeDict)
             mass_p = typeDict[type_p].mass
-        mass_t = typeDict[type_t].mass
-        θInterpolation, τInterpolation = θτFunctions(mass_p, mass_t, type_p, type_t, constantsByType, parameters)
-        
-        θFunctions[[type_p, type_t]] = (E_p, p) -> θInterpolation(E_p, p)
-        τFunctions[[type_p, type_t]] = (E_p, p) -> τInterpolation(E_p, p)
+            mass_t = typeDict[type_t].mass
+            θInterpolation, τInterpolation = θτFunctions(mass_p, mass_t, type_p, type_t, constantsByType, parameters)
+            θFunctions[[type_p, type_t]] = (E_p, p) -> θInterpolation(E_p, p)
+            τFunctions[[type_p, type_t]] = (E_p, p) -> τInterpolation(E_p, p)
+            println("  📄 $(parameters.typeDict[type_p].name) → $(parameters.typeDict[type_t].name) loaded. ✅")
         end
     end
-    println("All θ and τ functions initialized.\n")
+    println("\n🧩 All θ and τ functions initialized! 🎉\n----------------------------------------\n")
     return θFunctions, τFunctions
 end
 
@@ -193,9 +196,7 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
     τMatrix = Matrix{Float64}(undef, 0, 0)
     try
         E_p_axis, p_axis, θMatrix, τMatrix = LoadθτData(type_p, type_t, parameters)
-        println("θ and τ functions for $(parameters.typeDict[type_p].name) to $(parameters.typeDict[type_t].name) Loaded.")
     catch
-        println("Loading θ and τ data for $(parameters.typeDict[type_p].name) to $(parameters.typeDict[type_t].name) failed.")
         EPowerRange = parameters.EPowerRange    
         pRange = parameters.pRange
         nE = length(EPowerRange)
@@ -205,9 +206,8 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
         N = length(EPowerRange)
         @showprogress @threads for i in 1:N
             E_p_power = EPowerRange[i]
-        #@threads for (i, E_p_power) in enumerate(EPowerRange)
             E_p = 10.0^E_p_power
-            for (j, p) in enumerate(pRange)  # need to cheak if correct 
+            for (j, p) in enumerate(pRange)
                 θ, τ = BCA.θτ(E_p, mass_p, mass_t, type_p, type_t, p, constantsByType)
                 θMatrix[i, j] = θ
                 τMatrix[i, j] = τ
@@ -217,7 +217,6 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
         p_axis = collect(pRange)    
         SaveθτData(type_p, type_t, θMatrix, τMatrix, E_p_axis, p_axis, parameters)
     end
-
     # interpolate
     θFunction = interpolate((E_p_axis, p_axis), θMatrix, Gridded(Linear()))
     τFunction = interpolate((E_p_axis, p_axis), τMatrix, Gridded(Linear()))
@@ -225,23 +224,23 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
 end
 
 function Simulator_dynamicLoad(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    println("Initializing the simulator...")
+    println("🚀 Initializing the simulator...")
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
     ranges = parameters.latticeRanges 
     atomNumber = (ranges[1,2] - ranges[1,1]) * (ranges[2,2] - ranges[2,1]) * (ranges[3,2] - ranges[3,1]) * length(parameters.basisTypes)
-    println("$(atomNumber) atoms in the box.") 
+    println("🔬 Number of atoms in the box: $(atomNumber)  (= $(ranges[1,2] - ranges[1,1]) × $(ranges[2,2] - ranges[2,1]) × $(ranges[3,2] - ranges[3,1]) × $(length(parameters.basisTypes)))\n")
     simulator = Simulator(box, inputGridVectors, parameters)
     vectors = parameters.primaryVectors     
     unitCellVolume = abs(dot(cross(vectors[:,1], vectors[:,2]), vectors[:,3]))
     for cell in simulator.cellGrid.cells
         cell.atomicDensity = length(parameters.basisTypes) / unitCellVolume
     end
-    println("Simulator initialized.\n")
+    println("🎉 Simulator initialized!\n")
     return simulator    
 end 
 
 function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    println("Initializing the simulator...")
+    println("🚀 Initializing the simulator...")
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
     simulator = Simulator(box, inputGridVectors, parameters)
     _initSimulatorAtoms!(simulator, parameters)
@@ -249,7 +248,7 @@ function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, p
 end 
 
 function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    println("Initializing the simulator...")
+    println("🚀 Initializing the simulator...")
     box = Box(boxVectors)
     simulator = Simulator(box, inputGridVectors, parameters)
     _initSimulatorAtoms!(simulator, parameters)
@@ -276,7 +275,7 @@ function _initSimulatorAtoms!(simulator::Simulator, parameters::Parameters)
             end
         end
     end
-    println("$(simulator.numberOfAtoms) atoms created.")
+    println("🧪 $(simulator.numberOfAtoms) atoms created.\n")
     InitLatticePointEnvronment(simulator)
     for cell in simulator.cellGrid.cells
         cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume
@@ -284,7 +283,7 @@ function _initSimulatorAtoms!(simulator::Simulator, parameters::Parameters)
     for atom in simulator.atoms
         Pertubation!(atom, simulator)
     end
-    println("Simulator initialized.\n")
+    println("🎉 Simulator initialized!\n")
 end
 
 function LatticePoint(atom::Atom)
@@ -613,7 +612,7 @@ end
 
 function InitLatticePointEnvronment(simulator::Simulator)
     if simulator.parameters.DTEMode != 1 && simulator.parameters.DTEMode != 4
-        println("Initializing lattice point environment...")
+        println("🌐 Initializing lattice point environment...\n")
         for latticePoint in simulator.latticePoints
             latticePoint.environment = GetEnvironmentLatticePoints(latticePoint, simulator)
         end
@@ -656,7 +655,7 @@ end
 
 function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-10, rtol=1e-8)
     if T == 0.0
-        println("0.0")
+        println("🌡️ Temperature is 0.0 K")
         return 0
     end
     ħ   = 1.054_571_817e-34      # J·s
@@ -673,7 +672,6 @@ function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-1
     σ2 = 3 * ħ^2 / (M * kB * θ_D) * (0.25 + (T/θ_D)^2 * I)
     σ  = sqrt(σ2) * 1e10         # m → Å
 
-    print("$(round(σ; sigdigits=4)) Å\n")
     return σ
 end
 
