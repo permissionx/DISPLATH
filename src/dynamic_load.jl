@@ -1,83 +1,161 @@
+function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
+    parameters = simulator.parameters
+    primaryVectors = parameters.primaryVectors
+    latticeRanges = parameters.latticeRanges
+    basisTypes = parameters.basisTypes
+    basis = parameters.basis
+    if !cell.isSavedAtomRange
+        # Optimized calculation for orthogonal case
+        vertexMatrix = cell.vertexMatrix
+        a1, a2, a3 = primaryVectors[1,1], primaryVectors[2,2], primaryVectors[3,3]
+        # Direct calculation without matrix multiplication
+        nfrac1 = vertexMatrix[:, 1] ./ a1
+        nfrac2 = vertexMatrix[:, 2] ./ a2  
+        nfrac3 = vertexMatrix[:, 3] ./ a3
+        nmin = [floor(Int, minimum(nfrac1) - 1), 
+                floor(Int, minimum(nfrac2) - 1), 
+                floor(Int, minimum(nfrac3) - 1)]
+        nmax = [ceil(Int, maximum(nfrac1) + 1),
+                ceil(Int, maximum(nfrac2) + 1),
+                ceil(Int, maximum(nfrac3) + 1)]
+        n1 = max(nmin[1],latticeRanges[1,1]):min(nmax[1],latticeRanges[1,2])
+        n2 = max(nmin[2],latticeRanges[2,1]):min(nmax[2],latticeRanges[2,2])
+        n3 = max(nmin[3],latticeRanges[3,1]):min(nmax[3],latticeRanges[3,2])
+        cell.atomRange = [n1, n2, n3]
+        cell.isSavedAtomRange = true
+    else
+        n1, n2, n3 = cell.atomRange
+    end
+    # Get cell ranges for coordinate filtering
+    ranges = cell.ranges
+    x_min, x_max = ranges[1, 1], ranges[1, 2]
+    y_min, y_max = ranges[2, 1], ranges[2, 2] 
+    z_min, z_max = ranges[3, 1], ranges[3, 2]
+    atoms = Vector{Atom}()
+    # Optimized generation for orthogonal case
+    a1, a2, a3 = primaryVectors[1,1], primaryVectors[2,2], primaryVectors[3,3]
+    # Pre-compute which lattice ranges actually intersect with cell
+    n1_filtered = Int[]
+    n2_filtered = Int[]  
+    n3_filtered = Int[]
+    for x in n1
+        x_coord_min = a1 * (x + minimum(basis[:, 1]))
+        x_coord_max = a1 * (x + maximum(basis[:, 1]))
+        if x_coord_max >= x_min && x_coord_min <= x_max
+            push!(n1_filtered, x)
+        end
+    end
+    for y in n2
+        y_coord_min = a2 * (y + minimum(basis[:, 2]))
+        y_coord_max = a2 * (y + maximum(basis[:, 2]))
+        if y_coord_max >= y_min && y_coord_min <= y_max
+            push!(n2_filtered, y)
+        end
+    end
+    for z in n3
+        z_coord_min = a3 * (z + minimum(basis[:, 3]))
+        z_coord_max = a3 * (z + maximum(basis[:, 3]))
+        if z_coord_max >= z_min && z_coord_min <= z_max
+            push!(n3_filtered, z)
+        end
+    end
+    # Generate atoms with optimized coordinate calculation
+    for x in n1_filtered, y in n2_filtered, z in n3_filtered, i in 1:length(basisTypes)
+        # Direct scalar multiplication instead of matrix operation
+        coordinate = [a1 * (x + basis[i, 1]),
+                     a2 * (y + basis[i, 2]), 
+                     a3 * (z + basis[i, 3])]
+        # Check if atom is within cell boundaries
+        if (coordinate[1] >= x_min && coordinate[1] <= x_max &&
+            coordinate[2] >= y_min && coordinate[2] <= y_max &&
+            coordinate[3] >= z_min && coordinate[3] <= z_max)
+            atom = Atom(basisTypes[i], coordinate, parameters)
+            atom.latticeCoordinate .= atom.coordinate
+            atom.cellIndex = cell.index
+            atom.index = 0  # temporary value
+            atom.isNewlyLoaded = true
+            push!(atoms, atom)
+        end
+    end
+    return atoms 
+end
+
+function ComputeLatticeAtoms_General!(cell::Cell, simulator::Simulator)
+    parameters = simulator.parameters
+    primaryVectors = parameters.primaryVectors
+    latticeRanges = parameters.latticeRanges
+    basisTypes = parameters.basisTypes
+    basis = parameters.basis
+    if !cell.isSavedAtomRange
+        # Original calculation for non-orthogonal case
+        primaryVectors_INV = parameters.primaryVectors_INV
+        vertexMatrix = cell.vertexMatrix
+        nfrac = vertexMatrix * primaryVectors_INV
+        
+        nmin = [floor(Int, minimum(nfrac[:, 1]) - 1), 
+                floor(Int, minimum(nfrac[:, 2]) - 1), 
+                floor(Int, minimum(nfrac[:, 3]) - 1)]
+        nmax = [ceil(Int, maximum(nfrac[:, 1]) + 1),
+                ceil(Int, maximum(nfrac[:, 2]) + 1),
+                ceil(Int, maximum(nfrac[:, 3]) + 1)]
+        
+        n1 = max(nmin[1],latticeRanges[1,1]):min(nmax[1],latticeRanges[1,2])
+        n2 = max(nmin[2],latticeRanges[2,1]):min(nmax[2],latticeRanges[2,2])
+        n3 = max(nmin[3],latticeRanges[3,1]):min(nmax[3],latticeRanges[3,2])
+        cell.atomRange = [n1, n2, n3]
+        cell.isSavedAtomRange = true
+    else
+        n1, n2, n3 = cell.atomRange
+    end
+    # Get cell ranges for coordinate filtering
+    ranges = cell.ranges
+    x_min, x_max = ranges[1, 1], ranges[1, 2]
+    y_min, y_max = ranges[2, 1], ranges[2, 2] 
+    z_min, z_max = ranges[3, 1], ranges[3, 2]
+    atoms = Vector{Atom}()
+    # Original generation for non-orthogonal case
+    for x in n1, y in n2, z in n3, i in 1:length(basisTypes)
+        coordinate = primaryVectors' * (Float64[x, y, z] + basis[i, :])
+        
+        # Check if atom is within cell boundaries
+        if (coordinate[1] >= x_min && coordinate[1] <= x_max &&
+            coordinate[2] >= y_min && coordinate[2] <= y_max &&
+            coordinate[3] >= z_min && coordinate[3] <= z_max)
+            atom = Atom(basisTypes[i], coordinate, parameters)
+            atom.latticeCoordinate .= atom.coordinate
+            atom.cellIndex = cell.index
+            atom.index = 0  # temporary value
+            atom.isNewlyLoaded = true
+            push!(atoms, atom)
+        end
+    end
+    return atoms
+end
+
 function LoadCellAtoms!(cell::Cell, simulator::Simulator)
     if !cell.isLoaded
-        # only for single type of target material
-        parameters = simulator.parameters
-        primaryVectors = parameters.primaryVectors
-        latticeRanges = parameters.latticeRanges
-        basisTypes = parameters.basisTypes
-        basis = parameters.basis
-
-        if !cell.isSavedAtomRange
-            primaryVectors_INV = parameters.primaryVectors_INV
-            vertexMatrix = cell.vertexMatrix
-            nfrac = vertexMatrix * primaryVectors_INV
-            
-            nmin = [floor(Int, minimum(nfrac[:, 1]) - 1), 
-                    floor(Int, minimum(nfrac[:, 2]) - 1), 
-                    floor(Int, minimum(nfrac[:, 3]) - 1)]
-            nmax = [ceil(Int, maximum(nfrac[:, 1]) + 1),
-                    ceil(Int, maximum(nfrac[:, 2]) + 1),
-                    ceil(Int, maximum(nfrac[:, 3]) + 1)]
-            
-            n1 = max(nmin[1],latticeRanges[1,1]):min(nmax[1],latticeRanges[1,2])
-            n2 = max(nmin[2],latticeRanges[2,1]):min(nmax[2],latticeRanges[2,2])
-            n3 = max(nmin[3],latticeRanges[3,1]):min(nmax[3],latticeRanges[3,2])
-            cell.atomRange = [n1, n2, n3]
-            cell.isSavedAtomRange = true
+        if simulator.parameters.isPrimaryVectorOrthogonal
+            atoms = ComputeLatticeAtoms_Orthogonal!(cell, simulator)
         else
-            n1, n2, n3 = cell.atomRange
+            atoms = ComputeLatticeAtoms_General!(cell, simulator)
         end
-        
-        # Get cell ranges for coordinate filtering
-        ranges = cell.ranges
-        x_min, x_max = ranges[1, 1], ranges[1, 2]
-        y_min, y_max = ranges[2, 1], ranges[2, 2] 
-        z_min, z_max = ranges[3, 1], ranges[3, 2]
-        
-        atoms = Vector{Atom}()  # Use dynamic array instead of pre-allocation
-        
-        # Generate atoms and filter by cell boundaries
-        for x in n1 
-            for y in n2
-                for z in n3
-                    for i in  1:length(basisTypes)
-                        coordinate = primaryVectors' * (Float64[x, y, z] + basis[i, :])
-                        
-                        # Check if atom is within cell boundaries
-                        if (coordinate[1] >= x_min && coordinate[1] <= x_max &&
-                            coordinate[2] >= y_min && coordinate[2] <= y_max &&
-                            coordinate[3] >= z_min && coordinate[3] <= z_max)
-                            atom = Atom(basisTypes[i], coordinate, parameters)
-                            atom.latticeCoordinate .= atom.coordinate
-                            atom.cellIndex = cell.index
-                            # We'll assign IDs later to avoid race conditions
-                            atom.index = 0  # temporary value
-                            atom.isNewlyLoaded = true
-                            push!(atoms, atom)
-                        end
-                    end
-                end
-            end
-        end
-        
         for vacancy in cell.vacancies
             for na in length(atoms):-1:1
-                if ComputeDistance_squared(atoms[na].coordinate, vacancy.coordinate, (Int8(0), Int8(0), Int8(0)) ,simulator.box) < 1E-10
+                if ComputeDistance_squared(atoms[na].coordinate, vacancy.coordinate, (Int8(0), Int8(0), Int8(0)), simulator.box) < 1E-10
                     deleteat!(atoms, na)
                     break
                 end
             end
         end
+        # Apply perturbations
         for atom in atoms
             Pertubation!(atom, simulator)
         end
-        # Note: IDs will be assigned later outside the multithreaded section
         cell.atomicDensity = length(atoms) / simulator.grid.cellVolume
         cell.latticeAtoms = atoms
         cell.isLoaded = true
     end
 end
-
 
 function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexes::Vector{Int64}, simulator::Simulator)
     grid = simulator.grid
@@ -90,6 +168,13 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
     AlreadyLoadedFlags = [true for _ in 1:27]
     infiniteFlag_tls = [true for _ in 1:27]
 
+    if Threads.nthreads() > 1 
+        for n in 1:length(neighborCellsInfo)
+            neighborCellInfo = neighborCellsInfo[n]
+            index = neighborCellInfo.index
+            GetCell(grid, index)  # preload the cell to avoid race condition
+        end
+    end
     @threads :static for n in 1:length(neighborCellsInfo)
         neighborCellInfo = neighborCellsInfo[n]
         buf = cands_tls[Threads.threadid()]

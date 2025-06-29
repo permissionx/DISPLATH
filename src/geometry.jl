@@ -401,6 +401,7 @@ function delete!(cell::Cell, atom::Atom, simulator::Simulator)
     if !atom.isAlive
         error("Atom $(atom.index) is not alive when deleting")
     end
+    #@show atom.index, atom.cellIndex, simulator.nCascade, simulator.nCollisionEvent, atom.coordinate
     deleteat!(cell.atoms, findfirst(a -> a.index == atom.index, cell.atoms))
     atom.cellIndex = (-1, -1, -1)
     if !IS_DYNAMIC_LOAD
@@ -426,8 +427,11 @@ function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simu
             end
         end
     end
+    #@show newPosition, atom.coordinate
     SetCoordinate!(atom, newPosition)
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
+
+    idx = LinearIndex(atom.cellIndex, simulator.grid.sizes)
     if cellIndex != atom.cellIndex
         ChangeCell!(atom, cellIndex, simulator)
     end

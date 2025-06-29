@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DISPLAΘ BCA Simulator</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-atom"></i> DISPLAΘ BCA Simulator</h1>
+                <p>Binary Collision Approximation for Ion Irradiation Simulation</p>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="simulation-setup">
+                <div class="tabs">
+                    <button class="tab-button active" data-tab="material">
+                        <i class="fas fa-layer-group"></i> Material
+                    </button>
+                    <button class="tab-button" data-tab="simulation">
+                        <i class="fas fa-cogs"></i> Simulation
+                    </button>
+                    <button class="tab-button" data-tab="ion">
+                        <i class="fas fa-rocket"></i> Ion
+                    </button>
+                    <button class="tab-button" data-tab="output">
+                        <i class="fas fa-chart-line"></i> Output
+                    </button>
+                </div>
+
+                <div class="tab-content">
+                    <!-- Material Tab -->
+                    <div id="material" class="tab-pane active">
+                        <div class="section">
+                            <h3><i class="fas fa-vial"></i> Material Configuration</h3>
+                            
+                            <div class="form-group">
+                                <label>Preset Materials:</label>
+                                <select id="presetSelect" class="form-control">
+                                    <option value="">-- Select a preset --</option>
+                                    <option value="graphene">Graphene Monolayer</option>
+                                    <option value="silicon">Silicon Crystal</option>
+                                </select>
+                            </div>
+
+                            <div class="grid-3">
+                                <div class="form-group">
+                                    <label>Primary Vectors (Å):</label>
+                                    <div class="matrix-input" id="primaryVectors">
+                                        <input type="number" step="0.001" value="4.260" data-pos="0,0">
+                                        <input type="number" step="0.001" value="0.000" data-pos="0,1">
+                                        <input type="number" step="0.001" value="0.000" data-pos="0,2">
+                                        <input type="number" step="0.001" value="0.000" data-pos="1,0">
+                                        <input type="number" step="0.001" value="4.263" data-pos="1,1">
+                                        <input type="number" step="0.001" value="0.000" data-pos="1,2">
+                                        <input type="number" step="0.001" value="0.000" data-pos="2,0">
+                                        <input type="number" step="0.001" value="0.000" data-pos="2,1">
+                                        <input type="number" step="0.001" value="6.700" data-pos="2,2">
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Lattice Ranges:</label>
+                                    <div class="range-input">
+                                        <div class="range-row">
+                                            <span>X:</span>
+                                            <input type="number" id="xMin" value="0" min="0">
+                                            <span>to</span>
+                                            <input type="number" id="xMax" value="10" min="1">
+                                        </div>
+                                        <div class="range-row">
+                                            <span>Y:</span>
+                                            <input type="number" id="yMin" value="0" min="0">
+                                            <span>to</span>
+                                            <input type="number" id="yMax" value="20" min="1">
+                                        </div>
+                                        <div class="range-row">
+                                            <span>Z:</span>
+                                            <input type="number" id="zMin" value="2" min="0">
+                                            <span>to</span>
+                                            <input type="number" id="zMax" value="3" min="1">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Box Sizes:</label>
+                                    <div class="vector-input">
+                                        <input type="number" id="boxX" value="10" min="1" placeholder="X">
+                                        <input type="number" id="boxY" value="20" min="1" placeholder="Y">
+                                        <input type="number" id="boxZ" value="10" min="1" placeholder="Z">
+                                    </div>
+                                    <small style="color: var(--text-muted); margin-top: 0.5rem; display: block;">
+                                        Simulation cell dimensions in unit cells
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Basis Atoms:</label>
+                                <div id="basisContainer">
+                                    <div class="basis-atom">
+                                        <span>Atom 1:</span>
+                                        <input type="number" step="0.001" value="0.000" class="basis-x">
+                                        <input type="number" step="0.001" value="0.000" class="basis-y">
+                                        <input type="number" step="0.001" value="0.000" class="basis-z">
+                                        <select class="basis-type">
+                                            <option value="1">Type 1</option>
+                                            <option value="2">Type 2</option>
+                                        </select>
+                                        <button type="button" class="btn-remove" onclick="removeBasisAtom(this)">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <button type="button" id="addBasisAtom" class="btn btn-secondary">
+                                    <i class="fas fa-plus"></i> Add Atom
+                                </button>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Element Types:</label>
+                                <div id="typeContainer">
+                                    <div class="element-type">
+                                        <span>Type 1:</span>
+                                        <input type="text" value="C" class="element-name" placeholder="Symbol">
+                                        <input type="number" step="0.01" value="19.96" class="element-dte" placeholder="DTE (eV)">
+                                        <input type="number" step="0.01" value="19.96" class="element-bde" placeholder="BDE (eV)">
+                                        <button type="button" class="btn-remove" onclick="removeElementType(this)">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <button type="button" id="addElementType" class="btn btn-secondary">
+                                    <i class="fas fa-plus"></i> Add Element Type
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Simulation Tab -->
+                    <div id="simulation" class="tab-pane">
+                        <div class="section">
+                            <h3><i class="fas fa-cogs"></i> Simulation Parameters</h3>
+                            
+                            <div class="grid-3">
+                                <div class="form-group">
+                                    <label>Number of Runs:</label>
+                                    <input type="number" id="nRuns" value="100" min="1" max="10000" class="form-control">
+                                </div>
+
+                                <div class="form-group">
+                                    <label>pMax:</label>
+                                    <input type="number" id="pMax" value="1.42" step="0.01" class="form-control">
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Vacancy Recovery Distance (Å):</label>
+                                    <input type="number" id="vacancyRecoverDistance" value="4.0" step="0.1" class="form-control">
+                                </div>
+                            </div>
+
+                            <div class="grid-3">
+                                <div class="form-group">
+                                    <label>Temperature (K):</label>
+                                    <input type="number" id="temperature" value="300.0" step="1" class="form-control">
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Debye Temperature (K):</label>
+                                    <input type="number" id="DebyeTemperature" value="1000.0" step="1" class="form-control">
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Stop Energy (eV):</label>
+                                    <input type="number" id="stopEnergy" value="10.0" step="0.1" class="form-control">
+                                </div>
+                            </div>
+
+
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="isDynamicLoad">
+                                    <span class="checkmark"></span>
+                                    Enable Dynamic Loading
+                                </label>
+                            </div>
+
+                            <div class="form-group" id="dynamicLoadOptions" style="display: none;">
+                                <label>Cascades per Load:</label>
+                                <input type="number" id="nCascadeEveryLoad" value="1" min="1" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ion Tab -->
+                    <div id="ion" class="tab-pane">
+                        <div class="section">
+                            <h3><i class="fas fa-rocket"></i> Ion Configuration</h3>
+                            
+                            <div class="grid-4">
+                                <div class="form-group">
+                                    <label>Ion Type:</label>
+                                    <select id="ionType" class="form-control">
+                                        <option value="2">Type 2</option>
+                                        <option value="1">Type 1</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Ion Energy (eV):</label>
+                                    <input type="number" id="ionEnergy" value="1000.0" step="1" class="form-control">
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Ion Direction:</label>
+                                    <div class="vector-input">
+                                        <input type="number" id="dirX" value="0.0" step="0.1" placeholder="X">
+                                        <input type="number" id="dirY" value="0.0" step="0.1" placeholder="Y">
+                                        <input type="number" id="dirZ" value="-1.0" step="0.1" placeholder="Z">
+                                    </div>
+                                    <small style="color: var(--text-muted); margin-top: 0.5rem; display: block;">
+                                        Normalized automatically
+                                    </small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Ion Position (Å):</label>
+                                    <div class="vector-input">
+                                        <input type="number" id="posX" value="0.0" step="0.1" placeholder="X">
+                                        <input type="number" id="posY" value="0.0" step="0.1" placeholder="Y">
+                                        <input type="number" id="posZ" value="0.0" step="0.1" placeholder="Z">
+                                    </div>
+                                    <small style="color: var(--text-muted); margin-top: 0.5rem; display: block;">
+                                        Starting position in simulation box
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Output Tab -->
+                    <div id="output" class="tab-pane">
+                        <div class="section">
+                            <h3><i class="fas fa-chart-line"></i> Output Settings</h3>
+                            
+                            <div class="form-group">
+                                <label>Output Name:</label>
+                                <input type="text" id="outputName" value="simulation_output" class="form-control">
+                            </div>
+
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="isDumpInCascade">
+                                    <span class="checkmark"></span>
+                                    Dump during cascade
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button id="runSimulation" class="btn btn-primary">
+                        <i class="fas fa-play"></i> Run Simulation
+                    </button>
+                    <button id="resetForm" class="btn btn-secondary">
+                        <i class="fas fa-refresh"></i> Reset
+                    </button>
+                </div>
+            </div>
+
+            <div class="results-panel">
+                <div class="section">
+                    <h3><i class="fas fa-chart-bar"></i> Simulation Results</h3>
+                    
+                    <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Running simulation...</p>
+                    </div>
+
+                    <div id="errorDisplay" class="error-display" style="display: none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <div class="error-content">
+                            <h4>Simulation Error</h4>
+                            <p id="errorMessage"></p>
+                        </div>
+                    </div>
+
+                    <div id="resultsDisplay" class="results-display" style="display: none;">
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-value" id="totalRuns">0</div>
+                                <div class="stat-label">Total Runs</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="meanVacancies">0.00</div>
+                                <div class="stat-label">Mean Vacancies</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="stdVacancies">0.00</div>
+                                <div class="stat-label">Std Deviation</div>
+                            </div>
+                        </div>
+
+                        <div class="chart-container">
+                            <canvas id="histogramChart" width="400" height="200"></canvas>
+                        </div>
+
+                        <div class="data-table">
+                            <h4>Raw Data</h4>
+                            <div id="rawDataTable"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -174,7 +174,7 @@ end
 
 mutable struct Parameters
     primaryVectors::Matrix{Float64}
-    primaryVectors_INV::Matrix{Float64}
+    primaryVectors_INV::Matrix{Float64} # not a input 
     latticeRanges::Matrix{Int64}
     basisTypes::Vector{Int64}
     basis::Matrix{Float64}
@@ -185,6 +185,7 @@ mutable struct Parameters
     #optional 
     periodic::Vector{Bool}
     isOrthogonal::Bool
+    isPrimaryVectorOrthogonal::Bool  # not a input 
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     pRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     stopEnergy::Float64
@@ -241,10 +242,13 @@ function Parameters(
     if !isdir(θτRepository)
         error("θτRepository $(θτRepository) does not exist.")
     end
+    isPrimaryVectorOrthogonal = (primaryVectors[1,2] == 0.0 && primaryVectors[1,3] == 0.0 && 
+                    primaryVectors[2,1] == 0.0 && primaryVectors[2,3] == 0.0 && 
+                    primaryVectors[3,1] == 0.0 && primaryVectors[3,2] == 0.0)
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict,
-                      periodic, isOrthogonal,
+                      periodic, isOrthogonal, isPrimaryVectorOrthogonal,
                       EPowerRange, pRange, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, dumpFolder, isLog,
                       DTEMode, 
                       #soapParameters, 
