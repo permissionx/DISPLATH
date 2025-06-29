@@ -1,6 +1,7 @@
 # using BCA.jl
 home = "/beegfs/home/xuke/Researches/Irradiation_Li-Tianzhao/4.DISPLATH/DISPLATH/"
-include(home * "/src/main.jl")
+const IS_DYNAMIC_LOAD = false
+include(home * "/src/DISPLATH.jl")
 ##include("modules.jl")
 
 
@@ -29,14 +30,14 @@ latticeRanges = [0 lx; 0 ly; 1 2]
 
 pMax = 1.45
 vacancyRecoverDistance = 3.0
-# for Ne ion 
 seed = 42
+const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
+
 EPowerRange = -1.0:0.045:8.0
 pRange = 0.0:0.01:2.0
 stopEnergy = 0.1
-const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
 parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis,
-                        θτRepository, pMax, vacancyRecoverDistance, typeDict, seed;
+                        θτRepository, pMax, vacancyRecoverDistance, typeDict;
                         EPowerRange=EPowerRange, pRange=pRange, stopEnergy=stopEnergy,
                         isDumpInCascade=false)
 
