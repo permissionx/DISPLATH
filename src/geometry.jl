@@ -101,7 +101,7 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
         for x in 1:sizes[1]
             for y in 1:sizes[2]
                 for z in 1:sizes[3]
-                    cells[x, y, z] = Cell(Vector{Int64}([x,y,z]), Vector{Atom}(), Vector{LatticePoint}(), 
+                    cells[x, y, z] = Cell((x, y, z), Vector{Atom}(), Vector{LatticePoint}(), 
                                              Matrix{Float64}(undef, 3, 2), Array{NeighborCellInfo, 3}(undef, 3, 3, 3), 
                                              false, 0.0)
                 end
@@ -322,7 +322,7 @@ end
 function LatticePoint(atom::Atom)
     environment = Vector{Int64}()
     return LatticePoint(copy(atom.index), copy(atom.type), 
-                        copy(atom.coordinate), copy(atom.cellIndex), environment,
+                        copy(atom.coordinate), atom.cellIndex, environment,
                         atom.index)
 end
 
@@ -588,7 +588,7 @@ function Restore!(simulator::Simulator)
     end
 end
 
-function Restore_staticLoad!!(simulator::Simulator)
+function Restore_staticLoad!(simulator::Simulator)
     for atom in simulator.atoms[simulator.numberOfAtomsWhenStored+1:end]
         # Delete ions remained in the system from their cells.
         # Ions in simulator.atoms will be deleted latter by setting simulator.atoms = simulator.atoms[1:maxAtomID]. 

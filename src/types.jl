@@ -172,7 +172,7 @@ struct Element
 end
 
 
-struct Parameters
+mutable struct Parameters
     primaryVectors::Matrix{Float64}
     primaryVectors_INV::Matrix{Float64}
     latticeRanges::Matrix{Int64}

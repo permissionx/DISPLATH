@@ -8,7 +8,7 @@ include(home * "src/DISPLATH.jl")
 a = 5.431
 primaryVectors = [a 0.0 0.0; 0.0 a 0.0; 0.0 0.0 a]
 boxSizes = [400, 400, 1005]
-inputGridVectors = [a*3.4 0.0 0.0; 0.0 a*3.4 0.0; 0.0 0.0 a*3.4]
+inputGridVectors = [a*1.4 0.0 0.0; 0.0 a*1.4 0.0; 0.0 0.0 a*1.4]
 latticeRanges = [0 400; 0 400; 2 1000]
 # Si diamond structure - conventional cell with 8 atoms
 basis = [0.0 0.0 0.0;           # atom 1
@@ -48,10 +48,9 @@ parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis,
 simulator = Simulator(boxSizes, inputGridVectors, parameters)
 
 
-
-for n in 1:1
+for n in 1:10
     energy = 100_000.0 - (n-1) * 10_000.0
-    for i in 1:1
+    for i in 1:1000
         Restore!(simulator)
         offset = [boxSizes[1]/2*a, boxSizes[2]/2*a, boxSizes[3]*a-2]
         rp = RandomPointInCircle(30.0)
