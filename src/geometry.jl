@@ -83,7 +83,8 @@ function SetCellNeighborInfo!(cell::Cell, grid::Grid)
         end
     end
 end
- 
+
+
 function CreateGrid(box::Box, inputVectors::Matrix{Float64})
     if !box.isOrthogonal
         error("The box is not orthogonal, please use the orthogonal box.")
@@ -98,11 +99,18 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
     println("----------------------------------------")
     if ! IS_DYNAMIC_LOAD
         cells = Array{Cell, 3}(undef, sizes[1], sizes[2], sizes[3])
-        for x in 1:sizes[1]
+        @showprogress desc="Creating cells: " for x in 1:sizes[1]
             for y in 1:sizes[2]
                 for z in 1:sizes[3]
+                    ranges = Matrix{Float64}(undef, 3, 2)
+                    ranges[1,1] = (x-1) * vectors[1,1]
+                    ranges[1,2] = x * vectors[1,1]
+                    ranges[2,1] = (y-1) * vectors[2,2]
+                    ranges[2,2] = y * vectors[2,2]
+                    ranges[3,1] = (z-1) * vectors[3,3]
+                    ranges[3,2] = z * vectors[3,3]  
                     cells[x, y, z] = Cell((x, y, z), Vector{Atom}(), Vector{LatticePoint}(), 
-                                             Matrix{Float64}(undef, 3, 2), Array{NeighborCellInfo, 3}(undef, 3, 3, 3), 
+                                             ranges, Array{NeighborCellInfo, 3}(undef, 3, 3, 3), 
                                              false, 0.0)
                 end
             end    
@@ -513,7 +521,7 @@ function SetEnergy!(atom::Atom, energy::Float64)
 end
 
 function GetNeighborVacancy(atom::Atom, simulator::Simulator)
-    grid = simulator.cellGird    
+    grid = simulator.grid    
     cell = GetCell(grid, atom.cellIndex)
     nearestVacancyDistance_squared = Inf
     nearestVacancyIndex = -1
