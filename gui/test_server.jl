@@ -1,5 +1,8 @@
 using HTTP
 
+# Include logging utilities
+include("../src/logging.jl")
+
 function simple_handler(req::HTTP.Request)
     if req.target == "/"
         return HTTP.Response(200, ["Content-Type" => "text/html"], """
@@ -17,5 +20,5 @@ function simple_handler(req::HTTP.Request)
     end
 end
 
-println("Starting test server on port 8081...")
+log_success("Starting test server on port 8081...")
 HTTP.serve(simple_handler, "0.0.0.0", 8081)

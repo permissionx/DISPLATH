@@ -12,30 +12,33 @@ Pkg.activate("..")
 # Include the server
 include("server.jl")
 
+# Include logging utilities
+include("../src/logging.jl")
+
 # Get port from command line argument or use default
 port = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 8080
 
-println("=" ^ 60)
-println("🚀 DISPLAΘ BCA Simulator Web GUI")
-println("=" ^ 60)
-println()
-println("📂 Project: $(basename(dirname(pwd())))")
-println("🌐 Server:  http://localhost:$port")
-println("⏰ Started: $(now())")
-println()
-println("💡 Tips:")
-println("   • Open the URL above in your web browser")
-println("   • Use Ctrl+C to stop the server")
-println("   • Check the console for error messages")
-println()
-println("=" ^ 60)
+log_info("=" ^ 60)
+log_success("🚀 DISPLAΘ BCA Simulator Web GUI")
+log_info("=" ^ 60)
+log_info("")
+log_info("📂 Project: $(basename(dirname(pwd())))")
+log_info("🌐 Server:  http://localhost:$port")
+log_info("⏰ Started: $(now())")
+log_info("")
+log_info("💡 Tips:")
+log_info("   • Open the URL above in your web browser")
+log_info("   • Use Ctrl+C to stop the server")
+log_info("   • Check the console for error messages")
+log_info("")
+log_info("=" ^ 60)
 
 try
     # Start the server
     start_server(port)
 catch InterruptException
-    println("\n👋 Server stopped by user")
+    log_info("\n👋 Server stopped by user")
 catch e
-    println("\n❌ Server error: $e")
+    log_error("\n❌ Server error: $e")
     rethrow(e)
 end

@@ -26,6 +26,7 @@ include("dte.jl")
 include("kmc.jl")
 include("dynamics.jl")
 include("dynamic_load.jl")
+include("logging.jl")
 include("utils.jl")
 
 

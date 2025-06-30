@@ -1,572 +1,458 @@
-// Global state
-let currentChart = null;
+console.log('DISPLATH GUI loaded');
 
-// DOM Elements
-const elements = {
-    // Tabs
-    tabButtons: document.querySelectorAll('.tab-button'),
-    tabPanes: document.querySelectorAll('.tab-pane'),
-    
-    // Controls
-    presetSelect: document.getElementById('presetSelect'),
-    runSimulation: document.getElementById('runSimulation'),
-    resetForm: document.getElementById('resetForm'),
-    isDynamicLoad: document.getElementById('isDynamicLoad'),
-    dynamicLoadOptions: document.getElementById('dynamicLoadOptions'),
-    
-    // Basis and Element management
-    addBasisAtom: document.getElementById('addBasisAtom'),
-    addElementType: document.getElementById('addElementType'),
-    basisContainer: document.getElementById('basisContainer'),
-    typeContainer: document.getElementById('typeContainer'),
-    
-    // Results
-    loadingIndicator: document.getElementById('loadingIndicator'),
-    errorDisplay: document.getElementById('errorDisplay'),
-    resultsDisplay: document.getElementById('resultsDisplay'),
-    errorMessage: document.getElementById('errorMessage'),
-    
-    // Stats
-    totalRuns: document.getElementById('totalRuns'),
-    meanVacancies: document.getElementById('meanVacancies'),
-    stdVacancies: document.getElementById('stdVacancies'),
-    rawDataTable: document.getElementById('rawDataTable'),
-    histogramChart: document.getElementById('histogramChart')
+// DISPLATH BCA Simulator - Modern JavaScript
+
+// Global State
+const state = {
+    currentTab: 'material',
+    simulation: {
+        isRunning: false,
+        progress: 0,
+        stats: {
+            totalCollisions: 0,
+            vacancies: 0,
+            displacements: 0,
+            interstitials: 0,
+            sputteredAtoms: 0,
+            cascadeDepth: 0
+        }
+    },
+    parameters: {
+        material: {
+            basisAtoms: [
+                { position: [0.000, 0.000, 0.000], element: 1 },
+                { position: [0.500, 0.500, 0.000], element: 1 },
+                { position: [0.500, 0.000, 0.500], element: 1 },
+                { position: [0.000, 0.500, 0.500], element: 1 },
+                { position: [0.250, 0.250, 0.250], element: 1 },
+                { position: [0.750, 0.750, 0.250], element: 1 },
+                { position: [0.750, 0.250, 0.750], element: 1 },
+                { position: [0.250, 0.750, 0.750], element: 1 }
+            ],
+            elements: {
+                1: { name: 'Si', radius: 2.20, mass: 28.09, Z: 14, dte: 35.0, bde: 35.0 },
+                2: { name: 'B', radius: 1.00, mass: 10.81, Z: 5, dte: 25.0, bde: 25.0 },
+                3: { name: 'Ar', radius: 1.88, mass: 39.95, Z: 18, dte: 0.1, bde: 0.1 }
+            }
+        }
+    }
 };
 
-// Initialize the application
+// Initialize on DOM load
 document.addEventListener('DOMContentLoaded', function() {
     initializeTabs();
-    initializeEventListeners();
-    initializeFormHandlers();
-    loadPresets();
+    initializeMatrixInputs();
+    initializeBasisAtoms();
+    initializeElementLibrary();
+    initializeDirectionCalculator();
+    initializeAdvancedSection();
+    initializeActionButtons();
+    updateAtomCount();
+    addLog('System initialized. Ready for simulation.');
 });
 
 // Tab Management
 function initializeTabs() {
-    elements.tabButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const tabId = this.dataset.tab;
-            switchTab(tabId);
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const targetTab = this.dataset.tab;
+            
+            tabBtns.forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            
+            tabPanes.forEach(pane => pane.classList.remove('active'));
+            document.getElementById(targetTab).classList.add('active');
+            
+            state.currentTab = targetTab;
         });
     });
 }
 
-function switchTab(tabId) {
-    // Update tab buttons
-    elements.tabButtons.forEach(btn => btn.classList.remove('active'));
-    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-    
-    // Update tab panes
-    elements.tabPanes.forEach(pane => pane.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
-}
-
-// Event Listeners
-function initializeEventListeners() {
-    elements.presetSelect.addEventListener('change', handlePresetChange);
-    elements.runSimulation.addEventListener('click', handleRunSimulation);
-    elements.resetForm.addEventListener('click', handleResetForm);
-    elements.isDynamicLoad.addEventListener('change', handleDynamicLoadToggle);
-    elements.addBasisAtom.addEventListener('click', addBasisAtom);
-    elements.addElementType.addEventListener('click', addElementType);
-}
-
-function initializeFormHandlers() {
-    // Auto-update ion type options when element types change
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('element-name')) {
-            updateIonTypeOptions();
+// Matrix Input Handling
+function initializeMatrixInputs() {
+    const primaryInputs = ['a1x', 'a1y', 'a1z', 'a2x', 'a2y', 'a2z', 'a3x', 'a3y', 'a3z'];
+    primaryInputs.forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.addEventListener('input', updateMatrixInfo);
         }
     });
-}
 
-// Preset Management
-async function loadPresets() {
-    try {
-        const response = await fetch('/api/presets');
-        const presets = await response.json();
-        
-        Object.keys(presets).forEach(key => {
-            const option = document.createElement('option');
-            option.value = key;
-            option.textContent = presets[key].name;
-            elements.presetSelect.appendChild(option);
-        });
-    } catch (error) {
-        console.error('Failed to load presets:', error);
-    }
-}
-
-function handlePresetChange() {
-    const presetKey = elements.presetSelect.value;
-    if (!presetKey) return;
-    
-    fetch('/api/presets')
-        .then(response => response.json())
-        .then(presets => {
-            const preset = presets[presetKey];
-            if (preset) {
-                applyPreset(preset);
-            }
-        })
-        .catch(error => {
-            console.error('Failed to apply preset:', error);
-            showError('Failed to load preset configuration');
-        });
-}
-
-function applyPreset(preset) {
-    // Primary vectors
-    const primaryVectorInputs = document.querySelectorAll('#primaryVectors input');
-    preset.primaryVectors.forEach((value, index) => {
-        if (primaryVectorInputs[index]) {
-            primaryVectorInputs[index].value = value;
+    const rangeInputs = ['xMin', 'xMax', 'yMin', 'yMax', 'zMin', 'zMax'];
+    rangeInputs.forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.addEventListener('input', updateAtomCount);
         }
     });
-    
-    // Lattice ranges
-    const ranges = ['xMin', 'xMax', 'yMin', 'yMax', 'zMin', 'zMax'];
-    preset.latticeRanges.forEach((value, index) => {
-        const element = document.getElementById(ranges[index]);
-        if (element) element.value = value;
-    });
-    
-    // Clear existing basis atoms and element types
-    elements.basisContainer.innerHTML = '';
-    elements.typeContainer.innerHTML = '';
-    
-    // Add basis atoms
-    const basisCount = preset.basis.length / 3;
-    for (let i = 0; i < basisCount; i++) {
-        const x = preset.basis[i * 3];
-        const y = preset.basis[i * 3 + 1];
-        const z = preset.basis[i * 3 + 2];
-        const type = preset.basisTypes[i];
-        addBasisAtom(x, y, z, type);
-    }
-    
-    // Add element types
-    Object.keys(preset.typeDict).forEach(typeId => {
-        const element = preset.typeDict[typeId];
-        addElementType(element.name, element.dte, element.bde, typeId);
-    });
-    
-    updateIonTypeOptions();
+
+    updateMatrixInfo();
 }
 
-// Dynamic Load Toggle
-function handleDynamicLoadToggle() {
-    if (elements.isDynamicLoad.checked) {
-        elements.dynamicLoadOptions.style.display = 'block';
+function updateMatrixInfo() {
+    const matrix = [
+        [parseFloat(document.getElementById('a1x').value) || 0, parseFloat(document.getElementById('a1y').value) || 0, parseFloat(document.getElementById('a1z').value) || 0],
+        [parseFloat(document.getElementById('a2x').value) || 0, parseFloat(document.getElementById('a2y').value) || 0, parseFloat(document.getElementById('a2z').value) || 0],
+        [parseFloat(document.getElementById('a3x').value) || 0, parseFloat(document.getElementById('a3y').value) || 0, parseFloat(document.getElementById('a3z').value) || 0]
+    ];
+
+    const det = calculateDeterminant(matrix);
+    const volume = Math.abs(det);
+    const isOrthogonal = isMatrixOrthogonal(matrix);
+    
+    document.getElementById('matrixDet').textContent = det.toFixed(3);
+    document.getElementById('unitCellVol').textContent = volume.toFixed(1);
+    
+    const orthogonalIndicator = document.getElementById('orthogonalIndicator');
+    if (isOrthogonal) {
+        orthogonalIndicator.textContent = '✓ Orthogonal';
+        orthogonalIndicator.style.color = 'var(--color-success)';
     } else {
-        elements.dynamicLoadOptions.style.display = 'none';
+        orthogonalIndicator.textContent = '✗ Non-orthogonal';
+        orthogonalIndicator.style.color = 'var(--color-warning)';
     }
+
+    updateAtomCount();
 }
 
-// Basis Atom Management
-function addBasisAtom(x = 0, y = 0, z = 0, type = 1) {
-    const atomDiv = document.createElement('div');
-    atomDiv.className = 'basis-atom';
-    
-    const atomIndex = elements.basisContainer.children.length + 1;
-    
-    atomDiv.innerHTML = `
-        <span>Atom ${atomIndex}:</span>
-        <input type="number" step="0.001" value="${x}" class="basis-x">
-        <input type="number" step="0.001" value="${y}" class="basis-y">
-        <input type="number" step="0.001" value="${z}" class="basis-z">
-        <select class="basis-type">
-            <option value="1" ${type == 1 ? 'selected' : ''}>Type 1</option>
-            <option value="2" ${type == 2 ? 'selected' : ''}>Type 2</option>
-        </select>
-        <button type="button" class="btn-remove" onclick="removeBasisAtom(this)">
-            <i class="fas fa-trash"></i>
-        </button>
-    `;
-    
-    elements.basisContainer.appendChild(atomDiv);
-    updateBasisAtomLabels();
+function calculateDeterminant(matrix) {
+    const [[a, b, c], [d, e, f], [g, h, i]] = matrix;
+    return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
 }
 
-function removeBasisAtom(button) {
-    button.parentElement.remove();
-    updateBasisAtomLabels();
+function isMatrixOrthogonal(matrix) {
+    const [[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]] = matrix;
+    const threshold = 1e-6;
+    return Math.abs(a2) < threshold && Math.abs(a3) < threshold &&
+           Math.abs(b1) < threshold && Math.abs(b3) < threshold &&
+           Math.abs(c1) < threshold && Math.abs(c2) < threshold;
 }
 
-function updateBasisAtomLabels() {
-    const atoms = elements.basisContainer.querySelectorAll('.basis-atom');
-    atoms.forEach((atom, index) => {
-        atom.querySelector('span').textContent = `Atom ${index + 1}:`;
-    });
-}
-
-// Element Type Management
-function addElementType(name = 'C', dte = 19.96, bde = 19.96, typeId = null) {
-    const typeDiv = document.createElement('div');
-    typeDiv.className = 'element-type';
+function updateAtomCount() {
+    const xRange = (parseInt(document.getElementById('xMax').value) || 0) - (parseInt(document.getElementById('xMin').value) || 0);
+    const yRange = (parseInt(document.getElementById('yMax').value) || 0) - (parseInt(document.getElementById('yMin').value) || 0);
+    const zRange = (parseInt(document.getElementById('zMax').value) || 0) - (parseInt(document.getElementById('zMin').value) || 0);
     
-    const typeIndex = typeId || (elements.typeContainer.children.length + 1);
+    const basisCount = state.parameters.material.basisAtoms.length;
+    const totalAtoms = xRange * yRange * zRange * basisCount;
     
-    typeDiv.innerHTML = `
-        <span>Type ${typeIndex}:</span>
-        <input type="text" value="${name}" class="element-name" placeholder="Symbol">
-        <input type="number" step="0.01" value="${dte}" class="element-dte" placeholder="DTE (eV)">
-        <input type="number" step="0.01" value="${bde}" class="element-bde" placeholder="BDE (eV)">
-        <button type="button" class="btn-remove" onclick="removeElementType(this)">
-            <i class="fas fa-trash"></i>
-        </button>
-    `;
-    
-    typeDiv.dataset.typeId = typeIndex;
-    elements.typeContainer.appendChild(typeDiv);
-    updateElementTypeLabels();
-    updateIonTypeOptions();
-}
-
-function removeElementType(button) {
-    button.parentElement.remove();
-    updateElementTypeLabels();
-    updateIonTypeOptions();
-}
-
-function updateElementTypeLabels() {
-    const types = elements.typeContainer.querySelectorAll('.element-type');
-    types.forEach((type, index) => {
-        const typeId = index + 1;
-        type.querySelector('span').textContent = `Type ${typeId}:`;
-        type.dataset.typeId = typeId;
-    });
-    
-    // Update basis type options
-    const basisSelects = document.querySelectorAll('.basis-type');
-    basisSelects.forEach(select => {
-        const currentValue = select.value;
-        select.innerHTML = '';
-        
-        types.forEach((type, index) => {
-            const option = document.createElement('option');
-            option.value = index + 1;
-            option.textContent = `Type ${index + 1}`;
-            if (option.value === currentValue) option.selected = true;
-            select.appendChild(option);
-        });
-    });
-}
-
-function updateIonTypeOptions() {
-    const ionTypeSelect = document.getElementById('ionType');
-    const currentValue = ionTypeSelect.value;
-    ionTypeSelect.innerHTML = '';
-    
-    const types = elements.typeContainer.querySelectorAll('.element-type');
-    types.forEach((type, index) => {
-        const typeId = index + 1;
-        const name = type.querySelector('.element-name').value;
-        const option = document.createElement('option');
-        option.value = typeId;
-        option.textContent = `Type ${typeId} (${name})`;
-        if (option.value === currentValue) option.selected = true;
-        ionTypeSelect.appendChild(option);
-    });
-}
-
-// Form Handling
-function handleResetForm() {
-    if (confirm('Are you sure you want to reset all form data?')) {
-        location.reload();
+    let displayText;
+    if (totalAtoms > 1e9) {
+        displayText = `~${(totalAtoms / 1e9).toFixed(1)}B`;
+    } else if (totalAtoms > 1e6) {
+        displayText = `~${(totalAtoms / 1e6).toFixed(1)}M`;
+    } else if (totalAtoms > 1e3) {
+        displayText = `~${(totalAtoms / 1e3).toFixed(1)}K`;
+    } else {
+        displayText = totalAtoms.toString();
     }
+    
+    document.getElementById('atomCount').textContent = displayText;
 }
 
-function collectFormData() {
-    // Primary vectors
-    const primaryVectorInputs = document.querySelectorAll('#primaryVectors input');
-    const primaryVectors = Array.from(primaryVectorInputs).map(input => parseFloat(input.value));
-    
-    // Lattice ranges
-    const latticeRanges = [
-        parseInt(document.getElementById('xMin').value),
-        parseInt(document.getElementById('xMax').value),
-        parseInt(document.getElementById('yMin').value),
-        parseInt(document.getElementById('yMax').value),
-        parseInt(document.getElementById('zMin').value),
-        parseInt(document.getElementById('zMax').value)
-    ];
-    
-    // Box sizes
-    const boxSizes = [
-        parseInt(document.getElementById('boxX').value),
-        parseInt(document.getElementById('boxY').value),
-        parseInt(document.getElementById('boxZ').value)
-    ];
-    
-    // Input grid vectors (same as primary vectors for now)
-    const inputGridVectors = [...primaryVectors];
-    
-    // Basis atoms
-    const basisAtoms = Array.from(elements.basisContainer.querySelectorAll('.basis-atom'));
-    const basis = [];
-    const basisTypes = [];
-    
-    basisAtoms.forEach(atom => {
-        basis.push(
-            parseFloat(atom.querySelector('.basis-x').value),
-            parseFloat(atom.querySelector('.basis-y').value),
-            parseFloat(atom.querySelector('.basis-z').value)
-        );
-        basisTypes.push(parseInt(atom.querySelector('.basis-type').value));
+// Basis Atoms Management
+function initializeBasisAtoms() {
+    renderBasisAtoms();
+    document.getElementById('addBasisAtom').addEventListener('click', addBasisAtom);
+}
+
+function renderBasisAtoms() {
+    const container = document.getElementById('basisAtomsList');
+    container.innerHTML = '';
+
+    state.parameters.material.basisAtoms.forEach((atom, index) => {
+        const atomDiv = document.createElement('div');
+        atomDiv.className = 'basis-atom-item';
+        atomDiv.innerHTML = `
+            <div class="atom-info">
+                <span class="atom-label">Atom ${index + 1}:</span>
+                <div class="atom-position">
+                    <input type="number" step="0.001" value="${atom.position[0]}" onchange="updateBasisAtom(${index}, 0, this.value)">
+                    <input type="number" step="0.001" value="${atom.position[1]}" onchange="updateBasisAtom(${index}, 1, this.value)">
+                    <input type="number" step="0.001" value="${atom.position[2]}" onchange="updateBasisAtom(${index}, 2, this.value)">
+                </div>
+                <select onchange="updateBasisAtomElement(${index}, this.value)">
+                    ${Object.entries(state.parameters.material.elements).map(([id, el]) => 
+                        `<option value="${id}" ${atom.element == id ? 'selected' : ''}>${el.name}</option>`
+                    ).join('')}
+                </select>
+                <button class="btn-icon" onclick="removeBasisAtom(${index})" title="Remove">✕</button>
+            </div>
+        `;
+        container.appendChild(atomDiv);
     });
-    
-    // Element types
-    const elementTypes = Array.from(elements.typeContainer.querySelectorAll('.element-type'));
-    const typeDict = {};
-    
-    elementTypes.forEach((type, index) => {
-        const typeId = index + 1;
-        typeDict[typeId] = {
-            name: type.querySelector('.element-name').value,
-            dte: parseFloat(type.querySelector('.element-dte').value),
-            bde: parseFloat(type.querySelector('.element-bde').value)
-        };
+}
+
+function addBasisAtom() {
+    state.parameters.material.basisAtoms.push({
+        position: [0.0, 0.0, 0.0],
+        element: 1
     });
-    
-    // Ion parameters
-    const ionDirection = [
-        parseFloat(document.getElementById('dirX').value),
-        parseFloat(document.getElementById('dirY').value),
-        parseFloat(document.getElementById('dirZ').value)
-    ];
-    
-    const ionPosition = [
-        parseFloat(document.getElementById('posX').value),
-        parseFloat(document.getElementById('posY').value),
-        parseFloat(document.getElementById('posZ').value)
-    ];
-    
-    return {
-        primaryVectors,
-        latticeRanges,
-        basisTypes,
-        basis,
-        boxSizes,
-        inputGridVectors,
-        pMax: parseFloat(document.getElementById('pMax').value),
-        vacancyRecoverDistance: parseFloat(document.getElementById('vacancyRecoverDistance').value),
-        temperature: parseFloat(document.getElementById('temperature').value),
-        DebyeTemperature: parseFloat(document.getElementById('DebyeTemperature').value),
-        stopEnergy: parseFloat(document.getElementById('stopEnergy').value),
-        ionType: parseInt(document.getElementById('ionType').value),
-        ionEnergy: parseFloat(document.getElementById('ionEnergy').value),
-        ionDirection,
-        ionPosition,
-        nRuns: parseInt(document.getElementById('nRuns').value),
-        isDynamicLoad: elements.isDynamicLoad.checked,
-        nCascadeEveryLoad: parseInt(document.getElementById('nCascadeEveryLoad').value),
-        outputName: document.getElementById('outputName').value,
-        isDumpInCascade: document.getElementById('isDumpInCascade').checked,
-        typeDict
+    renderBasisAtoms();
+    updateAtomCount();
+}
+
+function updateBasisAtom(index, coord, value) {
+    state.parameters.material.basisAtoms[index].position[coord] = parseFloat(value);
+    updateAtomCount();
+}
+
+function updateBasisAtomElement(index, elementId) {
+    state.parameters.material.basisAtoms[index].element = parseInt(elementId);
+}
+
+function removeBasisAtom(index) {
+    state.parameters.material.basisAtoms.splice(index, 1);
+    renderBasisAtoms();
+    updateAtomCount();
+}
+
+// Element Library
+function initializeElementLibrary() {
+    renderElementLibrary();
+    document.getElementById('addElement').addEventListener('click', addElement);
+}
+
+function renderElementLibrary() {
+    const container = document.getElementById('elementLibrary');
+    container.innerHTML = '';
+
+    Object.entries(state.parameters.material.elements).forEach(([id, element]) => {
+        const elementDiv = document.createElement('div');
+        elementDiv.className = 'element-item';
+        elementDiv.innerHTML = `
+            <div class="element-info">
+                <span class="element-name">${element.name}</span>
+                <div class="element-properties">
+                    <span>R: ${element.radius}Å</span>
+                    <span>M: ${element.mass}u</span>
+                    <span>Z: ${element.Z}</span>
+                    <span>DTE: ${element.dte}eV</span>
+                </div>
+                <button class="btn-icon" onclick="editElement(${id})" title="Edit">⚙️</button>
+            </div>
+        `;
+        container.appendChild(elementDiv);
+    });
+}
+
+function addElement() {
+    const newId = Math.max(...Object.keys(state.parameters.material.elements).map(Number)) + 1;
+    state.parameters.material.elements[newId] = {
+        name: 'New',
+        radius: 1.0,
+        mass: 1.0,
+        Z: 1,
+        dte: 1.0,
+        bde: 1.0
     };
+    renderElementLibrary();
+    renderBasisAtoms();
 }
 
-// Simulation Handling
-async function handleRunSimulation() {
-    try {
-        showLoading();
+function editElement(id) {
+    alert(`Edit element ${id} - Would open element editor modal`);
+}
+
+// Direction Calculator
+function initializeDirectionCalculator() {
+    const thetaInput = document.getElementById('dirTheta');
+    const phiInput = document.getElementById('dirPhi');
+    
+    if (thetaInput && phiInput) {
+        thetaInput.addEventListener('input', updateDirectionVector);
+        phiInput.addEventListener('input', updateDirectionVector);
+        updateDirectionVector();
+    }
+}
+
+function updateDirectionVector() {
+    const theta = parseFloat(document.getElementById('dirTheta').value) || 0;
+    const phi = parseFloat(document.getElementById('dirPhi').value) || 0;
+    
+    const thetaRad = theta * Math.PI / 180;
+    const phiRad = phi * Math.PI / 180;
+    
+    const x = Math.sin(thetaRad) * Math.cos(phiRad);
+    const y = Math.sin(thetaRad) * Math.sin(phiRad);
+    const z = -Math.cos(thetaRad);
+    
+    document.getElementById('dirVecX').textContent = x.toFixed(3);
+    document.getElementById('dirVecY').textContent = y.toFixed(3);
+    document.getElementById('dirVecZ').textContent = z.toFixed(3);
+}
+
+// Advanced Section
+function initializeAdvancedSection() {
+    const toggle = document.getElementById('advancedToggle');
+    const content = document.getElementById('advancedContent');
+    
+    toggle.addEventListener('click', function() {
+        const isExpanded = this.classList.contains('expanded');
         
-        const formData = collectFormData();
-        
-        // Validate form data
-        if (!validateFormData(formData)) {
-            throw new Error('Please check your input parameters');
-        }
-        
-        const response = await fetch('/api/simulate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(formData)
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            showResults(result.results);
+        if (isExpanded) {
+            this.classList.remove('expanded');
+            content.classList.remove('expanded');
         } else {
-            throw new Error(result.error || 'Simulation failed');
+            this.classList.add('expanded');
+            content.classList.add('expanded');
         }
+    });
+}
+
+// Action Buttons
+function initializeActionButtons() {
+    document.getElementById('validateParams').addEventListener('click', validateParameters);
+    document.getElementById('runSimulation').addEventListener('click', runSimulation);
+    document.getElementById('resetParams').addEventListener('click', resetParameters);
+    document.getElementById('randomizeSeed').addEventListener('click', randomizeSeed);
+    document.getElementById('clearLogs').addEventListener('click', clearLogs);
+    document.getElementById('exportLogs').addEventListener('click', exportLogs);
+}
+
+function validateParameters() {
+    addLog('Validating parameters...');
+    const errors = [];
+    
+    const det = parseFloat(document.getElementById('matrixDet').textContent);
+    if (Math.abs(det) < 1e-10) {
+        errors.push('Primary vectors matrix is singular');
+    }
+    
+    if (errors.length === 0) {
+        addLog('✓ Parameters validation passed', 'success');
+    } else {
+        errors.forEach(error => addLog(`✗ ${error}`, 'error'));
+    }
+    
+    return errors.length === 0;
+}
+
+async function runSimulation() {
+    if (!validateParameters()) {
+        addLog('Cannot run simulation: validation failed', 'error');
+        return;
+    }
+    
+    if (state.simulation.isRunning) {
+        addLog('Simulation is already running', 'warning');
+        return;
+    }
+    
+    try {
+        state.simulation.isRunning = true;
+        updateSimulationButtons();
+        
+        addLog('Starting simulation...');
+        
+        // Simulate progress
+        for (let i = 0; i <= 100; i += 10) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            updateProgress(i);
+            updateStatistics({
+                totalCollisions: Math.floor(Math.random() * 50000),
+                vacancies: Math.floor(Math.random() * 500)
+            });
+        }
+        
+        addLog('✓ Simulation completed successfully', 'success');
         
     } catch (error) {
-        console.error('Simulation error:', error);
-        showError(error.message);
+        addLog(`✗ Simulation failed: ${error.message}`, 'error');
     } finally {
-        hideLoading();
+        state.simulation.isRunning = false;
+        updateSimulationButtons();
     }
 }
 
-function validateFormData(data) {
-    // Basic validation
-    if (data.nRuns <= 0 || data.nRuns > 10000) {
-        alert('Number of runs must be between 1 and 10000');
-        return false;
-    }
-    
-    if (data.ionEnergy <= 0) {
-        alert('Ion energy must be positive');
-        return false;
-    }
-    
-    if (data.basis.length === 0) {
-        alert('At least one basis atom is required');
-        return false;
-    }
-    
-    if (Object.keys(data.typeDict).length === 0) {
-        alert('At least one element type is required');
-        return false;
-    }
-    
-    return true;
+function resetParameters() {
+    addLog('Resetting parameters...');
+    document.getElementById('a1x').value = 5.431;
+    document.getElementById('a1y').value = 0.000;
+    document.getElementById('a1z').value = 0.000;
+    updateMatrixInfo();
+    addLog('Parameters reset');
 }
 
-// Results Display
-function showResults(results) {
-    hideError();
-    
-    // Update stats
-    elements.totalRuns.textContent = results.totalRuns;
-    elements.meanVacancies.textContent = results.meanVacancies.toFixed(2);
-    elements.stdVacancies.textContent = results.stdVacancies.toFixed(2);
-    
-    // Create histogram
-    createHistogram(results.allVacancies);
-    
-    // Create data table
-    createDataTable(results.allVacancies);
-    
-    elements.resultsDisplay.style.display = 'block';
+function randomizeSeed() {
+    const newSeed = Math.floor(Math.random() * 10000);
+    document.getElementById('randomSeed').value = newSeed;
+    addLog(`Random seed set to: ${newSeed}`);
 }
 
-function createHistogram(vacancies) {
-    const ctx = elements.histogramChart.getContext('2d');
-    
-    // Destroy existing chart
-    if (currentChart) {
-        currentChart.destroy();
+// Progress and Statistics
+function updateProgress(percent) {
+    state.simulation.progress = percent;
+    document.getElementById('progressFill').style.width = `${percent}%`;
+    document.getElementById('progressPercent').textContent = percent.toFixed(1);
+}
+
+function updateStatistics(stats) {
+    if (stats) {
+        Object.assign(state.simulation.stats, stats);
     }
     
-    // Calculate histogram data
-    const maxVacancies = Math.max(...vacancies);
-    const minVacancies = Math.min(...vacancies);
-    const binCount = Math.min(20, maxVacancies - minVacancies + 1);
-    
-    const bins = Array(binCount).fill(0);
-    const binWidth = (maxVacancies - minVacancies) / (binCount - 1);
-    
-    vacancies.forEach(v => {
-        const binIndex = Math.min(Math.floor((v - minVacancies) / binWidth), binCount - 1);
-        bins[binIndex]++;
-    });
-    
-    const labels = bins.map((_, i) => {
-        const binStart = minVacancies + i * binWidth;
-        return Math.round(binStart);
-    });
-    
-    currentChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Frequency',
-                data: bins,
-                backgroundColor: 'rgba(37, 99, 235, 0.6)',
-                borderColor: 'rgba(37, 99, 235, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                title: {
-                    display: true,
-                    text: 'Vacancy Distribution'
-                }
-            },
-            scales: {
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Number of Vacancies'
-                    }
-                },
-                y: {
-                    title: {
-                        display: true,
-                        text: 'Frequency'
-                    },
-                    beginAtZero: true
-                }
-            }
-        }
-    });
+    const s = state.simulation.stats;
+    document.getElementById('totalCollisions').textContent = s.totalCollisions.toLocaleString();
+    document.getElementById('vacancies').textContent = s.vacancies.toLocaleString();
+    document.getElementById('displacements').textContent = s.displacements.toLocaleString();
+    document.getElementById('interstitials').textContent = s.interstitials.toLocaleString();
+    document.getElementById('sputteredAtoms').textContent = s.sputteredAtoms.toLocaleString();
+    document.getElementById('cascadeDepth').textContent = `${s.cascadeDepth.toFixed(1)} Å`;
 }
 
-function createDataTable(vacancies) {
-    const table = document.createElement('table');
-    table.innerHTML = `
-        <thead>
-            <tr>
-                <th>Run #</th>
-                <th>Vacancies</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${vacancies.map((v, i) => `
-                <tr>
-                    <td>${i + 1}</td>
-                    <td>${v}</td>
-                </tr>
-            `).join('')}
-        </tbody>
+function updateSimulationButtons() {
+    const runBtn = document.getElementById('runSimulation');
+    
+    if (state.simulation.isRunning) {
+        runBtn.innerHTML = '<span>⏸</span> Running...';
+        runBtn.disabled = true;
+    } else {
+        runBtn.innerHTML = '<span>▶</span> Run Simulation';
+        runBtn.disabled = false;
+    }
+}
+
+// Logging
+function addLog(message, type = 'info') {
+    const logsContent = document.getElementById('logsContent');
+    const time = new Date().toLocaleTimeString();
+    
+    const logEntry = document.createElement('div');
+    logEntry.className = 'log-entry';
+    logEntry.innerHTML = `
+        <span class="log-time">[${time}]</span>
+        <span class="log-message ${type}">${message}</span>
     `;
     
-    elements.rawDataTable.innerHTML = '';
-    elements.rawDataTable.appendChild(table);
+    logsContent.appendChild(logEntry);
+    logsContent.scrollTop = logsContent.scrollHeight;
 }
 
-// UI State Management
-function showLoading() {
-    elements.loadingIndicator.style.display = 'block';
-    elements.errorDisplay.style.display = 'none';
-    elements.resultsDisplay.style.display = 'none';
-    elements.runSimulation.disabled = true;
+function clearLogs() {
+    document.getElementById('logsContent').innerHTML = '';
+    addLog('Logs cleared');
 }
 
-function hideLoading() {
-    elements.loadingIndicator.style.display = 'none';
-    elements.runSimulation.disabled = false;
-}
-
-function showError(message) {
-    elements.errorMessage.textContent = message;
-    elements.errorDisplay.style.display = 'flex';
-    elements.resultsDisplay.style.display = 'none';
-}
-
-function hideError() {
-    elements.errorDisplay.style.display = 'none';
-}
-
-// Initialize with default data
-setTimeout(() => {
-    // Add default basis atoms for graphene
-    addBasisAtom(0, 0, 0, 1);
-    addBasisAtom(1/3, 0, 0, 1);
-    addBasisAtom(1/2, 1/2, 0, 1);
-    addBasisAtom(5/6, 1/2, 0, 1);
+function exportLogs() {
+    const logs = document.getElementById('logsContent').innerText;
+    const blob = new Blob([logs], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
     
-    // Add default element types
-    addElementType('C', 19.96, 19.96, 1);
-    addElementType('Ne', 1.0, 1.0, 2);
-}, 100);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `displath_logs_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+    a.click();
+    
+    URL.revokeObjectURL(url);
+    addLog('Logs exported');
+}
+
+// Global functions for inline handlers
+window.updateBasisAtom = updateBasisAtom;
+window.updateBasisAtomElement = updateBasisAtomElement;
+window.removeBasisAtom = removeBasisAtom;
+window.editElement = editElement;

@@ -3,6 +3,9 @@ using JSON3
 using Dates
 using Random
 
+# Include logging utilities
+include("../src/logging.jl")
+
 # Include the DISPLAΘ simulation code
 home = dirname(dirname(@__FILE__))
 const IS_DYNAMIC_LOAD = false # Will be set by GUI
@@ -216,8 +219,8 @@ function handle_request(req::HTTP.Request)
 end
 
 function start_server(port::Int = 8080)
-    println("Starting DISPLAΘ GUI server on port $port...")
-    println("Open http://localhost:$port in your browser")
+    log_success("Starting DISPLAΘ GUI server on port $port...")
+log_info("Open http://localhost:$port in your browser")
     
     server = HTTP.serve(handle_request, "0.0.0.0", port)
     return server

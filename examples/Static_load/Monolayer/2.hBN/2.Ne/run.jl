@@ -72,7 +72,7 @@ for energy in energys
 end
 
 
-println("Outputting data...")
+log_info("Outputting data...")
 open("vacancy.csv", "w") do f
     write(f, "n,energy,BVacancy,NVacancy\n")
     for n in sort(collect(keys(vacancy_data)))
