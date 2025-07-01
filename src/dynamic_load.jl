@@ -31,7 +31,6 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
     x_min, x_max = ranges[1, 1], ranges[1, 2]
     y_min, y_max = ranges[2, 1], ranges[2, 2] 
     z_min, z_max = ranges[3, 1], ranges[3, 2]
-    atoms = Vector{Atom}()
     # Optimized generation for orthogonal case
     a1, a2, a3 = primaryVectors[1,1], primaryVectors[2,2], primaryVectors[3,3]
     # Pre-compute which lattice ranges actually intersect with cell
@@ -69,15 +68,20 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
         if (coordinate[1] >= x_min && coordinate[1] <= x_max &&
             coordinate[2] >= y_min && coordinate[2] <= y_max &&
             coordinate[3] >= z_min && coordinate[3] <= z_max)
+            for vacancy in cell.vacancies
+                if ComputeDistance_squared(coordinate, vacancy.coordinate, (Int8(0), Int8(0), Int8(0)), simulator.box) < 1E-10
+                    continue
+                end
+            end
             atom = Atom(basisTypes[i], coordinate, parameters)
             atom.latticeCoordinate .= atom.coordinate
             atom.cellIndex = cell.index
             atom.index = 0  # temporary value
             atom.isNewlyLoaded = true
-            push!(atoms, atom)
+            Pertubation!(atom, simulator)
+            push!(cell.latticeAtoms, atom)
         end
     end
-    return atoms 
 end
 
 function ComputeLatticeAtoms_General!(cell::Cell, simulator::Simulator)
@@ -112,7 +116,6 @@ function ComputeLatticeAtoms_General!(cell::Cell, simulator::Simulator)
     x_min, x_max = ranges[1, 1], ranges[1, 2]
     y_min, y_max = ranges[2, 1], ranges[2, 2] 
     z_min, z_max = ranges[3, 1], ranges[3, 2]
-    atoms = Vector{Atom}()
     # Original generation for non-orthogonal case
     for x in n1, y in n2, z in n3, i in 1:length(basisTypes)
         coordinate = primaryVectors' * (Float64[x, y, z] + basis[i, :])
@@ -121,38 +124,30 @@ function ComputeLatticeAtoms_General!(cell::Cell, simulator::Simulator)
         if (coordinate[1] >= x_min && coordinate[1] <= x_max &&
             coordinate[2] >= y_min && coordinate[2] <= y_max &&
             coordinate[3] >= z_min && coordinate[3] <= z_max)
+            for vacancy in cell.vacancies
+                if ComputeDistance_squared(coordinate, vacancy.coordinate, (Int8(0), Int8(0), Int8(0)), simulator.box) < 1E-10
+                    continue
+                end
+            end
             atom = Atom(basisTypes[i], coordinate, parameters)
             atom.latticeCoordinate .= atom.coordinate
             atom.cellIndex = cell.index
             atom.index = 0  # temporary value
             atom.isNewlyLoaded = true
-            push!(atoms, atom)
+            Pertubation!(atom, simulator)
+            push!(cell.latticeAtoms, atom)
         end
     end
-    return atoms
 end
 
 function LoadCellAtoms!(cell::Cell, simulator::Simulator)
     if !cell.isLoaded
         if simulator.parameters.isPrimaryVectorOrthogonal
-            atoms = ComputeLatticeAtoms_Orthogonal!(cell, simulator)
+            ComputeLatticeAtoms_Orthogonal!(cell, simulator)
         else
-            atoms = ComputeLatticeAtoms_General!(cell, simulator)
+            ComputeLatticeAtoms_General!(cell, simulator)
         end
-        for vacancy in cell.vacancies
-            for na in length(atoms):-1:1
-                if ComputeDistance_squared(atoms[na].coordinate, vacancy.coordinate, (Int8(0), Int8(0), Int8(0)), simulator.box) < 1E-10
-                    deleteat!(atoms, na)
-                    break
-                end
-            end
-        end
-        # Apply perturbations
-        for atom in atoms
-            Pertubation!(atom, simulator)
-        end
-        cell.atomicDensity = length(atoms) / simulator.grid.cellVolume
-        cell.latticeAtoms = atoms
+        cell.atomicDensity = length(cell.latticeAtoms) / simulator.grid.cellVolume
         cell.isLoaded = true
     end
 end
@@ -386,6 +381,10 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         end
         empty!(simulator.loadedCells)
         simulator.minLatticeAtomID = 0
+        rss = parse(Int, read(`ps -o rss= -p $(getpid())`, String)) 
+        if rss > simulator.parameters.maxRSS
+            empty!(simulator.grid.cells)
+        end
     end
 end
 

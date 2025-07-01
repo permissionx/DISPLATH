@@ -88,19 +88,6 @@ mutable struct Cell
     isPushedNeighbor::Bool
 end
 
-const EMPTY_GRIDCELL = Cell(
-    (0,0,0),                          # index
-    Atom[],                         # atoms
-    LatticePoint[],                 # latticePoints
-    zeros(3,2),                     # ranges
-    Array{NeighborCellInfo,3}(undef,3,3,3),
-    false, 0.0,                     # isExplored / density
-    zeros(6,3),                     # vertexMatrix
-    Atom[], false, Atom[],
-    false, UnitRange{Int}[], false
-)
-Base.zero(::Type{Cell}) = EMPTY_GRIDCELL
-
 
 function Cell(
     index::Tuple{Int64, Int64, Int64},
@@ -131,7 +118,7 @@ end
 
 macro cell_storage_type()
     if IS_DYNAMIC_LOAD
-        return :(SparseVector{Cell})
+        return :(Dict{Tuple{Int64, Int64, Int64}, Cell}) #:(SparseVector{Cell})
     else
         return :(Array{Cell, 3})
     end
@@ -204,6 +191,7 @@ mutable struct Parameters
     perfectEnvIndex::Int64
     irrdiationFrequency::Float64
     nCascadeEveryLoad::Int64
+    maxRSS::Int64
 end
 
 
@@ -236,7 +224,8 @@ function Parameters(
     temperature::Float64 = 0.0,   # K
     perfectEnvIndex::Int64 = 0,
     irrdiationFrequency::Float64 = 0.0,
-    nCascadeEveryLoad = 1)
+    nCascadeEveryLoad = 1,
+    maxRSS::Int = 10) # unit: GB
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
     if !isdir(θτRepository)
@@ -246,6 +235,7 @@ function Parameters(
                     primaryVectors[2,1] == 0.0 && primaryVectors[2,3] == 0.0 && 
                     primaryVectors[3,1] == 0.0 && primaryVectors[3,2] == 0.0)
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
+    maxRSS *= 1048576  # unit: kB
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
@@ -254,7 +244,7 @@ function Parameters(
                       #soapParameters, 
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      nCascadeEveryLoad)
+                      nCascadeEveryLoad, maxRSS)
 end 
 
 

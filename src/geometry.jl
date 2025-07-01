@@ -102,16 +102,7 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
         @showprogress desc="Creating cells: " for x in 1:sizes[1]
             for y in 1:sizes[2]
                 for z in 1:sizes[3]
-                    ranges = Matrix{Float64}(undef, 3, 2)
-                    ranges[1,1] = (x-1) * vectors[1,1]
-                    ranges[1,2] = x * vectors[1,1]
-                    ranges[2,1] = (y-1) * vectors[2,2]
-                    ranges[2,2] = y * vectors[2,2]
-                    ranges[3,1] = (z-1) * vectors[3,3]
-                    ranges[3,2] = z * vectors[3,3]  
-                    cells[x, y, z] = Cell((x, y, z), Vector{Atom}(), Vector{LatticePoint}(), 
-                                             ranges, Array{NeighborCellInfo, 3}(undef, 3, 3, 3), 
-                                             false, 0.0)
+                    cells[x, y, z] = CreateCell((x, y, z), vectors)
                 end
             end    
         end
@@ -121,7 +112,7 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
             SetCellNeighborInfo!(cell, grid)
         end
     else
-        cells = spzeros(Cell, sizes[1] * sizes[2] * sizes[3])
+        cells = Dict{Tuple{Int64, Int64, Int64}, Cell}()    
         cellVolume = vectors[1,1] * vectors[2,2] * vectors[3,3]
         grid = Grid(cells, vectors, sizes, cellVolume) 
     end
@@ -134,41 +125,35 @@ function _GetCellDense(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
     return grid.cells[cellIndex...]
 end
 
-function LinearIndex(cellIndex::Tuple{Int64, Int64, Int64}, sizes::Vector{Int64})
-    x, y, z = cellIndex
-    NX, NY = sizes[1], sizes[2]
-    return (x-1) + (y-1)*NX + (z-1)*NX*NY + 1   # 1-based
-end
 
 function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64})
     x, y, z = cellIndex
     ranges = Matrix{Float64}(undef, 3, 2)
-                    ranges[1,1] = (x-1) * vectors[1,1]
-                    ranges[1,2] = x * vectors[1,1]
-                    ranges[2,1] = (y-1) * vectors[2,2]
-                    ranges[2,2] = y * vectors[2,2]
-                    ranges[3,1] = (z-1) * vectors[3,3]
-                    ranges[3,2] = z * vectors[3,3]  
-                    cell = Cell(cellIndex, Vector{Atom}(), Vector{LatticePoint}(), 
-                                            ranges, 
-                                            Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
+    ranges[1,1] = (x-1) * vectors[1,1]
+    ranges[1,2] = x * vectors[1,1]
+    ranges[2,1] = (y-1) * vectors[2,2]
+    ranges[2,2] = y * vectors[2,2]
+    ranges[3,1] = (z-1) * vectors[3,3]
+    ranges[3,2] = z * vectors[3,3]  
+    cell = Cell(cellIndex, Vector{Atom}(), Vector{LatticePoint}(), 
+                            ranges, 
+                            Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
     return cell
 end
 
-function _GetCellSparse!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
-    idx = LinearIndex(cellIndex, grid.sizes)
-    if grid.cells[idx] === EMPTY_GRIDCELL
-        cell = CreateCell(cellIndex, grid.vectors)
-        grid.cells[idx] = cell
+
+function _GetCellDict!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
+    return get!(grid.cells, cellIndex) do
+        CreateCell(cellIndex, grid.vectors)
     end
-    return grid.cells[idx]
-end
+end 
+
 
 function GetCell(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
     if !IS_DYNAMIC_LOAD
         return _GetCellDense(grid, cellIndex)
     else
-        return _GetCellSparse!(grid, cellIndex)
+        return _GetCellDict!(grid, cellIndex)
     end
 end
 
@@ -431,7 +416,6 @@ function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simu
     SetCoordinate!(atom, newPosition)
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
 
-    idx = LinearIndex(atom.cellIndex, simulator.grid.sizes)
     if cellIndex != atom.cellIndex
         ChangeCell!(atom, cellIndex, simulator)
     end
