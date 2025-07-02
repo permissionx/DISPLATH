@@ -13,7 +13,7 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
         end
         cell.isSavedLatticeRange = true
     end
-    coordinate = Vector{Float64}(undef, 3)
+    coordinate = simulator.workBuffers.coordinate
     for x in cell.latticeRanges[1,1]:cell.latticeRanges[1,2]
         for y in cell.latticeRanges[2,1]:cell.latticeRanges[2,2]
             for z in cell.latticeRanges[3,1]:cell.latticeRanges[3,2]
@@ -28,18 +28,16 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
                             continue
                         end
                     end      
-                    if !simulator.parameters.isAmorphous && any(v -> ComputeDistance_squared(coordinate, v.coordinate, (Int8(0),0,0), sim.box) < 1e-10, cell.vacancies)
+                    if !simulator.parameters.isAmorphous && any(v -> ComputeDistance_squared(coordinate, v.coordinate, (Int8(0),Int8(0),Int8(0)), simulator.box) < 1e-10, cell.vacancies)
                         continue
                     end
-                    #atom = Atom(basisTypes[i], copy(coordinate), parameters)
-                    #atom.latticeCoordinate .= atom.coordinate 
-                    #atom.cellIndex = cell.index
-                    #atom.index = 0  # temporary value
-                    #atom.isNewlyLoaded = true
-                    Pertubation!(coordinate, basisTypes[i], cell.ranges, simulator.grid.vectors, simulator)
-                    vcat!(cell.latticeCoordinate, copy(coordinate'))
-                    push!(cell.latticeTypes, basisTypes[i]) 
-                    #push!(cell.latticeAtoms, Atom(basisTypes[i], copy(coordinate), parameters))
+                    atom = Atom(basisTypes[i], copy(coordinate), parameters)
+                    atom.latticeCoordinate .= atom.coordinate 
+                    atom.cellIndex = cell.index
+                    atom.index = 0  # temporary value
+                    atom.isNewlyLoaded = true
+                    Pertubation!(atom, simulator)
+                    push!(cell.latticeAtoms, atom)
                 end
             end
         end
@@ -61,10 +59,6 @@ function Pertubation!(coordinate::Vector{Float64}, type::Int64, ranges::Matrix{F
         end
     end
 end
-
-
-
-
 
 
 function ComputeLatticeAtoms_General!(cell::Cell, simulator::Simulator)
@@ -182,7 +176,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
                 continue
             end
             if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
-                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
+                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
                 if p >= pMax
                     continue
                 end
@@ -226,7 +220,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
         end
         matchFlag = true
         for target in targets   
-            if !SimultaneousCriteria(atom, candidateTarget, target, simulator)
+            if !SimultaneousCriteria(candidateTarget, target, simulator)
                 matchFlag = false
                 break
             end

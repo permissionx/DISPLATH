@@ -256,6 +256,7 @@ mutable struct CollisionParamsBuffers
 end
 
 mutable struct WorkBuffers
+    coordinate::Vector{Float64}
     candidateTargets::Vector{Atom}
     collisionParames::CollisionParamsBuffers
     threadCandidates::Vector{Vector{Atom}}
@@ -267,7 +268,7 @@ mutable struct WorkBuffers
         for tc in threadCandidates
             sizehint!(tc, 50)
         end
-        return new(candidateTargets, 
+        return new(Vector{Float64}(undef, 3), candidateTargets, 
                   collisionParams, threadCandidates)
     end
 end
@@ -284,6 +285,7 @@ function EnsureCollisionCapacity!(buffers::CollisionParamsBuffers, n::Int)
 end
 
 function ClearBuffers!(buffers::WorkBuffers)
+    empty!(buffers.coordinate)
     empty!(buffers.targets)
     empty!(buffers.candidateTargets)
     for tc in buffers.threadCandidates

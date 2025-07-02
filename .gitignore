@@ -54,3 +54,4 @@ log
 nohup.out
 err.dte
 .git_backup
+*.mem

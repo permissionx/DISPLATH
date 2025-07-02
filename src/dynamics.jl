@@ -91,7 +91,7 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
                 continue
             end
             if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
-                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
+                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
                 if p >= pMax
                     continue
                 end
@@ -115,7 +115,7 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
         end
         matchFlag = true
         for target in targets            
-            if !SimultaneousCriteria(atom, candidateTarget, target, simulator)
+            if !SimultaneousCriteria(candidateTarget, target, simulator)
                 matchFlag = false
                 break
             end

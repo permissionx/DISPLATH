@@ -455,14 +455,8 @@ function VectorDifference(v1::Vector{Float64}, v2::Vector{Float64}, crossFlag::N
 end
 
 
-function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::Box, pMax::Float64)
+function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::Box)
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
-    #@show dv
-    #for d in dv
-    #    if abs(d) > pMax
-    #        return Inf
-    #    end
-    #end
     t = dot(dv, atom_p.velocityDirection)
     atom_t.pL = t
     atom_t.pPoint = atom_p.coordinate + t * atom_p.velocityDirection
@@ -479,7 +473,7 @@ end
 
 
 
-function SimultaneousCriteria(atom::Atom, neighborAtom::Atom, addedTarget::Atom, simulator::Simulator)
+function SimultaneousCriteria(neighborAtom::Atom, addedTarget::Atom, simulator::Simulator)
     flagP = abs(neighborAtom.pValue - addedTarget.pValue) <= simulator.parameters.pMax
     flagQ = abs(neighborAtom.pL - addedTarget.pL) <= simulator.constantsByType.qMax[[neighborAtom.type, addedTarget.type]]
     return flagP && flagQ
