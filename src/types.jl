@@ -74,17 +74,15 @@ mutable struct Cell
     atoms::Vector{Atom}
     latticePoints::Vector{LatticePoint}  
     ranges::Matrix{Float64}
-    #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo}
     neighborCellsInfo::Array{NeighborCellInfo, 3}
     isExplored::Bool
     atomicDensity::Float64
     # for dynamic load
-    vertexMatrix::Matrix{Float64}
     latticeAtoms::Vector{Atom}
     isLoaded::Bool
     vacancies::Vector{Atom}
-    isSavedAtomRange::Bool
-    atomRange::Vector{UnitRange{Int64}}
+    isSavedLatticeRange::Bool
+    latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
 end
 
@@ -98,21 +96,14 @@ function Cell(
     neighborCellsInfo::Array{NeighborCellInfo, 3},
     isExplored::Bool,
     atomicDensity::Float64)           
-    vertexMatrix = Matrix{Float64}(undef, 6, 3)
-    vertexMatrix[1,:] = [ranges[1,1], ranges[2,1], ranges[3,1]]
-    vertexMatrix[2,:] = [ranges[1,1], ranges[2,1], ranges[3,2]]
-    vertexMatrix[3,:] = [ranges[1,2], ranges[2,1], ranges[3,1]]
-    vertexMatrix[4,:] = [ranges[1,2], ranges[2,1], ranges[3,2]]
-    vertexMatrix[5,:] = [ranges[1,1], ranges[2,2], ranges[3,1]]
-    vertexMatrix[6,:] = [ranges[1,1], ranges[2,2], ranges[3,2]]
     latticeAtoms = Vector{Atom}()
     isLoaded = false
     vacancies = Vector{Atom}()
-    isSavedAtomRange = false
-    atomRange = Vector{UnitRange{Int64}}()
+    isSavedLatticeRange = false
+    latticeRanges = Matrix{Int64}(undef, 3, 2)
     isPushedNeighbor = false
     return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
-                    vertexMatrix, latticeAtoms, isLoaded, vacancies, isSavedAtomRange, atomRange, isPushedNeighbor)     
+                    latticeAtoms, isLoaded, vacancies, isSavedLatticeRange, latticeRanges, isPushedNeighbor)     
 end
 
 
@@ -192,6 +183,7 @@ mutable struct Parameters
     irrdiationFrequency::Float64
     nCascadeEveryLoad::Int64
     maxRSS::Int64
+    isAmorphous::Bool
 end
 
 
@@ -225,7 +217,8 @@ function Parameters(
     perfectEnvIndex::Int64 = 0,
     irrdiationFrequency::Float64 = 0.0,
     nCascadeEveryLoad = 1,
-    maxRSS::Int = 10) # unit: GB
+    maxRSS::Int = 10,
+    isAmorphous = false) # unit: GB
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
     if !isdir(θτRepository)
@@ -244,9 +237,59 @@ function Parameters(
                       #soapParameters, 
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      nCascadeEveryLoad, maxRSS)
+                      nCascadeEveryLoad, maxRSS, isAmorphous)
 end 
 
+mutable struct CollisionParamsBuffers
+    tanφList::Vector{Float64}  
+    tanψList::Vector{Float64}
+    E_tList::Vector{Float64}
+    x_pList::Vector{Float64}
+    x_tList::Vector{Float64}
+    Q_locList::Vector{Float64}
+    function CollisionParamsBuffers()
+        return new(
+            Vector{Float64}(), Vector{Float64}(), Vector{Float64}(),
+            Vector{Float64}(), Vector{Float64}(), Vector{Float64}()
+        )
+    end
+end
+
+mutable struct WorkBuffers
+    candidateTargets::Vector{Atom}
+    collisionParames::CollisionParamsBuffers
+    threadCandidates::Vector{Vector{Atom}}
+    function WorkBuffers(max_threads::Int64=Threads.nthreads())
+        candidateTargets = Vector{Atom}()
+        sizehint!(candidateTargets, 100)
+        collisionParams = CollisionParamsBuffers()
+        threadCandidates = [Vector{Atom}() for _ in 1:max_threads]
+        for tc in threadCandidates
+            sizehint!(tc, 50)
+        end
+        return new(candidateTargets, 
+                  collisionParams, threadCandidates)
+    end
+end
+
+function EnsureCollisionCapacity!(buffers::CollisionParamsBuffers, n::Int)
+    if length(buffers.tanφList) < n
+        resize!(buffers.tanφList, n)
+        resize!(buffers.tanψList, n)
+        resize!(buffers.E_tList, n)
+        resize!(buffers.x_pList, n)
+        resize!(buffers.x_tList, n)
+        resize!(buffers.Q_locList, n)
+    end
+end
+
+function ClearBuffers!(buffers::WorkBuffers)
+    empty!(buffers.targets)
+    empty!(buffers.candidateTargets)
+    for tc in buffers.threadCandidates
+        empty!(tc)
+    end
+end
 
 mutable struct Simulator
     atoms::Vector{Atom}
@@ -278,12 +321,13 @@ mutable struct Simulator
     numberOfVacancies::Int64
     maxVacancyID::Int64
     minLatticeAtomID::Int64
-
     # for debug
     debugAtom::Atom
-
     parameters::Parameters
+    workBuffers::WorkBuffers
 end
+
+
 
 function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Parameters)
     grid = CreateGrid(box, inputGridVectors)
@@ -306,8 +350,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     maxVacancyID = 1E6
     minLatticeAtomID = 0
     debugAtom = Atom(1, [0.0,0.0,0.0], parameters)
-
-
+    workBuffers = WorkBuffers()
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
                      0, 0, 
@@ -321,6 +364,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      time, frequency, frequencies, mobileAtoms,
                      loadedCells, vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
                      debugAtom,
-                     parameters)  
+                     parameters,
+                     workBuffers)  
 end
 

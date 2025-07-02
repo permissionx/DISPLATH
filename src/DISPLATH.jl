@@ -14,6 +14,7 @@ using ProgressMeter
 # @pyimport dscribe.descriptors as descriptors
 #include("debug.jl")
 #using .Recorder
+include("debug.jl")
 include("types.jl")
 include("elements.jl")
 include("bca.jl")  # In namespace BCA: BCA->(QLoss, Constants)
@@ -46,6 +47,10 @@ include("utils.jl")
 # 1. 入射粒子的位移能
 # 2. 间隙子的坐标
 
-# 增加内存监控与限制
+# todo:
+# 增加内存监控与限制：清空cells时需要还原体系中的所有原子 ... ok
+# dynamic load 的体系可以设为无穷大
 # GUI
-# 静态代码测试，因为改了cellIndex的类型为元组
+# 静态代码测试，因为改了cellIndex的类型为元组 ... ok
+# 通过simulator组合实现多组分模拟
+

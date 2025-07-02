@@ -683,9 +683,14 @@ end
 
 
 function Pertubation!(atom::Atom, simulator::Simulator)
-    if simulator.parameters.temperature > 0.0
-        for d in 1:3
-            atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
+    if simulator.parameters.isAmorphous
+        rng = THREAD_RNG[Threads.threadid()]
+        atom.coordinate .= GetCell(simulator.grid, atom.cellIndex).ranges[:,1] .+ [rand(rng) * simulator.grid.vectors[d, d] for d in 1:3]
+    else
+        if simulator.parameters.temperature > 0.0
+            for d in 1:3
+                atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
+            end
         end
     end
 end
