@@ -38,19 +38,19 @@ include("utils.jl")
 # todo:
 # Permutation at first in static load 
 
-# 近似：
-# 1. 多个碰撞一个
-# 2. 间隙子位移能
-# 3. 替代位位移能
+# TODO: 
+# 1. Multiple collisions with one target
+# 2. Interstitial displacement energy  
+# 3. Substitutional displacement energy
 
-# 未解决：
-# 1. 入射粒子的位移能
-# 2. 间隙子的坐标
+# Unresolved:
+# 1. Incident particle displacement energy
+# 2. Interstitial coordinates
 
 # todo:
-# 增加内存监控与限制：清空cells时需要还原体系中的所有原子 ... ok
-# dynamic load 的体系可以设为无穷大
-# GUI
-# 静态代码测试，因为改了cellIndex的类型为元组 ... ok
-# 通过simulator组合实现多组分模拟
+# Features:
+# Added memory monitoring and limits: need to restore all atoms when clearing cells ... ok
+# Dynamic load system can be set to infinite size
+# Static code testing, changed cellIndex type to tuple ... ok  
+# Multi-component simulation through simulator composition
 

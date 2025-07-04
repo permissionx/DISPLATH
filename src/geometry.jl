@@ -1,5 +1,7 @@
+using StaticArrays
+
 function Box(Vectors::Matrix{Float64})
-    # println("\n🚀 Initializing the simulator...\n")  # 删除多余的初始化输出
+    
 log_success("📦 Box created! Size: $(round(Vectors[1,1]; digits=3)) × $(round(Vectors[2,2]; digits=3)) × $(round(Vectors[3,3]; digits=3)) Å\n")
     return Box(Vectors, inv(Vectors'), true)
 end 
@@ -14,13 +16,13 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     index = 0
     isAlive = true
     cellIndex = (0,0,0)
-    velocityDirection = Float64[0.0,0.0,0.0]  # length： 0 or one
+    velocityDirection = SVector{3,Float64}(0.0, 0.0, 0.0)  
     energy = 0.0
     radius, mass, Z, dte, bde, _, _ = TypeToProperties(type, parameters.typeDict)
     numberOfEmptyCells = 0
     pValue = 0.0
-    pVector = Vector{Float64}(undef, 3)
-    pPoint = Vector{Float64}(undef, 3)  
+    pVector = SVector{3,Float64}(0.0, 0.0, 0.0)  
+    pPoint = SVector{3,Float64}(0.0, 0.0, 0.0)   
     lastTargets = Vector{Int64}()
     pL = 0.0
     latticePointIndex = -1
@@ -29,7 +31,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     finalLatticePointEnvIndexs = Vector{Int64}()
     eventIndex = -1
     isNewlyLoaded = false
-    lattcieCoordinate = Vector{Float64}(undef, 3)
+    lattcieCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
     return Atom(index, isAlive, type, coordinate, cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
                 dte, bde, numberOfEmptyCells,
@@ -55,28 +57,28 @@ function SetCellNeighborInfo!(cell::Cell, grid::Grid)
     for delta_x in [-1, 0, 1]
         for delta_y in [-1, 0, 1]
             for delta_z in [-1, 0, 1]
-                neighborKeys = Int8[delta_x, delta_y, delta_z]
-                neighborIndex = Vector{Int64}(undef, 3)
-                neighborCross = Vector{Int8}(undef, 3)
+                neighborKeys = (Int8(delta_x), Int8(delta_y), Int8(delta_z))  
+                neighborIndex = [0, 0, 0]  
+                neighborCross = [Int8(0), Int8(0), Int8(0)]  
                 
                 # Calculate neighbor cell index and cross flags for each dimension
                 for d in 1:3
                     delta = neighborKeys[d]
                     index = cell.index[d] + delta
-                    cross = 0
+                    cross = Int8(0)
                     if index < 1
                         index += grid.sizes[d]
-                        cross = -1
+                        cross = Int8(-1)
                     elseif index > grid.sizes[d]
                         index -= grid.sizes[d]
-                        cross = 1
+                        cross = Int8(1)
                     end
                     neighborIndex[d] = index
                     neighborCross[d] = cross
                 end
-                neighborIndex = Tuple(neighborIndex)
-                neighborCross = Tuple(neighborCross)
-                neighborCellInfo = NeighborCellInfo(neighborIndex, neighborCross)
+                neighborIndex_tuple = (neighborIndex[1], neighborIndex[2], neighborIndex[3])
+                neighborCross_tuple = (neighborCross[1], neighborCross[2], neighborCross[3])
+                neighborCellInfo = NeighborCellInfo(neighborIndex_tuple, neighborCross_tuple)
                 idx = (delta_x + 2, delta_y + 2, delta_z + 2)
                 cell.neighborCellsInfo[idx...] = neighborCellInfo
             end
@@ -395,30 +397,40 @@ function delete!(cell::Cell, atom::Atom, simulator::Simulator)
 end
 
 
-function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
+function DisplaceAtom!(atom::Atom, newPosition::SVector{3,Float64}, simulator::Simulator)
+    pos = if newPosition isa SVector
+        [newPosition[1], newPosition[2], newPosition[3]]
+    else
+        copy(newPosition)
+    end
+    
     for d in 1:3
         # need to adappt non-periodic condition
-        if newPosition[d] < 0
+        if pos[d] < 0
             if simulator.parameters.periodic[d] == false
-                newPosition[d] = 0.01
+                pos[d] = 0.01
             else
-                newPosition[d] += simulator.box.vectors[d,d]
+                pos[d] += simulator.box.vectors[d,d]
             end
-        elseif newPosition[d] >= simulator.box.vectors[d,d]
+        elseif pos[d] >= simulator.box.vectors[d,d]
             if simulator.parameters.periodic[d] == false
-                newPosition[d] = simulator.box.vectors[d,d] - 0.01
+                pos[d] = simulator.box.vectors[d,d] - 0.01
             else
-                newPosition[d] -= simulator.box.vectors[d,d]
+                pos[d] -= simulator.box.vectors[d,d]
             end
         end
     end
-    #@show newPosition, atom.coordinate
-    SetCoordinate!(atom, newPosition)
+    
+    SetCoordinate!(atom, pos)
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
 
     if cellIndex != atom.cellIndex
         ChangeCell!(atom, cellIndex, simulator)
     end
+end
+
+function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
+    DisplaceAtom!(atom, SVector{3,Float64}(newPosition[1], newPosition[2], newPosition[3]), simulator)
 end
 
 
@@ -442,16 +454,14 @@ end
 
 
 function VectorDifference(v1::Vector{Float64}, v2::Vector{Float64}, crossFlag::NTuple{3, Int8}, box::Box)
-    # return v2 - v1
-    if crossFlag == Vector{Int64}([0,0,0])
+    if crossFlag == (Int8(0), Int8(0), Int8(0))
         return v2 - v1
     end 
-    result = Vector{Float64}(undef, 3)
-    for d in 1:3
-        dv = v2[d] - v1[d] + crossFlag[d] * box.vectors[d,d]
-        result[d] = dv
-    end
-    return result
+    return SVector{3,Float64}(
+        v2[1] - v1[1] + crossFlag[1] * box.vectors[1,1],
+        v2[2] - v1[2] + crossFlag[2] * box.vectors[2,2],
+        v2[3] - v1[3] + crossFlag[3] * box.vectors[3,3]
+    )
 end
 
 
@@ -459,8 +469,10 @@ function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
     t = dot(dv, atom_p.velocityDirection)
     atom_t.pL = t
-    atom_t.pPoint = atom_p.coordinate + t * atom_p.velocityDirection
-    atom_t.pVector = atom_t.pPoint - atom_t.coordinate
+    pPoint_calc = atom_p.coordinate + t * atom_p.velocityDirection
+    atom_t.pPoint = SVector{3,Float64}(pPoint_calc[1], pPoint_calc[2], pPoint_calc[3])
+    pVector_calc = atom_t.pPoint - atom_t.coordinate
+    atom_t.pVector = SVector{3,Float64}(pVector_calc[1], pVector_calc[2], pVector_calc[3])
     p = norm(atom_t.pVector)
     atom_t.pValue = p
     # need to check periodic condition
@@ -488,13 +500,18 @@ function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simu
 end
 
 
-function SetVelocityDirection!(atom::Atom, velocity::Vector{Float64})
+function SetVelocityDirection!(atom::Atom, velocity::SVector{3,Float64})
     n = norm(velocity)
     if isnan(n) || n == Inf
-        atom.velocityDirection = [0.0, 0.0, 0.0]
+        atom.velocityDirection = SVector{3,Float64}(0.0, 0.0, 0.0)
     else
-        atom.velocityDirection = velocity / n
+        normalized_velocity = velocity / n
+        atom.velocityDirection = SVector{3,Float64}(normalized_velocity[1], normalized_velocity[2], normalized_velocity[3])
     end
+end
+
+function SetVelocityDirection!(atom::Atom, velocity::Vector{Float64})
+    SetVelocityDirection!(atom, SVector{3,Float64}(velocity[1], velocity[2], velocity[3]))
 end
 
 
@@ -512,8 +529,7 @@ function GetNeighborVacancy(atom::Atom, simulator::Simulator)
     nearestVacancyDistance_squared = Inf
     nearestVacancyIndex = -1
     for neighborCellInfo in cell.neighborCellsInfo
-        index = neighborCellInfo.index
-        cross = neighborCellInfo.cross
+        index, cross = neighborCellInfo.index, neighborCellInfo.cross
         neighborCell = GetCell(grid, index)
         for latticePoint in neighborCell.latticePoints
             if latticePoint.atomIndex == -1
@@ -706,7 +722,7 @@ function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-1
     M = m_rel * amu
     y_max = θ_D / T      
 
-    # 积分 ∫ x/(e^x-1) dx
+    # Integration of x/(e^x-1) dx
     integrand(x) = x / (exp(x) - 1)
     I, _ = quadgk(integrand, 0.0, y_max; atol, rtol)
 

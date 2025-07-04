@@ -1,5 +1,5 @@
 # using BCA.jl
-home = "/beegfs/home/xuke/Researches/Irradiation_Li-Tianzhao/4.DISPLATH/DISPLATH/"
+home = ENV["ARCS_HOME"]
 const IS_DYNAMIC_LOAD = false
 include(home * "/src/DISPLATH.jl")
 ##include("modules.jl")
@@ -26,19 +26,16 @@ inputGridVectors = [6.0 0.0 0.0; 0.0 6.0 0.0; 0.0 0.0 6.0]  # never be same as p
 periodic = [true, true, false]
 latticeRanges = [0 lx; 0 ly; 1 2]   
 # Parameters
-θτRepository = home * "thetatau_repository/"
 
 pMax = 1.45
 vacancyRecoverDistance = 3.0
 seed = 42
 const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
 
-EPowerRange = -1.0:0.045:8.0
-pRange = 0.0:0.01:2.0
 stopEnergy = 0.1
 parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis,
-                        θτRepository, pMax, vacancyRecoverDistance, typeDict;
-                        EPowerRange=EPowerRange, pRange=pRange, stopEnergy=stopEnergy,
+                        pMax, vacancyRecoverDistance, typeDict;
+                        stopEnergy=stopEnergy,
                         isDumpInCascade=false)
 
 
@@ -53,6 +50,8 @@ S = pi * r^2
 phi = 2.0E14     #  custom 
 nIon = phi * S 
 #
+
+@show nIon
 
 function Irradiation(simulator::Simulator, energy::Float64)
     ionPosition = RandomPointInCircle(67.0) + [81.5037, 83.963, 68.0]
@@ -72,7 +71,7 @@ Save!(simulator)
 for en in ens
     energy = 10^en
     nVmean = 0
-    @showprogress desc="In irradiation of energy order: $(en) ($(round(energy, digits=2)) eV)" for i in 1:computerNumberPerEnergy
+    @time @showprogress desc="In irradiation of energy order: $(en) ($(round(energy, digits=2)) eV)" for i in 1:computerNumberPerEnergy
         Restore!(simulator)
         for j in 1:nIon
             Irradiation(simulator, energy)

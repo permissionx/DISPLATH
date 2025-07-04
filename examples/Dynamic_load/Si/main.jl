@@ -23,7 +23,6 @@ basisTypes = [1, 1, 1, 1, 1, 1, 1, 1]  # All 8 positions are Si atoms
 
 
 # Parameters
-θτRepository = home * "thetatau_repository/"
 pMax =  a/2/π^0.5
 vacancyRecoverDistance = 0.0
 typeDict = Dict(
@@ -39,7 +38,7 @@ isDumpInCascade = false
 stopEnergy = 20.0
 nCascadeEveryLoad = 10
 parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis,
-                        θτRepository, pMax, vacancyRecoverDistance, typeDict; 
+                        pMax, vacancyRecoverDistance, typeDict; 
                         temperature=temperature, DebyeTemperature=DebyeTemperature, 
                         isDumpInCascade=isDumpInCascade, stopEnergy=stopEnergy, 
                         nCascadeEveryLoad=nCascadeEveryLoad)
@@ -48,7 +47,7 @@ parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis,
 simulator = Simulator(boxSizes, inputGridVectors, parameters)
 
 
-for n in 1:10
+for n in 1:1
     energy = 100_000.0 - (n-1) * 10_000.0
     for i in 1:1000
         Restore!(simulator)
@@ -61,7 +60,7 @@ for n in 1:10
         push!(simulator, ion)
         @time Cascade!(ion, simulator)
         z = simulator.atoms[1].coordinate[3]
-        @record  "R_p.$(n).csv" "$(a*latticeRanges[3,2]-z)" isSmall=true
+        @record  "R_p.$(n).csv" "$(a*latticeRanges[3,2]-z)" 
         @dump  "defects.$(n).dump" [simulator.atoms; simulator.vacancies] ["vx", "vy", "vz", "e"]
     end
 end

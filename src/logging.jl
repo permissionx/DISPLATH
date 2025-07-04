@@ -3,10 +3,14 @@
 using Dates
 
 # ANSI color codes
-const GRAY = "\033[90m"      # 灰色
-const RESET = "\033[0m"      # 重置颜色
-const BOLD = "\033[1m"       # 粗体
-const DIM = "\033[2m"        # 暗淡
+const GREEN = "\033[32m"
+const YELLOW = "\033[33m"
+const RED = "\033[31m"
+const BLUE = "\033[34m"
+const GRAY = "\033[90m"
+const RESET = "\033[0m"
+const BOLD = "\033[1m"
+const DIM = "\033[2m"
 
 """
     log_info(args...)
@@ -33,7 +37,7 @@ Success logging with timestamp and green color.
 """
 function log_success(args...)
     timestamp = Dates.format(now(), "HH:MM:SS.sss")
-    print("\033[32m", "[", timestamp, "] ✅ ", RESET)  # 绿色
+    print("\033[32m", "[", timestamp, "] ✅ ", RESET)
     
     message = join(string.(args), "")
     print("\033[32m", message, RESET)
@@ -47,7 +51,7 @@ Warning logging with timestamp and yellow color.
 """
 function log_warning(args...)
     timestamp = Dates.format(now(), "HH:MM:SS.sss")
-    print("\033[33m", "[", timestamp, "] ⚠️ ", RESET)  # 黄色
+    print("\033[33m", "[", timestamp, "] ⚠️ ", RESET)
     
     message = join(string.(args), "")
     print("\033[33m", message, RESET)
@@ -61,7 +65,7 @@ Error logging with timestamp and red color.
 """
 function log_error(args...)
     timestamp = Dates.format(now(), "HH:MM:SS.sss")
-    print("\033[31m", "[", timestamp, "] ❌ ", RESET)  # 红色
+    print("\033[31m", "[", timestamp, "] ❌ ", RESET)
     
     message = join(string.(args), "")
     print("\033[31m", message, RESET)

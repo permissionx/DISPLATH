@@ -1,4 +1,4 @@
-home = "/beegfs/home/xuke/Researches/Irradiation_Li-Tianzhao/4.DISPLATH/DISPLATH/"
+home = ENV["ARCS_HOME"]
 const BAlpha = 1.5
 const NAlpha = 1.5
 const IS_DYNAMIC_LOAD = false   
@@ -25,16 +25,14 @@ inputGridVectors = [3.0 0.0 0.0; 0.0 3.0 0.0; 0.0 0.0 3.0]  # never be same as p
 periodic = [true, true, false]
 latticeRanges = [0 lx; 0 ly; 1 2]   
 # Parameters
-θτRepository = home * "thetatau_repository/"
 pMax = 1.45
 vacancyRecoverDistance = 1.3
-seed = 42
-const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
+seed = 42; const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
 stopEnergy = 0.1
 DTEMode = 2
-DTEFile = "../../../dte_repository/hBN.dte"
+DTEFile = ENV["ARCS_REPO"] * "/dte_repository/hBN.dte"
 parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis,
-                        θτRepository, pMax, vacancyRecoverDistance, typeDict;
+                        pMax, vacancyRecoverDistance, typeDict;
                         stopEnergy=stopEnergy, DTEMode=DTEMode, DTEFile=DTEFile, isDumpInCascade=false)
 # Initialize
 simulator = Simulator(boxSizes, inputGridVectors, parameters)  
@@ -51,7 +49,7 @@ function Irradiation(simulator::Simulator, energy::Float64)
 end
 
 
-computerNumberPerEnergy = 1  # custom
+computerNumberPerEnergy = 1000  # custom
 ens = [2.0]  #cutom 
 Save!(simulator)
 for en in ens
@@ -61,9 +59,9 @@ for en in ens
         Restore!(simulator)
         for j in 1:1000
             Irradiation(simulator, energy)
-            if j % 10 == 0
-                @dump "out/hBN.dump" simulator.atoms 
-            end
+            #if j % 10 == 0
+            #    @dump "out/hBN.dump" simulator.atoms 
+            #end
         end
         Is, Vs = DefectStatics(simulator)
         nVmean += length(Vs) 

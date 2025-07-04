@@ -1,3 +1,5 @@
+using StaticArrays
+
 #using PyCall
 
 mutable struct Box
@@ -15,7 +17,7 @@ mutable struct Atom
     cellIndex::Tuple{Int64, Int64, Int64}
     radius::Float64
     mass::Float64
-    velocityDirection::Vector{Float64}
+    velocityDirection::SVector{3,Float64}
     energy::Float64
     Z::Float64
 
@@ -26,8 +28,8 @@ mutable struct Atom
 
     # for atom_t
     pValue::Float64
-    pPoint::Vector{Float64}
-    pVector::Vector{Float64}
+    pPoint::SVector{3,Float64}
+    pVector::SVector{3,Float64}
     pL::Float64
 
     # for atom_p
@@ -44,7 +46,7 @@ mutable struct Atom
 
     # for dynamic load 
     isNewlyLoaded::Bool
-    latticeCoordinate::Vector{Float64}
+    latticeCoordinate::SVector{3,Float64}
 
 end
 
@@ -168,10 +170,7 @@ mutable struct Parameters
     pRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     stopEnergy::Float64
     DebyeTemperature::Float64
-    pLMax::Float64     
     isDumpInCascade::Bool
-    dumpFolder::String
-    isLog::Bool
     DTEMode::Int64 
     #soapParameters::Vector{Float64}
     DTEFile::String
@@ -193,21 +192,18 @@ function Parameters(
     latticeRanges::Matrix{Int64},
     basisTypes::Vector{Int64},
     basis::Matrix{Float64},
-    θτRepository::String,
     pMax::Float64,  
     vacancyRecoverDistance::Float64, 
     typeDict::Dict{Int64, Element};
     # optional
     periodic::Vector{Bool} = [true, true, false],
     isOrthogonal::Bool = true,
+    θτRepository::String = ENV["ARCS_REPO"] * "/thetatau_repository/",
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -1.0:0.045:8.0,
     pRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = 0.0:0.01:5.0,
-    stopEnergy::Float64 = 10.0, 
+    stopEnergy::Float64 = 0.1, 
     DebyeTemperature::Float64 = 1000.0, 
-    pLMax::Float64 = 2.0, 
     isDumpInCascade::Bool = false, 
-    dumpFolder::String = ".",
-    isLog::Bool = false,
     DTEMode::Int64 = 1,
     #soapParameters::Vector{Float64} = [2.6, 8.0, 6.0],
     DTEFile::String="",
@@ -216,9 +212,9 @@ function Parameters(
     temperature::Float64 = 0.0,   # K
     perfectEnvIndex::Int64 = 0,
     irrdiationFrequency::Float64 = 0.0,
-    nCascadeEveryLoad = 1,
-    maxRSS::Int = 10,
-    isAmorphous = false) # unit: GB
+    nCascadeEveryLoad = 100,
+    maxRSS::Int = 20, # unit: GB
+    isAmorphous = false) 
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
     if !isdir(θτRepository)
@@ -232,7 +228,7 @@ function Parameters(
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
-                      EPowerRange, pRange, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, dumpFolder, isLog,
+                      EPowerRange, pRange, stopEnergy, DebyeTemperature, isDumpInCascade, 
                       DTEMode, 
                       #soapParameters, 
                       DTEFile,
