@@ -1,10 +1,10 @@
 using LinearAlgebra
+using StaticArrays
 import Base: push!
 using StableRNGs, Random, Base.Threads
 using QuadGK
 import Base: push!
 import Base: delete!
-using LinearAlgebra
 using Interpolations   
 using Dates
 using ProgressMeter
