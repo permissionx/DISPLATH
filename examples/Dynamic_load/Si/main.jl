@@ -1,7 +1,7 @@
 home = ENV["ARCS_HOME"]
 const BAlpha = 1.5
 const IS_DYNAMIC_LOAD = true
-include(home * "src/DISPLATH.jl")
+include(home * "/src/DISPLATH.jl")
 
 
 # Box and atoms 

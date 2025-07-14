@@ -1,5 +1,3 @@
-using StaticArrays
-
 #using PyCall
 
 mutable struct Box
