@@ -10,8 +10,8 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
         # Optimized calculation for orthogonal case
         #a1, a2, a3 = primaryVectors[1,1], primaryVectors[2,2], primaryVectors[3,3]
         for d in 1:3
-            cell.latticeRanges[d,1] = max(ceil(Int, cell.ranges[d,1] / primaryVectors[d,d]), latticeRanges[d,1])    
-            cell.latticeRanges[d,2] = min(ceil(Int, cell.ranges[d,2] / primaryVectors[d,d]), latticeRanges[d,2])
+            cell.latticeRanges[d,1] = max(floor(Int, cell.ranges[d,1] / primaryVectors[d,d]), latticeRanges[d,1])    
+            cell.latticeRanges[d,2] = min(floor(Int, cell.ranges[d,2] / primaryVectors[d,d]), latticeRanges[d,2])
         end
         cell.isSavedLatticeRange = true
     end
