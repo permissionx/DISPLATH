@@ -49,7 +49,7 @@ simulator = Simulator(boxSizes, inputGridVectors, parameters)
 
 for n in 1:1
     energy = 100_000.0 - (n-1) * 10_000.0
-    for i in 1:1000
+    for i in 1:10
         Restore!(simulator)
         offset = [boxSizes[1]/2*a, boxSizes[2]/2*a, boxSizes[3]*a-2]
         rp = RandomPointInCircle(30.0)
