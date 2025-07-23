@@ -7,8 +7,9 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&family=Orbitron:wght@400;600;700&display=swap');
         
         :root {
             --primary-color: #6366f1;
@@ -24,7 +25,7 @@
             --text-primary: #1e293b;
             --text-secondary: #64748b;
             --bg-primary: #ffffff;
-            --bg-secondary: #f1f5f9;
+            --bg-secondary: #f8f9fa;
             --bg-tertiary: #e2e8f0;
             --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
             --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -38,34 +39,51 @@
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 0;
+            background: #ffffff;
             min-height: 100vh;
             color: var(--text-primary);
+            overflow-x: hidden;
         }
         
         .container {
             max-width: 2200px;
             margin: 0 auto;
-            background: var(--bg-primary);
-            padding: 24px;
-            border-radius: 16px;
-            box-shadow: var(--shadow-lg);
-            backdrop-filter: blur(10px);
-            min-height: calc(100vh - 40px);
+            background: #ffffff;
+            padding: 20px;
+            padding-top: 0;
+            min-height: 100vh;
+            position: relative;
         }
         
         h1 {
             color: var(--primary-color);
-            font-size: 1.75rem;
-            font-weight: 700;
+            font-size: 1.4rem;
+            font-weight: 600;
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 1px;
             margin-bottom: 12px;
             margin-top: 0;
             text-align: left;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        }
+        
+        .left-header {
+            position: sticky;
+            top: 0;
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 100;
+            padding: 20px;
+            margin: -20px -20px 20px -20px;
+        }
+        
+        .left-header h1 {
+            margin-bottom: 16px;
+        }
+        
+        .left-header .mode-selector {
+            margin-bottom: 0;
         }
         
         h2 {
@@ -73,7 +91,7 @@
             font-size: 1.25rem;
             font-weight: 600;
             margin-top: 0;
-            margin-bottom: 20px;
+            margin-bottom: 12px;  /* Reduced from 20px */
             display: flex;
             align-items: center;
             gap: 8px;
@@ -83,14 +101,14 @@
             content: '';
             width: 4px;
             height: 20px;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            background: var(--primary-color);
             border-radius: 2px;
         }
         
         .mode-selector {
             margin-bottom: 32px;
             padding: 4px;
-            background: var(--bg-secondary);
+            background: #f8f9fa;
             border-radius: 12px;
             display: inline-flex;
             border: 1px solid var(--border-color);
@@ -116,25 +134,35 @@
         .mode-selector input[type="radio"] {
             display: none;
         }
+        
+        .mode-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: 100%;
+        }
+        
+        .refresh-btn:hover {
+            background: var(--primary-dark) !important;
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
         .control-panel {
             display: grid;
             grid-template-columns: 1.618fr 1fr; /* Golden ratio */
             gap: 32px;
             margin-bottom: 32px;
+            height: calc(100vh - 40px);
+            overflow: hidden;
         }
         
         .section {
-            background: var(--bg-primary);
+            background: #ffffff;
             border: 1px solid var(--border-color);
             padding: 32px;
             border-radius: 12px;
-            box-shadow: var(--shadow-sm);
             transition: all 0.2s ease;
             min-height: 400px;
-        }
-        
-        .section:hover {
-            box-shadow: var(--shadow-md);
         }
         
         .full-width {
@@ -147,6 +175,8 @@
             border: none;
             background: transparent;
             box-shadow: none;
+            overflow-y: auto;
+            max-height: calc(100vh - 80px);
         }
         
         .right-column {
@@ -157,48 +187,63 @@
             box-shadow: none;
             display: flex;
             flex-direction: column;
-            gap: 20px;
-            position: sticky;
-            top: 20px;
-            height: fit-content;
-            max-height: calc(100vh - 80px);
-            overflow: visible;
+            gap: 12px;
+            height: calc(100vh - 40px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-right: 10px;
+        }
+        
+        /* Custom scrollbar for right column */
+        .right-column::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .right-column::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        
+        .right-column::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 4px;
+        }
+        
+        .right-column::-webkit-scrollbar-thumb:hover {
+            background: #aaa;
         }
         
         .input-section {
-            background: var(--bg-primary);
+            background: #ffffff;
             border: 1px solid var(--border-color);
             padding: 20px;
             border-radius: 12px;
-            box-shadow: var(--shadow-sm);
             transition: all 0.2s ease;
             margin-bottom: 20px;
         }
         
-        .input-section:hover {
-            box-shadow: var(--shadow-md);
-        }
-        
         .output-section {
-            background: var(--bg-primary);
-            border: none;
-            padding: 20px;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            padding: 16px;
             border-radius: 12px;
-            box-shadow: none;
             transition: all 0.2s ease;
-            flex: 1;
+            flex: 0 1 auto;
             min-height: 0;
             display: flex;
             flex-direction: column;
         }
         
         .control-section {
-            background: var(--bg-primary);
+            background: #ffffff;
             border: none;
-            padding: 24px;
+            padding: 10px 20px;
+            margin-top: 16px;
             border-radius: 12px;
-            box-shadow: none;
             transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         label {
@@ -339,13 +384,13 @@
         #output {
             background: var(--dark-color);
             color: #e2e8f0;
-            padding: 16px;
+            padding: 12px;
             border-radius: 12px;
             font-family: 'JetBrains Mono', 'Fira Code', monospace;
             font-size: 12px;
             line-height: 1.5;
-            min-height: 150px;
-            max-height: 320px;
+            min-height: 120px;
+            max-height: 270px;
             overflow-y: auto;
             flex: 1;
             white-space: pre-wrap;
@@ -355,8 +400,9 @@
         }
         
         .output-line {
-            margin: 3px 0;
-            padding: 2px 0;
+            margin: 2px 0;
+            padding: 1px 0;
+            line-height: 1.3;
         }
         
         .error {
@@ -491,7 +537,7 @@
             align-items: center;
             margin-bottom: 12px;
             padding: 16px;
-            background: var(--bg-primary);
+            background: #ffffff;
             border: 1px solid var(--border-color);
             border-radius: 8px;
             transition: all 0.2s ease;
@@ -672,7 +718,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            background: var(--primary-color);
             border-radius: 16px 16px 0 0;
         }
         
@@ -728,11 +774,10 @@
         
         /* 3D Crystal Viewer */
         .crystal-viewer-section {
-            background: var(--bg-primary);
-            border: none;
-            padding: 24px;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            padding: 16px;
             border-radius: 12px;
-            box-shadow: none;
             transition: all 0.2s ease;
             height: auto;
         }
@@ -740,10 +785,10 @@
         #crystal-viewer {
             width: 100%;
             aspect-ratio: 1 / 1;  /* Make it square */
-            max-height: 400px;
+            max-height: 300px;  /* Reduced from 400px */
             border: 1px solid var(--border-color);
             border-radius: 8px;
-            background: #2a2a2a;  /* Dark gray instead of gradient */
+            background: #f5f5f5;  /* Light gray background */
             position: relative;
             overflow: hidden;
         }
@@ -752,7 +797,7 @@
             position: absolute;
             top: 8px;
             left: 8px;
-            background: rgba(0,0,0,0.7);
+            background: rgba(50,50,50,0.9);
             color: white;
             padding: 4px 8px;
             border-radius: 4px;
@@ -951,6 +996,131 @@
         .working-directory-badge.show {
             display: inline-block;
         }
+        
+        /* Loading spinner styles */
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            margin-left: 10px;
+            border: 3px solid var(--bg-secondary);
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .loading-spinner.show {
+            display: inline-block;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Remove simulation-status styles as we don't need them anymore */
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Results section styles */
+        .results-section {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-top: 20px;
+            overflow: hidden;
+            display: none;
+        }
+        
+        .results-section.show {
+            display: block;
+        }
+        
+        .results-header {
+            padding: 16px 20px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .results-header:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        .results-header h3 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .results-toggle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            transition: transform 0.3s ease;
+        }
+        
+        .results-section.collapsed .results-toggle {
+            transform: rotate(-90deg);
+        }
+        
+        .results-content {
+            padding: 20px;
+            overflow: visible;
+            transition: max-height 0.3s ease;
+        }
+        
+        .results-section.collapsed .results-content {
+            max-height: 0;
+            padding: 0 20px;
+        }
+        
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 10px;
+        }
+        
+        .chart-wrapper {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            height: 350px;  /* Fixed height */
+        }
+        
+        .chart-wrapper h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: center;
+        }
+        
+        .chart-wrapper canvas {
+            flex: 1;
+            max-height: 280px;
+            min-height: 200px;
+        }
+        
+        @media (max-width: 1400px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -961,39 +1131,39 @@
             <div class="control-panel">
                 <!-- Left Column - All Inputs -->
                 <div class="left-column">
-                    <!-- Title and Mode Section -->
-                    <div style="margin-bottom: 20px;">
-                        <h1 style="margin-bottom: 16px;">Atomic-scale Simulation on Ion Irradiation of Matter (ASIM)</h1>
-                        <div class="mode-selector" style="margin-bottom: 0;">
+                    <!-- Fixed Header within Left Column -->
+                    <div class="left-header">
+                        <h1>Atomic-scale Simulation on Ion Irradiation of Matter (ASIM)</h1>
+                        <div class="mode-selector">
                             <label>
-                                <input type="radio" name="input-mode" value="parameters" checked onchange="toggleInputMode()">
-                                Parameter Input Mode
+                                <input type="radio" name="right-mode" value="simulation" checked onchange="toggleRightMode()">
+                                Simulation Control
                             </label>
                             <label>
-                                <input type="radio" name="input-mode" value="script" onchange="toggleInputMode()">
-                                Script Editor Mode
+                                <input type="radio" name="right-mode" value="results" onchange="toggleRightMode()">
+                                Results Analysis
                             </label>
                         </div>
                     </div>
                     
                     <!-- Working Directory Section -->
-                    <div class="input-section" style="margin-bottom: 24px;">
-                        <div class="working-directory-header">
-                            <h2 style="margin-bottom: 16px;">Working Directory</h2>
-                            <span id="working-directory-badge" class="working-directory-badge">Active</span>
+                    <div class="input-section" style="margin-bottom: 16px;">
+                        <h2 style="margin-bottom: 8px; font-size: 16px;">Working Directory</h2>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <div class="path-autocomplete-container" style="flex: 1; position: relative;">
+                                <input type="text" id="working-directory" placeholder="$HOME/.arcs/cases" 
+                                       style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); 
+                                              border-radius: 6px; font-size: 13px; font-family: 'JetBrains Mono', monospace;
+                                              transition: border-color 0.2s ease;">
+                                <div id="path-autocomplete-dropdown" class="path-autocomplete-dropdown"></div>
+                            </div>
+                            <button type="button" onclick="confirmWorkingDirectory()" class="confirm-button" id="confirm-directory-btn" 
+                                    style="padding: 8px 16px; height: 36px; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                                <span>✓</span>
+                                <span>Confirm</span>
+                            </button>
                         </div>
-                        <div class="path-autocomplete-container" style="margin-bottom: 12px;">
-                            <input type="text" id="working-directory" placeholder="/path/to/your/simulation/folder" 
-                                   style="width: 100%; padding: 10px 14px; border: 1px solid var(--border-color); 
-                                          border-radius: 8px; font-size: 14px; font-family: 'JetBrains Mono', monospace;
-                                          transition: border-color 0.2s ease;">
-                            <div id="path-autocomplete-dropdown" class="path-autocomplete-dropdown"></div>
-                        </div>
-                        <button type="button" onclick="confirmWorkingDirectory()" class="confirm-button" id="confirm-directory-btn" style="width: 100%;">
-                            <span>✓</span>
-                            <span>Confirm Directory</span>
-                        </button>
-                        <div id="working-directory-status" class="working-directory-status">
+                        <div id="working-directory-status" class="working-directory-status" style="margin-top: 8px; padding: 8px 12px; font-size: 13px;">
                             <span class="status-icon"></span>
                             <span class="status-text"></span>
                         </div>
@@ -1002,6 +1172,38 @@
                     <!-- Crystal Structure Section -->
                     <div class="input-section">
                         <h2>Crystal Structure</h2>
+                        
+                        <script>
+                        // Define functions early to avoid "not defined" errors
+                        // These will be replaced by actual implementations when main script loads
+                        const earlyFunctions = [
+                            'loadTemplate', 'addBasisPosition', 'addCrystalElement', 
+                            'removeBasisPosition', 'removeCrystalElement', 'updateAtomCount',
+                            'updateBasisTypeOptions', 'updateCrystalViewer', 'toggleRightMode',
+                            'closeScriptModal', 'confirmWorkingDirectory', 'previewScript',
+                            'runSimulation', 'stopSimulation', 'loadSimulationResults',
+                            'resetAllInputs', 'addOutput'
+                        ];
+                        
+                        // Create placeholder functions
+                        earlyFunctions.forEach(funcName => {
+                            window[funcName] = function() {
+                                const args = arguments;
+                                console.log(`Early ${funcName} called, deferring...`);
+                                setTimeout(() => {
+                                    if (window[funcName + 'Impl']) {
+                                        window[funcName + 'Impl'].apply(null, args);
+                                    } else if (typeof window[funcName] === 'function' && window[funcName].name === funcName) {
+                                        // Real function is loaded
+                                        window[funcName].apply(null, args);
+                                    } else {
+                                        console.log(`Waiting for ${funcName} to load...`);
+                                        setTimeout(() => window[funcName].apply(null, args), 100);
+                                    }
+                                }, 10);
+                            };
+                        });
+                        </script>
                         
                         <!-- Preload Templates -->
                         <div style="margin-bottom: 24px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
@@ -1174,7 +1376,7 @@
                             <div id="dynamic-options" class="hidden" style="margin-left: 20px; margin-top: 10px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
                                 <label>
                                     <input type="checkbox" id="amorphous-mode">
-                                    Amorphous (非晶)
+                                    Amorphous
                                 </label>
                             </div>
                             
@@ -1205,19 +1407,24 @@
                 
                 <!-- Right Column - Controls, 3D Viewer and Output -->
                 <div class="right-column">
-                    <!-- Control Buttons -->
-                    <div class="control-section">
-                        <button id="preview-button" class="preview-button" onclick="previewScript()">Preview Script</button>
-                        <button id="run-button" onclick="runSimulation()">Run Simulation</button>
-                        <button id="stop-button" class="stop-button" onclick="stopSimulation()" disabled>Stop</button>
-                        <button onclick="clearOutput()">Clear Output</button>
-                    </div>
-                    
-                    <!-- 3D Crystal Viewer -->
-                    <div class="crystal-viewer-section">
+                    <!-- Simulation Control Mode -->
+                    <div id="simulation-mode" class="mode-content">
+                        <!-- Control Buttons -->
+                        <div class="control-section">
+                            <button id="preview-button" class="preview-button" onclick="previewScript()">Preview Script</button>
+                            <button id="run-button" onclick="runSimulation()">Run Simulation</button>
+                            <button id="stop-button" class="stop-button" onclick="stopSimulation()" disabled>Stop</button>
+                        </div>
+                        
+                        <!-- 3D Crystal Viewer -->
+                        <div class="crystal-viewer-section">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <h2 style="margin: 0; font-size: 1.1rem;">Crystal Structure</h2>
-                            <div class="viewer-controls" style="display: flex; gap: 8px;">
+                            <h2 style="margin: 0; font-size: 1.1rem;" id="viewer-title">Crystal Structure</h2>
+                            <div class="viewer-controls" style="display: flex; gap: 8px; align-items: center;">
+                                <button class="viewer-btn" id="toggle-structure-btn" onclick="toggleStructureView()" 
+                                        style="background: var(--secondary-color); padding: 6px 12px;" 
+                                        title="Switch to Final Structure">🔄 Final</button>
+                                <div style="width: 1px; height: 20px; background: var(--border-color); margin: 0 4px;"></div>
                                 <button class="viewer-btn" onclick="resetCameraView()" title="Reset View">🏠</button>
                                 <button class="viewer-btn" onclick="toggleProjection()" title="Toggle Projection">📐</button>
                                 <button class="viewer-btn" onclick="viewFromAxis('x')" title="View from X">X</button>
@@ -1271,11 +1478,63 @@
                     
                     <!-- Simulation Output -->
                     <div class="output-section" style="flex: 1;">
-                        <h2>Simulation Output</h2>
+                        <h2 style="display: flex; align-items: center; gap: 10px;">
+                            Simulation Output
+                            <span class="loading-spinner" id="output-spinner"></span>
+                        </h2>
+                        
+                        <!-- Progress Bar -->
+                        <div id="progress-container" style="display: none; margin-bottom: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span id="progress-stage" style="font-weight: 500;">Initializing...</span>
+                                <span id="progress-percentage" style="color: var(--primary-color);">0%</span>
+                            </div>
+                            <div style="background: var(--border-color); height: 8px; border-radius: 4px; overflow: hidden;">
+                                <div id="progress-bar" style="background: var(--primary-color); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                                <span id="progress-current">0 / 0</span>
+                                <span id="progress-eta">ETA: calculating...</span>
+                                <span id="progress-rate">0 iter/s</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Status Messages -->
+                        <div id="status-container" style="display: none; margin-bottom: 16px; padding: 12px; border-radius: 8px;">
+                            <span id="status-message"></span>
+                        </div>
+                        
                         <div id="output">
-                            <div style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 40px; line-height: 1.6;">
-                                <p>🚀 Click "Run Simulation" to start the DISPLATH simulation</p>
-                                <p style="font-size: 14px; margin-top: 16px;">Real-time output from the Julia process will appear here.</p>
+                            <div id="default-message" style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 10px; line-height: 1.3;">
+                                <span style="display: block;">🚀 Click "Run Simulation" to start the DISPLATH simulation</span>
+                                <span style="font-size: 12px; opacity: 0.8;">Real-time output will appear here</span>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                    
+                    <!-- Results Analysis Mode -->
+                    <div id="results-mode" class="mode-content" style="display: none;">
+                        <div class="results-section" style="display: block; box-shadow: var(--shadow-sm); border: 1px solid var(--border-color);">
+                            <div class="results-header">
+                                <h2 style="margin: 0;">Simulation Results</h2>
+                                <button class="refresh-btn" onclick="loadSimulationResults()" style="padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">
+                                    🔄 Refresh
+                                </button>
+                            </div>
+                            <div class="results-content">
+                                <div id="results-placeholder" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                                    <p>No results available yet.</p>
+                                    <p style="font-size: 14px; margin-top: 16px;">Run a simulation to see results here.</p>
+                                </div>
+                                <div class="charts-container" id="charts-container" style="display: none;">
+                                    <div class="chart-wrapper">
+                                        <canvas id="nv-chart"></canvas>
+                                    </div>
+                                    <div class="chart-wrapper">
+                                        <canvas id="rp-chart"></canvas>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1283,25 +1542,6 @@
             </div>
         </div>
         
-        <!-- Script Editor Mode -->
-        <div id="script-mode" class="hidden">
-            <div class="control-panel">
-                <div class="section">
-                    <label for="example-select">Load Example:</label>
-                    <select id="example-select">
-                        <option value="">-- Select an example --</option>
-                    </select>
-                    
-                    <label for="threads-script">Number of Threads:</label>
-                    <input type="number" id="threads-script" value="1" min="1" max="16">
-                </div>
-            </div>
-            
-            <div class="section">
-                <label for="julia-script">Julia Script:</label>
-                <textarea id="julia-script" placeholder="Enter your Julia code here..." style="min-height: 300px;"></textarea>
-            </div>
-        </div>
     </div>
 
     <!-- Script Preview Modal -->
@@ -1323,6 +1563,66 @@
         let elementPresets = {};
         let nextElementId = 1;
         let nextBasisId = 1;
+        let confirmedWorkingDirectory = '~/.arcs/cases'; // Default working directory
+        
+        // Debug Socket.IO connection
+        socket.on('connect', function() {
+            console.log('Socket.IO connected');
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('Socket.IO disconnected');
+        });
+        
+        socket.on('error', function(error) {
+            console.error('Socket.IO error:', error);
+        });
+        
+        socket.on('connected', function(data) {
+            console.log('Server confirmed connection:', data);
+        });
+        
+        socket.on('joined', function(data) {
+            console.log('Joined process room:', data);
+        });
+        
+        // Handle simulation output
+        socket.on('output', function(data) {
+            console.log('Received output:', data);
+            if (data.data) {
+                addOutput(data.data, 'output');
+            }
+        });
+        
+        // Handle progress updates
+        socket.on('progress', function(data) {
+            updateProgressDisplay(data.data);
+        });
+        
+        // Handle log messages
+        socket.on('log', function(data) {
+            addLogMessage(data.data);
+        });
+        
+        // Handle results
+        socket.on('result', function(data) {
+            addResultMessage(data.data);
+        });
+        
+        // Handle status updates
+        socket.on('status', function(data) {
+            updateSimulationStatus(data.data);
+        });
+        
+        // Handle process completion
+        socket.on('process_finished', function(data) {
+            console.log('Process finished:', data);
+            addOutput('Simulation completed', 'success');
+            document.getElementById('run-button').disabled = false;
+            document.getElementById('stop-button').disabled = true;
+            document.getElementById('output-spinner').classList.remove('show');
+            currentProcessId = null;
+        });
         
         // Crystal structure templates
         const crystalTemplates = {
@@ -1705,43 +2005,61 @@
                 }
             }
             
-            // Calculate center and scale based on actual structure bounds
+            // Calculate center of mass from atoms if available, otherwise use bounds
             let centerX = 0, centerY = 0, centerZ = 0;
             let minX = Infinity, maxX = -Infinity;
             let minY = Infinity, maxY = -Infinity; 
             let minZ = Infinity, maxZ = -Infinity;
             
-            // Calculate bounds from box and crystal region
-            const boxX = parseFloat(document.getElementById('box-x').value) || 10;
-            const boxY = parseFloat(document.getElementById('box-y').value) || 10;
-            const boxZ = parseFloat(document.getElementById('box-z').value) || 10;
-            const pv00 = parseFloat(document.getElementById('pv-00').value) || 1;
-            const pv11 = parseFloat(document.getElementById('pv-11').value) || 1;
-            const pv22 = parseFloat(document.getElementById('pv-22').value) || 1;
-            
-            // Use the larger of box or crystal region for bounds
-            const crystalXMin = xMin * pv00;
-            const crystalXMax = xMax * pv00;
-            const crystalYMin = yMin * pv11;
-            const crystalYMax = yMax * pv11;
-            const crystalZMin = zMin * pv22;
-            const crystalZMax = zMax * pv22;
-            
-            const boxXMax = boxX * pv00;
-            const boxYMax = boxY * pv11;
-            const boxZMax = boxZ * pv22;
-            
-            minX = Math.min(0, crystalXMin);
-            maxX = Math.max(boxXMax, crystalXMax);
-            minY = Math.min(0, crystalYMin);
-            maxY = Math.max(boxYMax, crystalYMax);
-            minZ = Math.min(0, crystalZMin);
-            maxZ = Math.max(boxZMax, crystalZMax);
-            
-            // Calculate center point
-            centerX = (minX + maxX) / 2;
-            centerY = (minY + maxY) / 2;
-            centerZ = (minZ + maxZ) / 2;
+            // If we have atoms, calculate center of mass
+            if (atoms.length > 0) {
+                atoms.forEach(atom => {
+                    centerX += atom.x;
+                    centerY += atom.y;
+                    centerZ += atom.z;
+                    minX = Math.min(minX, atom.x);
+                    maxX = Math.max(maxX, atom.x);
+                    minY = Math.min(minY, atom.y);
+                    maxY = Math.max(maxY, atom.y);
+                    minZ = Math.min(minZ, atom.z);
+                    maxZ = Math.max(maxZ, atom.z);
+                });
+                centerX /= atoms.length;
+                centerY /= atoms.length;
+                centerZ /= atoms.length;
+            } else {
+                // Calculate bounds from box and crystal region
+                const boxX = parseFloat(document.getElementById('box-x').value) || 10;
+                const boxY = parseFloat(document.getElementById('box-y').value) || 10;
+                const boxZ = parseFloat(document.getElementById('box-z').value) || 10;
+                const pv00 = parseFloat(document.getElementById('pv-00').value) || 1;
+                const pv11 = parseFloat(document.getElementById('pv-11').value) || 1;
+                const pv22 = parseFloat(document.getElementById('pv-22').value) || 1;
+                
+                // Use the larger of box or crystal region for bounds
+                const crystalXMin = xMin * pv00;
+                const crystalXMax = xMax * pv00;
+                const crystalYMin = yMin * pv11;
+                const crystalYMax = yMax * pv11;
+                const crystalZMin = zMin * pv22;
+                const crystalZMax = zMax * pv22;
+                
+                const boxXMax = boxX * pv00;
+                const boxYMax = boxY * pv11;
+                const boxZMax = boxZ * pv22;
+                
+                minX = Math.min(0, crystalXMin);
+                maxX = Math.max(boxXMax, crystalXMax);
+                minY = Math.min(0, crystalYMin);
+                maxY = Math.max(boxYMax, crystalYMax);
+                minZ = Math.min(0, crystalZMin);
+                maxZ = Math.max(boxZMax, crystalZMax);
+                
+                // Calculate center point
+                centerX = (minX + maxX) / 2;
+                centerY = (minY + maxY) / 2;
+                centerZ = (minZ + maxZ) / 2;
+            }
             
             // Calculate size for scaling
             const sizeX = maxX - minX;
@@ -1762,7 +2080,7 @@
             
             // Update camera and controls to focus on the new center
             const distance = 15;
-            camera.position.set(distance, -distance, distance * 0.6);
+            camera.position.set(distance, distance, distance);  // Position for z-up view
             camera.lookAt(0, 0, 0);
             controls.target.set(0, 0, 0);
             controls.update();
@@ -1942,12 +2260,13 @@
                 const elements = {};
                 elementRows.forEach(row => {
                     const id = row.id.split('-')[1];
-                    const symbol = document.getElementById(`symbol-${id}`).value;
+                    const symbol = document.getElementById(`symbol-${id}`)?.value;
                     if (symbol) {
                         const typeIndex = Object.keys(elements).length + 1;
                         elements[typeIndex] = symbol;
                     }
                 });
+                console.log('Element lookup table:', elements);
                 
                 // Generate atoms using lattice ranges
                 for (let i = Math.floor(xMin); i < Math.ceil(xMax); i++) {
@@ -1955,10 +2274,16 @@
                         for (let k = Math.floor(zMin); k < Math.ceil(zMax); k++) {
                             basisRows.forEach(row => {
                                 const rowId = row.id.split('-')[1];
-                                const bx = parseFloat(document.getElementById(`basis-x-${rowId}`).value) || 0;
-                                const by = parseFloat(document.getElementById(`basis-y-${rowId}`).value) || 0;
-                                const bz = parseFloat(document.getElementById(`basis-z-${rowId}`).value) || 0;
-                                const type = parseInt(document.getElementById(`basis-type-${rowId}`).value) || 1;
+                                const bx = parseFloat(document.getElementById(`basis-x-${rowId}`)?.value) || 0;
+                                const by = parseFloat(document.getElementById(`basis-y-${rowId}`)?.value) || 0;
+                                const bz = parseFloat(document.getElementById(`basis-z-${rowId}`)?.value) || 0;
+                                const typeValue = document.getElementById(`type-${rowId}`)?.value;
+                                const type = parseInt(typeValue) || 1;
+                                
+                                // Debug first few atoms
+                                if (i === Math.floor(xMin) && j === Math.floor(yMin) && k === Math.floor(zMin)) {
+                                    console.log(`Basis ${rowId}: type select value="${typeValue}", parsed type=${type}, element=${elements[type]}`);
+                                }
                                 
                                 const x = (i + bx) * pv00;
                                 const y = (j + by) * pv11;
@@ -1991,7 +2316,7 @@
             if (!camera || !controls) return;
             
             const distance = 15;
-            camera.position.set(distance, -distance, distance * 0.6);  // x=right, y=back, z=up
+            camera.position.set(distance, distance, distance);  // Position for z-up view
             camera.lookAt(0, 0, 0);
             controls.target.set(0, 0, 0);
             controls.update();
@@ -2022,19 +2347,1408 @@
             const distance = 15;
             switch(axis) {
                 case 'x':
-                    camera.position.set(distance, 0, 0);  // View from right side
+                    camera.position.set(distance, 0, 0);  // View from X axis
                     break;
                 case 'y':
-                    camera.position.set(0, -distance, 0);  // View from front
+                    camera.position.set(0, distance, 0);  // View from Y axis
                     break;
                 case 'z':
-                    camera.position.set(0, 0, distance);  // View from top (z-up)
+                    camera.position.set(0, 0, distance);  // View from Z axis (top-down)
                     break;
             }
             
             camera.lookAt(0, 0, 0);
             controls.target.set(0, 0, 0);
             controls.update();
+        }
+        
+        // Define functions that need to be available globally
+        function addBasisPosition() {
+            const container = document.getElementById('basis-container');
+            const basisDiv = document.createElement('div');
+            basisDiv.className = 'basis-row';
+            basisDiv.id = 'basis-' + nextBasisId;
+            
+            // Get crystal elements for the dropdown
+            const elements = getCrystalElements();
+            const optionsHtml = elements.map(elem => 
+                `<option value="${elem.id}">${elem.symbol}</option>`
+            ).join('');
+            
+            basisDiv.innerHTML = `
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                    <label style="min-width: 60px; font-weight: 500;">Position ${nextBasisId}:</label>
+                    <input type="number" id="basis-x-${nextBasisId}" placeholder="x" step="any" style="width: 80px;" onchange="updateCrystalViewer()">
+                    <input type="number" id="basis-y-${nextBasisId}" placeholder="y" step="any" style="width: 80px;" onchange="updateCrystalViewer()">
+                    <input type="number" id="basis-z-${nextBasisId}" placeholder="z" step="any" style="width: 80px;" onchange="updateCrystalViewer()">
+                    <select id="type-${nextBasisId}" style="width: 100px;" onchange="updateCrystalViewer()">
+                        <option value="">Select Type</option>
+                        ${optionsHtml}
+                    </select>
+                    <button type="button" onclick="removeBasisPosition(${nextBasisId})" class="remove-button">×</button>
+                </div>
+            `;
+            container.appendChild(basisDiv);
+            nextBasisId++;
+            updateAtomCount();
+        }
+        
+        function addCrystalElement() {
+            const container = document.getElementById('crystal-elements');
+            if (!container) {
+                console.error('Could not find crystal-elements container');
+                return;
+            }
+            
+            const elementDiv = document.createElement('div');
+            elementDiv.className = 'element-row';
+            elementDiv.id = 'element-' + nextElementId;
+            
+            elementDiv.innerHTML = `
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                    <input type="text" id="symbol-${nextElementId}" placeholder="Symbol (e.g., C)" style="width: 80px;" onchange="updateBasisTypeOptions()">
+                    <input type="number" id="ed-${nextElementId}" placeholder="Ed (eV)" step="any" style="width: 100px;">
+                    <input type="number" id="disp-${nextElementId}" placeholder="Displacement E (eV)" step="any" style="width: 150px;">
+                    <button type="button" onclick="removeCrystalElement(${nextElementId})" class="remove-button">×</button>
+                </div>
+            `;
+            
+            container.appendChild(elementDiv);
+            nextElementId++;
+            updateBasisTypeOptions();
+        }
+        
+        function loadTemplate(templateName) {
+            const template = crystalTemplates[templateName];
+            if (!template) {
+                console.error('Template not found:', templateName);
+                return;
+            }
+            
+            // Clear existing basis positions and elements
+            clearAllBasisPositions();
+            clearAllCrystalElements();
+            
+            // Set primary vectors
+            if (template.primaryVectors) {
+                document.getElementById('pv-00').value = template.primaryVectors[0];
+                document.getElementById('pv-11').value = template.primaryVectors[4];
+                document.getElementById('pv-22').value = template.primaryVectors[8];
+            }
+            
+            // Set box sizes
+            if (template.boxSizes) {
+                document.getElementById('box-x').value = template.boxSizes[0];
+                document.getElementById('box-y').value = template.boxSizes[1];
+                document.getElementById('box-z').value = template.boxSizes[2];
+            }
+            
+            // Set periodic conditions
+            if (template.periodic) {
+                document.getElementById('periodic-x').checked = template.periodic[0];
+                document.getElementById('periodic-y').checked = template.periodic[1];
+                document.getElementById('periodic-z').checked = template.periodic[2];
+            }
+            
+            // Set lattice ranges
+            if (template.latticeRanges) {
+                document.getElementById('range-x-min').value = template.latticeRanges[0][0];
+                document.getElementById('range-x-max').value = template.latticeRanges[0][1];
+                document.getElementById('range-y-min').value = template.latticeRanges[1][0];
+                document.getElementById('range-y-max').value = template.latticeRanges[1][1];
+                document.getElementById('range-z-min').value = template.latticeRanges[2][0];
+                document.getElementById('range-z-max').value = template.latticeRanges[2][1];
+            }
+            
+            // Add elements FIRST (before basis positions)
+            if (template.elements) {
+                for (const elem of template.elements) {
+                    addCrystalElement();
+                    const id = nextElementId - 1;
+                    document.getElementById(`symbol-${id}`).value = elem.symbol;
+                    document.getElementById(`ed-${id}`).value = elem.ed;
+                    document.getElementById(`disp-${id}`).value = elem.displacement_energy;
+                }
+            }
+            
+            // Add basis positions AFTER elements
+            if (template.basisPositions) {
+                for (let i = 0; i < template.basisPositions.length; i++) {
+                    const pos = template.basisPositions[i];
+                    addBasisPosition();
+                    const id = nextBasisId - 1;
+                    document.getElementById(`basis-x-${id}`).value = pos[0];
+                    document.getElementById(`basis-y-${id}`).value = pos[1];
+                    document.getElementById(`basis-z-${id}`).value = pos[2];
+                    
+                    // Set basis type if available
+                    if (template.basisTypes && template.basisTypes[i]) {
+                        // Wait a bit for the select options to be populated
+                        setTimeout(() => {
+                            const typeSelect = document.getElementById(`type-${id}`);
+                            if (typeSelect) {
+                                console.log(`Setting type-${id} to ${template.basisTypes[i]}`);
+                                typeSelect.value = template.basisTypes[i];
+                                // Update viewer after setting type
+                                updateCrystalViewer();
+                            }
+                        }, 150);
+                    }
+                }
+            }
+            
+            // Set vacancy recover distance
+            if (template.vacancyRecover !== undefined) {
+                document.getElementById('vacancy-recover').value = template.vacancyRecover;
+            }
+            
+            // Set grid vectors (optional)
+            if (template.gridVectors) {
+                document.getElementById('gv-00').value = template.gridVectors[0];
+                document.getElementById('gv-11').value = template.gridVectors[4];
+                document.getElementById('gv-22').value = template.gridVectors[8];
+            }
+            
+            // Set ion properties
+            if (template.ion) {
+                document.getElementById('ion-symbol').value = template.ion.symbol || 'Ne';
+                document.getElementById('ion-energy').value = template.ion.energy || 1000;
+                document.getElementById('ion-dx').value = template.ion.direction?.[0] || 0;
+                document.getElementById('ion-dy').value = template.ion.direction?.[1] || 0;
+                document.getElementById('ion-dz').value = template.ion.direction?.[2] || -1;
+            }
+            
+            // Update atom count
+            updateAtomCount();
+            
+            // Update 3D viewer
+            updateCrystalViewer();
+            
+            addOutput(`Template "${template.name}" loaded successfully`, 'success');
+        }
+        
+        function clearAllBasisPositions() {
+            const container = document.getElementById('basis-container');
+            container.innerHTML = '';
+            nextBasisId = 1;
+        }
+        
+        function clearAllCrystalElements() {
+            const container = document.getElementById('crystal-elements');
+            container.innerHTML = '';
+            nextElementId = 1;
+        }
+        
+        function removeBasisPosition(id) {
+            const element = document.getElementById('basis-' + id);
+            if (element) {
+                element.remove();
+                updateBasisTypeOptions();
+                updateAtomCount();
+                updateCrystalViewer();
+            }
+        }
+        
+        function removeCrystalElement(id) {
+            const element = document.getElementById('element-' + id);
+            if (element) {
+                element.remove();
+                updateBasisTypeOptions();
+                updateCrystalViewer();
+            }
+        }
+        
+        // UI Control Functions
+        function toggleRightMode() {
+            const simMode = document.getElementById('simulation-mode');
+            const resultsMode = document.getElementById('results-mode');
+            const simulationRadio = document.querySelector('input[name="right-mode"][value="simulation"]');
+            const controlPanel = document.querySelector('.control-panel');
+            
+            if (!simMode || !resultsMode) {
+                console.error('Mode elements not found');
+                return;
+            }
+            
+            if (simulationRadio.checked) {
+                simMode.style.display = 'block';
+                resultsMode.style.display = 'none';
+                // Use golden ratio for simulation mode
+                controlPanel.style.gridTemplateColumns = '1.618fr 1fr';
+                console.log('Switched to Simulation Control mode');
+            } else {
+                simMode.style.display = 'none';
+                resultsMode.style.display = 'block';
+                // Use 1:1 ratio for results analysis mode
+                controlPanel.style.gridTemplateColumns = '1fr 1fr';
+                console.log('Switched to Results Analysis mode');
+            }
+        }
+        
+        function closeScriptModal() {
+            const modal = document.getElementById('scriptModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+        
+        // Simulation Control Functions
+        function confirmWorkingDirectory() {
+            const input = document.getElementById('working-directory');
+            const statusDiv = document.getElementById('working-directory-status');
+            const statusIcon = statusDiv.querySelector('.status-icon');
+            const statusText = statusDiv.querySelector('.status-text');
+            
+            if (!input.value.trim()) {
+                statusDiv.className = 'working-directory-status error show';
+                statusIcon.textContent = '⚠️';
+                statusText.textContent = 'Please enter a directory path';
+                setTimeout(() => {
+                    statusDiv.classList.remove('show');
+                }, 3000);
+                return;
+            }
+            
+            // Show loading state
+            const button = document.getElementById('confirm-directory-btn');
+            const originalButtonContent = button.innerHTML;
+            button.innerHTML = '<span class="loading-spinner show" style="width: 16px; height: 16px; margin: 0;"></span><span>Confirming...</span>';
+            button.disabled = true;
+            
+            fetch('/create_directory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ directory: input.value.trim() })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    confirmedWorkingDirectory = data.directory;
+                    statusDiv.className = 'working-directory-status success show';
+                    statusIcon.textContent = '✓';
+                    statusText.textContent = `Directory confirmed: ${data.directory}`;
+                    
+                    // Visual feedback on input
+                    input.style.borderColor = '#10b981';
+                    setTimeout(() => {
+                        input.style.borderColor = '';
+                    }, 2000);
+                } else {
+                    statusDiv.className = 'working-directory-status error show';
+                    statusIcon.textContent = '✗';
+                    statusText.textContent = data.error;
+                }
+            })
+            .catch(error => {
+                statusDiv.className = 'working-directory-status error show';
+                statusIcon.textContent = '✗';
+                statusText.textContent = error.toString();
+            })
+            .finally(() => {
+                // Restore button state
+                button.innerHTML = originalButtonContent;
+                button.disabled = false;
+            });
+        }
+        
+        function previewScript() {
+            console.log('previewScript called');
+            const params = collectParameters();
+            console.log('Collected parameters:', params);
+            if (!params) {
+                console.error('Failed to collect parameters');
+                return;
+            }
+            
+            addOutput('Generating script preview...', 'info');
+            
+            fetch('/run_simulation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parameters: params })
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Response data:', data);
+                if (data.success && data.script) {
+                    const modal = document.getElementById('scriptModal');
+                    const preview = document.getElementById('script-preview-modal');
+                    if (modal && preview) {
+                        preview.textContent = data.script;
+                        modal.style.display = 'block';
+                        addOutput('Script preview generated successfully', 'success');
+                    } else {
+                        console.error('Modal elements not found');
+                        addOutput('Error: Modal elements not found', 'error');
+                    }
+                } else {
+                    console.error('Script generation failed:', data);
+                    addOutput('Error: ' + (data.error || 'Failed to generate script'), 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error generating script:', error);
+                addOutput('Error generating script: ' + error.message, 'error');
+            });
+        }
+        
+        function runSimulation() {
+            const params = collectParameters();
+            if (!params) return;
+            
+            // Calculate total atoms and force dynamic_load if > 100,000
+            const totalAtoms = calculateTotalAtoms();
+            if (totalAtoms > 100000 && !params.dynamic_load) {
+                params.dynamic_load = true;
+                addOutput(`⚠️ Atom count (${totalAtoms.toLocaleString()}) exceeds 100,000. Dynamic loading automatically enabled.`, 'warning');
+                // Also update the checkbox to reflect this
+                const dynamicCheckbox = document.getElementById('dynamic-load');
+                if (dynamicCheckbox) {
+                    dynamicCheckbox.checked = true;
+                    document.getElementById('dynamic-options').classList.remove('hidden');
+                }
+            }
+            
+            const runButton = document.getElementById('run-button');
+            const stopButton = document.getElementById('stop-button');
+            const spinner = document.getElementById('output-spinner');
+            
+            runButton.disabled = true;
+            stopButton.disabled = false;
+            spinner.classList.add('show');
+            
+            fetch('/run_simulation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    parameters: params,
+                    threads: parseInt(document.getElementById('threads')?.value) || 1
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentProcessId = data.process_id;
+                    socket.emit('join_process', { process_id: currentProcessId });
+                    addOutput('Simulation started with process ID: ' + currentProcessId, 'info');
+                } else {
+                    addOutput('Error: ' + data.error, 'error');
+                    runButton.disabled = false;
+                    stopButton.disabled = true;
+                    spinner.classList.remove('show');
+                }
+            })
+            .catch(error => {
+                console.error('Error starting simulation:', error);
+                addOutput('Error starting simulation: ' + error.message, 'error');
+                runButton.disabled = false;
+                stopButton.disabled = true;
+                spinner.classList.remove('show');
+            });
+        }
+        
+        function stopSimulation() {
+            if (!currentProcessId) return;
+            
+            fetch(`/stop_simulation/${currentProcessId}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addOutput('Simulation stopped', 'warning');
+                    document.getElementById('run-button').disabled = false;
+                    document.getElementById('stop-button').disabled = true;
+                    document.getElementById('output-spinner').classList.remove('show');
+                }
+            })
+            .catch(error => {
+                console.error('Error stopping simulation:', error);
+                addOutput('Error stopping simulation: ' + error.message, 'error');
+            });
+        }
+        
+        // Data Update Functions
+        function calculateTotalAtoms() {
+            try {
+                const rangeX = [
+                    parseFloat(document.getElementById('range-x-min').value) || 0,
+                    parseFloat(document.getElementById('range-x-max').value) || 0
+                ];
+                const rangeY = [
+                    parseFloat(document.getElementById('range-y-min').value) || 0,
+                    parseFloat(document.getElementById('range-y-max').value) || 0
+                ];
+                const rangeZ = [
+                    parseFloat(document.getElementById('range-z-min').value) || 0,
+                    parseFloat(document.getElementById('range-z-max').value) || 0
+                ];
+                
+                // Use lattice ranges directly as they represent the number of unit cells
+                const numCellsX = Math.max(0, Math.floor(rangeX[1] - rangeX[0]));
+                const numCellsY = Math.max(0, Math.floor(rangeY[1] - rangeY[0]));
+                const numCellsZ = Math.max(0, Math.floor(rangeZ[1] - rangeZ[0]));
+                
+                const basisCount = document.querySelectorAll('.basis-row').length;
+                const totalAtoms = numCellsX * numCellsY * numCellsZ * basisCount;
+                
+                return totalAtoms;
+            } catch (error) {
+                console.error('Error calculating atom count:', error);
+                return 0;
+            }
+        }
+        
+        function updateAtomCount() {
+            try {
+                const totalAtoms = calculateTotalAtoms();
+                
+                const display = document.getElementById('atom-count-display');
+                if (display) {
+                    display.textContent = `Total atoms: ${totalAtoms.toLocaleString()}`;
+                    
+                    // Auto-check dynamic load when atoms > 20000
+                    const dynamicLoadCheckbox = document.getElementById('dynamic-load');
+                    if (dynamicLoadCheckbox && totalAtoms > 20000) {
+                        if (!dynamicLoadCheckbox.checked) {
+                            dynamicLoadCheckbox.checked = true;
+                            // Trigger change event to show/hide dynamic options
+                            dynamicLoadCheckbox.dispatchEvent(new Event('change'));
+                        }
+                        // Add notice about auto-enabled dynamic load
+                        display.innerHTML = `Total atoms: ${totalAtoms.toLocaleString()} <span style="color: var(--info-color); font-size: 12px;">(Dynamic load auto-enabled)</span>`;
+                    } else if (totalAtoms > 100000) {
+                        display.innerHTML = `Total atoms: ${totalAtoms.toLocaleString()} <span style="color: var(--warning-color); font-size: 12px;">(Large system - consider reducing size)</span>`;
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating atom count:', error);
+            }
+        }
+        
+        function updateBasisTypeOptions() {
+            const elements = getCrystalElements();
+            const typeSelects = document.querySelectorAll('[id^="type-"]');
+            
+            typeSelects.forEach(select => {
+                const currentValue = select.value;
+                select.innerHTML = '<option value="">Select Type</option>';
+                
+                elements.forEach(elem => {
+                    const option = document.createElement('option');
+                    option.value = elem.id;
+                    option.textContent = elem.symbol;
+                    if (currentValue === elem.id.toString()) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+            });
+        }
+        
+        // Results and Analysis Functions
+        function loadSimulationResults() {
+            const workingDir = confirmedWorkingDirectory || '~/.arcs/cases';
+            
+            fetch('/get_simulation_results', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ working_directory: workingDir })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Results data:', data.results);
+                    
+                    // Hide placeholder and show charts
+                    document.getElementById('results-placeholder').style.display = 'none';
+                    document.getElementById('charts-container').style.display = 'grid';
+                    
+                    // Update charts with results
+                    if (data.results.nV.exists && data.results.nV.data.length > 0) {
+                        updateHistogram('nv-chart', data.results.nV.data, 'Vacancy Count Distribution', 'Number of Vacancies');
+                    }
+                    if (data.results.R_p.exists && data.results.R_p.data.length > 0) {
+                        updateHistogram('rp-chart', data.results.R_p.data, 'Penetration Depth Distribution', 'Depth (Å)');
+                    }
+                    
+                    // Show statistics
+                    showStatistics(data.results);
+                    addOutput('Results loaded successfully', 'success');
+                } else {
+                    console.error('Failed to load results:', data);
+                    addOutput('Failed to load results', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading results:', error);
+                addOutput('Error loading results: ' + error.message, 'error');
+            });
+        }
+        
+        // Utility Functions
+        function resetAllInputs() {
+            if (confirm('Are you sure you want to reset all parameters to default values?')) {
+                // Reset all input fields to their default values
+                document.querySelectorAll('input[type="number"]').forEach(input => {
+                    if (input.hasAttribute('value')) {
+                        input.value = input.getAttribute('value');
+                    } else {
+                        input.value = '';
+                    }
+                });
+                
+                document.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                    input.checked = input.hasAttribute('checked');
+                });
+                
+                // Clear dynamic elements
+                clearAllBasisPositions();
+                clearAllCrystalElements();
+                
+                updateAtomCount();
+                updateCrystalViewer();
+                addOutput('All parameters reset to defaults', 'info');
+            }
+        }
+        
+        function addOutput(message, type = 'info') {
+            const output = document.getElementById('output');
+            if (!output) return;
+            
+            // Clear default message if it exists
+            const defaultMsg = document.getElementById('default-message');
+            if (defaultMsg) {
+                defaultMsg.remove();
+            }
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.className = `output-line ${type}`;
+            line.style.cssText = 'padding: 2px 0; font-size: 12px; margin: 2px 0;';
+            line.innerHTML = `<span class="timestamp" style="opacity: 0.6;">[${timestamp}]</span> ${message}`;
+            
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function updateProgressDisplay(data) {
+            const container = document.getElementById('progress-container');
+            if (!container) return;
+            
+            container.style.display = 'block';
+            
+            // Update stage
+            document.getElementById('progress-stage').textContent = data.stage || 'Processing...';
+            
+            // Update progress bar
+            const percentage = Math.round(data.progress * 100);
+            document.getElementById('progress-percentage').textContent = `${percentage}%`;
+            document.getElementById('progress-bar').style.width = `${percentage}%`;
+            
+            // Update details
+            document.getElementById('progress-current').textContent = `${data.current} / ${data.total}`;
+            
+            // Update ETA
+            if (data.eta > 0) {
+                const minutes = Math.floor(data.eta / 60);
+                const seconds = Math.floor(data.eta % 60);
+                document.getElementById('progress-eta').textContent = `ETA: ${minutes}m ${seconds}s`;
+            }
+            
+            // Update rate
+            if (data.rate > 0) {
+                document.getElementById('progress-rate').textContent = `${data.rate.toFixed(1)} iter/s`;
+            }
+        }
+        
+        function addLogMessage(data) {
+            const levelIcons = {
+                'info': 'ℹ️',
+                'success': '✅',
+                'warning': '⚠️',
+                'error': '❌'
+            };
+            
+            const icon = levelIcons[data.level] || 'ℹ️';
+            const message = `${icon} ${data.message}`;
+            
+            addOutput(message, data.level);
+        }
+        
+        function addResultMessage(data) {
+            let message = `📊 ${data.name}: ${data.value}`;
+            if (data.unit) {
+                message += ` ${data.unit}`;
+            }
+            addOutput(message, 'result');
+        }
+        
+        function updateSimulationStatus(data) {
+            const container = document.getElementById('status-container');
+            const statusMsg = document.getElementById('status-message');
+            if (!container || !statusMsg) return;
+            
+            const statusIcons = {
+                'started': '🚀',
+                'running': '⚡',
+                'completed': '✅',
+                'error': '❌',
+                'stopped': '⏹️'
+            };
+            
+            const statusColors = {
+                'started': 'var(--info-color)',
+                'running': 'var(--primary-color)',
+                'completed': 'var(--success-color)',
+                'error': 'var(--error-color)',
+                'stopped': 'var(--warning-color)'
+            };
+            
+            const icon = statusIcons[data.status] || '📋';
+            const color = statusColors[data.status] || 'var(--text-primary)';
+            
+            container.style.display = 'block';
+            container.style.background = color + '20';
+            container.style.border = `1px solid ${color}`;
+            
+            let statusText = `${icon} Status: ${data.status}`;
+            if (data.details) {
+                if (data.details.repetitions) {
+                    statusText += ` (${data.details.repetitions} iterations)`;
+                }
+                if (data.details.energy) {
+                    statusText += ` at ${data.details.energy} eV`;
+                }
+            }
+            
+            statusMsg.textContent = statusText;
+            statusMsg.style.color = color;
+            
+            // Hide progress bar when completed
+            if (data.status === 'completed') {
+                setTimeout(() => {
+                    document.getElementById('progress-container').style.display = 'none';
+                }, 2000);
+            }
+        }
+        
+        // Initialization Functions
+        function loadElementPresets() {
+            fetch('/get_element_presets')
+                .then(response => response.json())
+                .then(data => {
+                    elementPresets = data;
+                    console.log('Element presets loaded:', Object.keys(elementPresets).length);
+                })
+                .catch(error => {
+                    console.error('Error loading element presets:', error);
+                });
+        }
+        
+        function loadExamples() {
+            fetch('/get_examples')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Examples loaded:', data.length);
+                    // Could populate an examples dropdown here if needed
+                })
+                .catch(error => {
+                    console.error('Error loading examples:', error);
+                });
+        }
+        
+        function setCurrentDirectory() {
+            const input = document.getElementById('working-directory');
+            if (!input) return;
+            
+            // Set default to ~/.arcs/cases
+            const defaultPath = '~/.arcs/cases';
+            
+            if (!input.value) {
+                input.value = defaultPath;
+            }
+            
+            // Also set the confirmedWorkingDirectory if not already set
+            if (!confirmedWorkingDirectory) {
+                confirmedWorkingDirectory = defaultPath;
+            }
+        }
+        
+        function setupPathAutocomplete() {
+            const input = document.getElementById('working-directory');
+            const dropdown = document.getElementById('path-autocomplete-dropdown');
+            if (!input || !dropdown) return;
+            
+            let selectedIndex = -1;
+            let suggestions = [];
+            
+            // Debounce function
+            let debounceTimer;
+            const debounce = (func, delay) => {
+                return (...args) => {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => func.apply(this, args), delay);
+                };
+            };
+            
+            // Handle input changes
+            input.addEventListener('input', debounce((e) => {
+                const value = e.target.value;
+                if (!value) {
+                    dropdown.classList.remove('show');
+                    return;
+                }
+                
+                fetch('/list_directory', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: value })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.suggestions.length > 0) {
+                        suggestions = data.suggestions;
+                        selectedIndex = -1;
+                        showSuggestions(data.suggestions);
+                    } else {
+                        dropdown.classList.remove('show');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error getting path suggestions:', error);
+                    dropdown.classList.remove('show');
+                });
+            }, 300));
+            
+            // Handle keyboard navigation
+            input.addEventListener('keydown', (e) => {
+                if (!dropdown.classList.contains('show')) return;
+                
+                switch(e.key) {
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
+                        updateSelection();
+                        break;
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        selectedIndex = Math.max(selectedIndex - 1, -1);
+                        updateSelection();
+                        break;
+                    case 'Enter':
+                        e.preventDefault();
+                        if (selectedIndex >= 0) {
+                            selectSuggestion(suggestions[selectedIndex]);
+                        }
+                        break;
+                    case 'Escape':
+                        dropdown.classList.remove('show');
+                        selectedIndex = -1;
+                        break;
+                    case 'Tab':
+                        if (selectedIndex >= 0) {
+                            e.preventDefault();
+                            selectSuggestion(suggestions[selectedIndex]);
+                        }
+                        break;
+                }
+            });
+            
+            // Handle clicking outside
+            document.addEventListener('click', (e) => {
+                if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+            
+            function showSuggestions(items) {
+                dropdown.innerHTML = '';
+                items.forEach((item, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'path-suggestion';
+                    if (index === selectedIndex) {
+                        div.classList.add('selected');
+                    }
+                    
+                    const icon = document.createElement('span');
+                    icon.className = 'icon';
+                    icon.textContent = '📁';
+                    
+                    const name = document.createElement('span');
+                    name.className = 'name';
+                    name.textContent = item.display;
+                    
+                    div.appendChild(icon);
+                    div.appendChild(name);
+                    
+                    div.addEventListener('click', () => selectSuggestion(item));
+                    div.addEventListener('mouseenter', () => {
+                        selectedIndex = index;
+                        updateSelection();
+                    });
+                    
+                    dropdown.appendChild(div);
+                });
+                dropdown.classList.add('show');
+            }
+            
+            function updateSelection() {
+                const items = dropdown.querySelectorAll('.path-suggestion');
+                items.forEach((item, index) => {
+                    if (index === selectedIndex) {
+                        item.classList.add('selected');
+                    } else {
+                        item.classList.remove('selected');
+                    }
+                });
+            }
+            
+            function selectSuggestion(suggestion) {
+                input.value = suggestion.path;
+                dropdown.classList.remove('show');
+                selectedIndex = -1;
+                input.focus();
+            }
+        }
+        
+        function getCrystalElements() {
+            const elements = [];
+            const elementRows = document.querySelectorAll('[id^="element-"]');
+            
+            elementRows.forEach(row => {
+                const id = row.id.split('-')[1];
+                const symbol = document.getElementById(`symbol-${id}`)?.value;
+                if (symbol) {
+                    elements.push({
+                        id: id,
+                        symbol: symbol,
+                        ed: parseFloat(document.getElementById(`ed-${id}`)?.value) || 0,
+                        displacement_energy: parseFloat(document.getElementById(`disp-${id}`)?.value) || 0
+                    });
+                }
+            });
+            
+            return elements;
+        }
+        
+        function collectParameters() {
+            try {
+                const params = {
+                    // Crystal structure
+                    primary_vectors: `${document.getElementById('pv-00')?.value || 0} 0.0 0.0; 0.0 ${document.getElementById('pv-11')?.value || 0} 0.0; 0.0 0.0 ${document.getElementById('pv-22')?.value || 0}`,
+                    box_sizes: `${document.getElementById('box-x')?.value || 10}, ${document.getElementById('box-y')?.value || 10}, ${document.getElementById('box-z')?.value || 10}`,
+                    periodic: `${document.getElementById('periodic-x')?.checked || true}, ${document.getElementById('periodic-y')?.checked || true}, ${document.getElementById('periodic-z')?.checked || false}`,
+                    lattice_ranges: `${document.getElementById('range-x-min')?.value || 0} ${document.getElementById('range-x-max')?.value || 10}; ${document.getElementById('range-y-min')?.value || 0} ${document.getElementById('range-y-max')?.value || 10}; ${document.getElementById('range-z-min')?.value || 0} ${document.getElementById('range-z-max')?.value || 10}`,
+                    grid_vectors: `${document.getElementById('gv-00')?.value || 2.1} 0.0 0.0; 0.0 ${document.getElementById('gv-11')?.value || 2.1} 0.0; 0.0 0.0 ${document.getElementById('gv-22')?.value || 2.1}`,
+                    
+                    // Collect basis and elements
+                    basis: collectBasisPositions(),
+                    basis_types: collectBasisTypes(),
+                    crystal_elements: getCrystalElements(),
+                    
+                    // Ion properties
+                    ion_symbol: document.getElementById('ion-symbol')?.value || 'Ne',
+                    ion_energy: parseFloat(document.getElementById('ion-energy')?.value || 1000),
+                    ion_direction_x: parseFloat(document.getElementById('ion-dx')?.value || 0),
+                    ion_direction_y: parseFloat(document.getElementById('ion-dy')?.value || 0),
+                    ion_direction_z: parseFloat(document.getElementById('ion-dz')?.value || -1),
+                    ion_displacement_energy: parseFloat(document.getElementById('ion-displacement')?.value || 0.1),
+                    
+                    // Simulation parameters
+                    repetitions: parseInt(document.getElementById('repetitions')?.value || 1000),
+                    irradiation_mode: document.querySelector('input[name="irradiation-mode"]:checked')?.value || 'independent',
+                    dynamic_load: document.getElementById('dynamic-load')?.checked || false,
+                    amorphous_mode: document.getElementById('amorphous-mode')?.checked || false,
+                    temperature: parseFloat(document.getElementById('temperature')?.value || 0),
+                    debye_temperature: parseFloat(document.getElementById('debye-temperature')?.value || 645),
+                    
+                    // Advanced parameters
+                    pmax: parseFloat(document.getElementById('pmax')?.value || 1.45),
+                    vacancy_recover_distance: parseFloat(document.getElementById('vacancy-recover')?.value || 1.0),
+                    seed: parseInt(document.getElementById('seed')?.value || 42),
+                    stop_energy: parseFloat(document.getElementById('stop-energy')?.value || 0.1),
+                    
+                    // Output options
+                    record_vacancy: document.getElementById('record-vacancy')?.checked !== false,  // default true
+                    record_penetration: document.getElementById('record-penetration')?.checked !== false,  // default true
+                    
+                    // Working directory
+                    working_directory: confirmedWorkingDirectory || '~/.arcs/cases'
+                };
+                
+                return params;
+            } catch (error) {
+                console.error('Error collecting parameters:', error);
+                addOutput('Error collecting parameters: ' + error.message, 'error');
+                return null;
+            }
+        }
+        
+        function collectBasisPositions() {
+            const positions = [];
+            const basisRows = document.querySelectorAll('.basis-row');
+            
+            basisRows.forEach(row => {
+                const id = row.id.split('-')[1];
+                const x = parseFloat(document.getElementById(`basis-x-${id}`)?.value) || 0;
+                const y = parseFloat(document.getElementById(`basis-y-${id}`)?.value) || 0;
+                const z = parseFloat(document.getElementById(`basis-z-${id}`)?.value) || 0;
+                positions.push(`${x} ${y} ${z}`);
+            });
+            
+            return positions.join('; ') || '0.0 0.0 0.0';
+        }
+        
+        function collectBasisTypes() {
+            const types = [];
+            const basisRows = document.querySelectorAll('.basis-row');
+            
+            basisRows.forEach(row => {
+                const id = row.id.split('-')[1];
+                const type = document.getElementById(`type-${id}`)?.value || '1';
+                types.push(type);
+            });
+            
+            return types.join(', ') || '1';
+        }
+        
+        function updateChart(canvasId, data, label) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const chart = Chart.getChart(canvasId);
+            
+            if (chart) {
+                chart.data.labels = data.map((_, i) => i + 1);
+                chart.data.datasets[0].data = data;
+                chart.update();
+            } else {
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map((_, i) => i + 1),
+                        datasets: [{
+                            label: label,
+                            data: data,
+                            borderColor: 'rgb(75, 192, 192)',
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            }
+        }
+        
+        function updateHistogram(canvasId, data, title, xLabel) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) {
+                console.error(`Canvas ${canvasId} not found`);
+                return;
+            }
+            
+            try {
+                // Validate data
+                if (!data || data.length === 0) {
+                    console.warn(`No data for ${canvasId}`);
+                    return;
+                }
+                
+                console.log(`Creating histogram for ${canvasId} with ${data.length} data points`);
+                
+                // Calculate histogram bins
+                const binCount = Math.min(10, Math.ceil(Math.sqrt(data.length)));
+                const min = Math.min(...data);
+                const max = Math.max(...data);
+                
+                // Handle edge case where all values are the same
+                if (min === max) {
+                    console.warn(`All values are the same (${min}) for ${canvasId}`);
+                    const ctx = canvas.getContext('2d');
+                    const existingChart = Chart.getChart(canvasId);
+                    if (existingChart) {
+                        existingChart.destroy();
+                    }
+                    
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: [min.toFixed(1)],
+                            datasets: [{
+                                label: 'Frequency',
+                                data: [data.length],
+                                backgroundColor: canvasId.includes('nv') ? 'rgba(59, 130, 246, 0.6)' : 'rgba(16, 185, 129, 0.6)',
+                                borderColor: canvasId.includes('nv') ? 'rgb(59, 130, 246)' : 'rgb(16, 185, 129)',
+                                borderWidth: 1,
+                                barPercentage: 1.0,
+                                categoryPercentage: 1.0
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: title,
+                                    font: {
+                                        size: 16
+                                    }
+                                },
+                                legend: {
+                                    display: false
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: xLabel
+                                    }
+                                },
+                                y: {
+                                    title: {
+                                        display: true,
+                                        text: 'Frequency'
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                    return;
+                }
+                
+                const binWidth = (max - min) / binCount;
+                
+                // Create bins with cleaner labels
+                const bins = [];
+                const binLabels = [];
+                const counts = new Array(binCount).fill(0);
+                
+                // Determine appropriate decimal places based on range
+                const range = max - min;
+                const decimals = range < 1 ? 2 : (range < 10 ? 1 : 0);
+                
+                for (let i = 0; i < binCount; i++) {
+                    const binStart = min + i * binWidth;
+                    const binEnd = binStart + binWidth;
+                    const binCenter = (binStart + binEnd) / 2;
+                    bins.push({ start: binStart, end: binEnd });
+                    // Use bin center for cleaner labels
+                    binLabels.push(binCenter.toFixed(decimals));
+                }
+                
+                // Count data points in each bin
+                data.forEach(value => {
+                    const binIndex = Math.min(Math.floor((value - min) / binWidth), binCount - 1);
+                    if (binIndex >= 0 && binIndex < binCount) {
+                        counts[binIndex]++;
+                    }
+                });
+                
+                console.log(`Histogram bins created: ${binCount} bins, counts:`, counts);
+                
+                const ctx = canvas.getContext('2d');
+                const existingChart = Chart.getChart(canvasId);
+                
+                if (existingChart) {
+                    existingChart.destroy();
+                }
+                
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: binLabels,
+                        datasets: [{
+                            label: 'Frequency',
+                            data: counts,
+                            backgroundColor: canvasId.includes('nv') ? 'rgba(59, 130, 246, 0.6)' : 'rgba(16, 185, 129, 0.6)',
+                            borderColor: canvasId.includes('nv') ? 'rgb(59, 130, 246)' : 'rgb(16, 185, 129)',
+                            borderWidth: 1,
+                            barPercentage: 1.0,
+                            categoryPercentage: 1.0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            duration: 500
+                        },
+                        layout: {
+                            padding: {
+                                top: 20,
+                                bottom: 10,
+                                left: 10,
+                                right: 10
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: title,
+                                font: {
+                                    size: 16,
+                                    weight: 'normal'
+                                },
+                                padding: {
+                                    top: 10,
+                                    bottom: 15
+                                }
+                            },
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: xLabel,
+                                    font: {
+                                        size: 13
+                                    }
+                                },
+                                ticks: {
+                                    maxRotation: 0,
+                                    minRotation: 0,
+                                    font: {
+                                        size: 11
+                                    },
+                                    autoSkip: true,
+                                    maxTicksLimit: 8
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Frequency',
+                                    font: {
+                                        size: 13
+                                    }
+                                },
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: Math.max(1, Math.ceil(Math.max(...counts) / 8)),
+                                    font: {
+                                        size: 10
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                console.log(`Histogram created successfully for ${canvasId}`);
+                
+            } catch (error) {
+                console.error(`Error creating histogram for ${canvasId}:`, error);
+                addOutput(`Error creating histogram: ${error.message}`, 'error');
+            }
+        }
+        
+        function showStatistics(results) {
+            // Calculate statistics for each dataset
+            const stats = {};
+            
+            if (results.nV.exists && results.nV.data.length > 0) {
+                stats.nV = calculateStatistics(results.nV.data, 'Vacancy Count');
+            }
+            
+            if (results.R_p.exists && results.R_p.data.length > 0) {
+                stats.R_p = calculateStatistics(results.R_p.data, 'Penetration Depth');
+            }
+            
+            // Display statistics
+            let statsHtml = '<div style="margin-top: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 8px;">';
+            statsHtml += '<h3 style="margin-bottom: 12px;">Statistical Summary</h3>';
+            
+            if (stats.nV) {
+                statsHtml += formatStatistics(stats.nV);
+            } else if (results.nV.exists) {
+                statsHtml += '<p style="color: var(--text-secondary);">Unable to calculate statistics for Vacancy Count</p>';
+            }
+            
+            if (stats.R_p) {
+                statsHtml += formatStatistics(stats.R_p);
+            } else if (results.R_p.exists) {
+                statsHtml += '<p style="color: var(--text-secondary);">Unable to calculate statistics for Penetration Depth</p>';
+            }
+            
+            statsHtml += '</div>';
+            
+            // Add statistics to the results content
+            const resultsContent = document.querySelector('.results-content');
+            const existingStats = document.getElementById('statistics-summary');
+            if (existingStats) {
+                existingStats.remove();
+            }
+            
+            const statsDiv = document.createElement('div');
+            statsDiv.id = 'statistics-summary';
+            statsDiv.innerHTML = statsHtml;
+            resultsContent.appendChild(statsDiv);
+        }
+        
+        function calculateStatistics(data, label) {
+            try {
+                if (!data || data.length === 0) {
+                    console.warn(`No data for statistics calculation: ${label}`);
+                    return null;
+                }
+                
+                const sorted = [...data].sort((a, b) => a - b);
+                const n = sorted.length;
+                
+                const mean = data.reduce((a, b) => a + b, 0) / n;
+                const variance = data.reduce((sum, x) => sum + Math.pow(x - mean, 2), 0) / n;
+                const std = Math.sqrt(variance);
+                
+                // Safe calculation of quartiles
+                const getPercentile = (arr, p) => {
+                    const index = p * (arr.length - 1);
+                    const lower = Math.floor(index);
+                    const upper = Math.ceil(index);
+                    const weight = index % 1;
+                    
+                    if (lower === upper) {
+                        return arr[lower];
+                    }
+                    
+                    return arr[lower] * (1 - weight) + arr[upper] * weight;
+                };
+                
+                return {
+                    label: label,
+                    count: n,
+                    mean: mean,
+                    std: std,
+                    min: sorted[0],
+                    max: sorted[n - 1],
+                    median: getPercentile(sorted, 0.5),
+                    q1: getPercentile(sorted, 0.25),
+                    q3: getPercentile(sorted, 0.75)
+                };
+            } catch (error) {
+                console.error(`Error calculating statistics for ${label}:`, error);
+                return null;
+            }
+        }
+        
+        function formatStatistics(stats) {
+            return `
+                <div style="margin-bottom: 16px;">
+                    <h4 style="margin-bottom: 8px; color: var(--primary-color);">${stats.label}</h4>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 14px;">
+                        <div>
+                            <span style="color: var(--text-secondary);">Count:</span>
+                            <strong>${stats.count}</strong>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary);">Mean:</span>
+                            <strong>${stats.mean.toFixed(2)}</strong>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary);">Std Dev:</span>
+                            <strong>${stats.std.toFixed(2)}</strong>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary);">Min:</span>
+                            <strong>${stats.min.toFixed(2)}</strong>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary);">Median:</span>
+                            <strong>${stats.median.toFixed(2)}</strong>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary);">Max:</span>
+                            <strong>${stats.max.toFixed(2)}</strong>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        
+        // Make functions globally accessible immediately
+        console.log('Registering global functions...');
+        console.log('loadTemplate exists?', typeof loadTemplate);
+        
+        // Save the actual implementations
+        window.loadTemplateImpl = loadTemplate;
+        window.addBasisPositionImpl = addBasisPosition;
+        window.addCrystalElementImpl = addCrystalElement;
+        window.removeBasisPositionImpl = removeBasisPosition;
+        window.removeCrystalElementImpl = removeCrystalElement;
+        
+        // Register all functions to window object
+        window.loadTemplate = loadTemplate;
+        window.addBasisPosition = addBasisPosition;
+        window.addCrystalElement = addCrystalElement;
+        window.removeBasisPosition = removeBasisPosition;
+        window.removeCrystalElement = removeCrystalElement;
+        window.clearAllBasisPositions = clearAllBasisPositions;
+        window.clearAllCrystalElements = clearAllCrystalElements;
+        
+        // UI Control Functions
+        window.toggleRightMode = toggleRightMode;
+        window.closeScriptModal = closeScriptModal;
+        
+        // Simulation Control Functions
+        window.confirmWorkingDirectory = confirmWorkingDirectory;
+        window.previewScript = previewScript;
+        window.runSimulation = runSimulation;
+        window.stopSimulation = stopSimulation;
+        
+        // Data Update Functions
+        window.updateAtomCount = updateAtomCount;
+        window.updateBasisTypeOptions = updateBasisTypeOptions;
+        window.updateCrystalViewer = updateCrystalViewer;
+        
+        // Results and Analysis Functions
+        window.loadSimulationResults = loadSimulationResults;
+        
+        // Utility Functions
+        window.resetAllInputs = resetAllInputs;
+        window.addOutput = addOutput;
+        window.getCrystalElements = getCrystalElements;
+        window.collectParameters = collectParameters;
+        window.collectBasisPositions = collectBasisPositions;
+        window.collectBasisTypes = collectBasisTypes;
+        window.updateChart = updateChart;
+        window.updateHistogram = updateHistogram;
+        window.showStatistics = showStatistics;
+        window.calculateStatistics = calculateStatistics;
+        window.formatStatistics = formatStatistics;
+        window.loadFinalDump = loadFinalDump;
+        window.initFinalViewer = initFinalViewer;
+        
+        // 3D Viewer Control Functions
+        window.resetCameraView = resetCameraView;
+        window.toggleProjection = toggleProjection;
+        window.viewFromAxis = viewFromAxis;
+        window.toggleStructureView = toggleStructureView;
+        window.displayFinalStructure = displayFinalStructure;
+        
+        // Initialization Functions
+        window.loadElementPresets = loadElementPresets;
+        window.loadExamples = loadExamples;
+        window.setCurrentDirectory = setCurrentDirectory;
+        window.initCrystalViewer = initCrystalViewer;
+        
+        console.log('Global functions registered, window.loadTemplate:', typeof window.loadTemplate);
+        
+        // Double-check by adding to window directly
+        if (typeof window.loadTemplate === 'undefined') {
+            console.error('Failed to register loadTemplate!');
         }
         
         // Load element presets and examples on page load
@@ -2051,8 +3765,14 @@
             // Update atom count initially
             updateAtomCount();
             
-            // Set default working directory
+            // Set default working directory and setup autocomplete
             setCurrentDirectory();
+            setupPathAutocomplete();
+            
+            // Auto-confirm the default working directory
+            setTimeout(() => {
+                confirmWorkingDirectory();
+            }, 100);
             
             // Initialize 3D viewer
             setTimeout(() => {
@@ -2060,835 +3780,378 @@
             }, 100);
         };
         
-        function loadTemplate(templateName) {
-            console.log('Loading template:', templateName);
-            const template = crystalTemplates[templateName];
-            console.log('Template data:', template);
-            if (!template) {
-                console.error('Template not found:', templateName);
-                return;
-            }
-            
-            // Clear existing basis positions and elements
-            clearAllBasisPositions();
-            clearAllCrystalElements();
-            console.log('Cleared existing data');
-            
-            // Load primary vectors
-            const pv = template.primaryVectors;
-            document.getElementById('pv-00').value = pv[0];
-            document.getElementById('pv-11').value = pv[4];
-            document.getElementById('pv-22').value = pv[8];
-            
-            // Load grid vectors
-            const gv = template.gridVectors;
-            document.getElementById('gv-00').value = gv[0];
-            document.getElementById('gv-11').value = gv[4];
-            document.getElementById('gv-22').value = gv[8];
-            
-            // Load box sizes
-            document.getElementById('box-x').value = template.boxSizes[0];
-            document.getElementById('box-y').value = template.boxSizes[1];
-            document.getElementById('box-z').value = template.boxSizes[2];
-            
-            // Load lattice ranges
-            document.getElementById('range-x-min').value = template.latticeRanges[0][0];
-            document.getElementById('range-x-max').value = template.latticeRanges[0][1];
-            document.getElementById('range-y-min').value = template.latticeRanges[1][0];
-            document.getElementById('range-y-max').value = template.latticeRanges[1][1];
-            document.getElementById('range-z-min').value = template.latticeRanges[2][0];
-            document.getElementById('range-z-max').value = template.latticeRanges[2][1];
-            
-            // Load basis positions
-            console.log('Loading basis positions:', template.basisPositions);
-            template.basisPositions.forEach((pos, index) => {
-                console.log(`Adding basis position ${index}:`, pos);
-                addBasisPosition();
-                document.getElementById(`basis-x-${nextBasisId - 1}`).value = pos[0];
-                document.getElementById(`basis-y-${nextBasisId - 1}`).value = pos[1];
-                document.getElementById(`basis-z-${nextBasisId - 1}`).value = pos[2];
-                document.getElementById(`basis-type-${nextBasisId - 1}`).value = template.basisTypes[index];
-            });
-            
-            // Load crystal elements
-            console.log('Loading crystal elements:', template.elements);
-            template.elements.forEach((elem, index) => {
-                console.log(`Processing element ${index}:`, elem);
-                addCrystalElement();
-                const currentElementId = nextElementId - 1; // Capture ID immediately after creation
-                // Use setTimeout to ensure DOM elements are created
-                setTimeout(() => {
-                    console.log(`Setting values for element ID ${currentElementId}`);
-                    const symbolInput = document.getElementById(`symbol-${currentElementId}`);
-                    const edInput = document.getElementById(`ed-${currentElementId}`);
-                    const dispInput = document.getElementById(`disp-${currentElementId}`);
-                    
-                    console.log('Found inputs:', {symbolInput, edInput, dispInput});
-                    
-                    if (symbolInput) symbolInput.value = elem.symbol;
-                    if (edInput) edInput.value = elem.ed;
-                    if (dispInput) dispInput.value = elem.displacement_energy;
-                    
-                    console.log(`Set values: ${elem.symbol}, ${elem.ed}, ${elem.displacement_energy}`);
-                }, 10);
-            });
-            
-            // Update atom count and 3D viewer with delay to ensure all DOM elements are created
-            setTimeout(() => {
-                console.log('Delayed update starting...');
-                updateAtomCount();
-            }, 200); // Longer delay to ensure 3D viewer is initialized
-            setTimeout(updateCrystalViewer, 300);
-        }
+        let currentStructureView = 'initial'; // 'initial' or 'final'
+        let finalDumpData = null;
         
-        function clearAllBasisPositions() {
-            const container = document.getElementById('basis-container');
-            container.innerHTML = '';
-            nextBasisId = 1;
-        }
-        
-        function clearAllCrystalElements() {
-            const container = document.getElementById('crystal-elements');
-            container.innerHTML = '';
-            nextElementId = 1;
-        }
-        
-        function updateAtomCount() {
-            // Calculate total atoms based on LATTICE RANGES (not box sizes) and basis positions
-            const xMin = parseFloat(document.getElementById('range-x-min').value) || 0;
-            const xMax = parseFloat(document.getElementById('range-x-max').value) || 0;
-            const yMin = parseFloat(document.getElementById('range-y-min').value) || 0;
-            const yMax = parseFloat(document.getElementById('range-y-max').value) || 0;
-            const zMin = parseFloat(document.getElementById('range-z-min').value) || 0;
-            const zMax = parseFloat(document.getElementById('range-z-max').value) || 0;
+        function toggleStructureView() {
+            const btn = document.getElementById('toggle-structure-btn');
+            const title = document.getElementById('viewer-title');
             
-            const rangeX = Math.max(0, Math.floor(xMax - xMin));
-            const rangeY = Math.max(0, Math.floor(yMax - yMin));
-            const rangeZ = Math.max(0, Math.floor(zMax - zMin));
-            
-            const basisRows = document.querySelectorAll('.basis-row');
-            const numBasisAtoms = basisRows.length;
-            
-            const totalAtoms = rangeX * rangeY * rangeZ * numBasisAtoms;
-            console.log(`Atom count calculation: (${xMax}-${xMin})*(${yMax}-${yMin})*(${zMax}-${zMin})*${numBasisAtoms} = ${rangeX}*${rangeY}*${rangeZ}*${numBasisAtoms} = ${totalAtoms}`);
-            
-            const totalAtomsElement = document.getElementById('total-atoms');
-            if (totalAtomsElement) {
-                totalAtomsElement.textContent = totalAtoms.toLocaleString();
-                console.log(`Updated total-atoms element to: ${totalAtoms}`);
-            } else {
-                console.log('total-atoms element not found');
-            }
-            
-            // Update 3D crystal viewer
-            updateCrystalViewer();
-        }
-        
-        function toggleInputMode() {
-            const mode = document.querySelector('input[name="input-mode"]:checked').value;
-            document.getElementById('parameter-mode').classList.toggle('hidden', mode !== 'parameters');
-            document.getElementById('script-mode').classList.toggle('hidden', mode !== 'script');
-            document.getElementById('preview-button').classList.toggle('hidden', mode !== 'parameters');
-        }
-        
-        function loadElementPresets() {
-            fetch('/get_element_presets')
+            if (currentStructureView === 'initial') {
+                // Switch to final structure
+                if (!confirmedWorkingDirectory) {
+                    addOutput('Please confirm working directory first', 'warning');
+                    return;
+                }
+                
+                // Load final.dump
+                fetch('/get_dump_file', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        working_directory: confirmedWorkingDirectory,
+                        dump_file: 'final.dump'
+                    })
+                })
                 .then(response => response.json())
                 .then(data => {
-                    elementPresets = data;
-                    // Ion symbol is now a text input, no need to populate options
-                });
-        }
-        
-        function updateIonParams() {
-            // Ion parameters are automatically set - no manual Ed input needed
-        }
-        
-        function addCrystalElement() {
-            const container = document.getElementById('crystal-elements');
-            console.log('Crystal elements container:', container);
-            if (!container) {
-                console.error('Could not find crystal-elements container');
-                return;
-            }
-            
-            const elementDiv = document.createElement('div');
-            elementDiv.className = 'element-row';
-            elementDiv.id = 'element-' + nextElementId;
-            
-            elementDiv.innerHTML = `
-                <label style="min-width: 80px;">Type ${nextElementId}:</label>
-                <input type="text" class="small-input" placeholder="Symbol" id="symbol-${nextElementId}">
-                <input type="number" class="medium-input" placeholder="Ed" step="0.1" id="ed-${nextElementId}">
-                <input type="number" class="medium-input" placeholder="Eb" step="0.1" id="disp-${nextElementId}">
-                <button type="button" class="remove-button" onclick="removeCrystalElement(${nextElementId})">Remove</button>
-            `;
-            
-            container.appendChild(elementDiv);
-            console.log(`Added element ${nextElementId}, container now has ${container.children.length} children`);
-            nextElementId++;
-            updateAtomCount(); // This will trigger 3D viewer update
-        }
-        
-        function removeCrystalElement(id) {
-            const element = document.getElementById('element-' + id);
-            if (element) {
-                element.remove();
-                updateAtomCount(); // This will trigger 3D viewer update
-            }
-        }
-        
-        function addBasisPosition() {
-            const container = document.getElementById('basis-container');
-            const basisDiv = document.createElement('div');
-            basisDiv.className = 'basis-row';
-            basisDiv.id = 'basis-' + nextBasisId;
-            
-            basisDiv.innerHTML = `
-                <label style="margin-bottom: 0; width: 30px;">x:</label>
-                <input type="number" class="coord-input" placeholder="0.0" step="any" id="basis-x-${nextBasisId}" onchange="updateAtomCount()" oninput="updateAtomCount()">
-                <label style="margin-bottom: 0; width: 30px;">y:</label>
-                <input type="number" class="coord-input" placeholder="0.0" step="any" id="basis-y-${nextBasisId}" onchange="updateAtomCount()" oninput="updateAtomCount()">
-                <label style="margin-bottom: 0; width: 30px;">z:</label>
-                <input type="number" class="coord-input" placeholder="0.0" step="any" id="basis-z-${nextBasisId}" onchange="updateAtomCount()" oninput="updateAtomCount()">
-                <label style="margin-bottom: 0; width: 50px;">Type:</label>
-                <input type="number" class="type-input" placeholder="1" min="1" id="basis-type-${nextBasisId}" value="1" onchange="updateAtomCount()" oninput="updateAtomCount()">
-                <button type="button" class="remove-button" onclick="removeBasisPosition(${nextBasisId})">Remove</button>
-            `;
-            
-            container.appendChild(basisDiv);
-            nextBasisId++;
-            updateAtomCount();
-        }
-        
-        function removeBasisPosition(id) {
-            const element = document.getElementById('basis-' + id);
-            if (element) {
-                element.remove();
-                updateAtomCount();
-            }
-        }
-        
-        
-        function loadExamples() {
-            fetch('/get_examples')
-                .then(response => response.json())
-                .then(examples => {
-                    const select = document.getElementById('example-select');
-                    examples.forEach(example => {
-                        const option = document.createElement('option');
-                        option.value = example;
-                        option.textContent = example;
-                        select.appendChild(option);
-                    });
-                });
-        }
-        
-        // Load selected example
-        document.getElementById('example-select').addEventListener('change', function() {
-            const selectedExample = this.value;
-            if (selectedExample) {
-                fetch(`/load_example/${selectedExample}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            document.getElementById('julia-script').value = data.content;
-                        } else {
-                            addOutput(`Error loading example: ${data.error}`, 'error');
+                    if (data.success) {
+                        if (data.too_many) {
+                            addOutput(data.message, 'warning');
+                            return;
                         }
-                    });
-            }
-        });
-        
-        // Ion symbol is now a text input, no change event needed
-        
-        // Working directory functions
-        function setCurrentDirectory() {
-            fetch('/get_current_directory')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        document.getElementById('working-directory').value = data.directory;
-                        addOutput(`Working directory set to: ${data.directory}`, 'success');
+                        
+                        finalDumpData = data;
+                        currentStructureView = 'final';
+                        btn.innerHTML = '🔄 Initial';
+                        btn.title = 'Switch to Initial Structure';
+                        title.textContent = 'Final Structure';
+                        
+                        // Display final structure
+                        displayFinalStructure(data);
                     } else {
-                        addOutput(`Error getting current directory: ${data.error}`, 'error');
+                        addOutput('Failed to load final.dump: ' + data.error, 'error');
+                    }
+                })
+                .catch(error => {
+                    addOutput('Error loading final structure: ' + error, 'error');
+                });
+            } else {
+                // Switch back to initial structure
+                currentStructureView = 'initial';
+                btn.innerHTML = '🔄 Final';
+                btn.title = 'Switch to Final Structure';
+                title.textContent = 'Crystal Structure';
+                
+                // Redraw initial structure
+                updateCrystalViewer();
+            }
+        }
+        
+        function displayFinalStructure(data) {
+            if (!scene || !crystalGroup) return;
+            
+            // Clear existing content
+            crystalGroup.clear();
+            
+            // Update viewer info
+            const viewerInfo = document.getElementById('viewer-info');
+            if (viewerInfo) {
+                viewerInfo.textContent = `Final structure: ${data.atom_count} atoms | Types: ${data.atom_types.join(', ')}`;
+            }
+            
+            if (data.atoms && data.atoms.length > 0) {
+                // Get element presets to determine atom colors and properties
+                const elementData = {};
+                const typeToElement = {};
+                
+                // Try to map atom types to elements based on current settings
+                const crystalElements = Array.from(document.querySelectorAll('.element-entry'));
+                crystalElements.forEach((entry, index) => {
+                    const symbolInput = entry.querySelector('input[name="element_symbol"]');
+                    if (symbolInput && symbolInput.value) {
+                        const symbol = symbolInput.value;
+                        typeToElement[index + 1] = symbol;
+                        elementData[symbol] = elementColors[symbol] || 0x999999;
                     }
                 });
-        }
-        
-        // Path autocomplete functionality
-        let currentSuggestionIndex = -1;
-        let pathSuggestions = [];
-        let autocompleteTimeout = null;
-        
-        const workingDirInput = document.getElementById('working-directory');
-        const autocompleteDropdown = document.getElementById('path-autocomplete-dropdown');
-        
-        // Initialize autocomplete
-        workingDirInput.addEventListener('input', function(e) {
-            clearTimeout(autocompleteTimeout);
-            autocompleteTimeout = setTimeout(() => {
-                fetchPathSuggestions(e.target.value);
-            }, 200); // Debounce for 200ms
-            
-            // Reset confirmed state when user modifies the path
-            if (this.value !== confirmedWorkingDirectory) {
-                document.getElementById('working-directory-badge').classList.remove('show');
-                document.getElementById('confirm-directory-btn').innerHTML = '<span>✓</span><span>Confirm</span>';
-                this.style.borderColor = 'var(--border-color)';
-            }
-        });
-        
-        workingDirInput.addEventListener('keydown', function(e) {
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                navigateSuggestions(1);
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                navigateSuggestions(-1);
-            } else if (e.key === 'Enter') {
-                if (currentSuggestionIndex >= 0 && currentSuggestionIndex < pathSuggestions.length) {
-                    e.preventDefault();
-                    selectSuggestion(pathSuggestions[currentSuggestionIndex]);
-                }
-            } else if (e.key === 'Escape') {
-                hideAutocomplete();
-            } else if (e.key === 'Tab' && pathSuggestions.length > 0) {
-                e.preventDefault();
-                if (currentSuggestionIndex < 0) {
-                    currentSuggestionIndex = 0;
-                }
-                selectSuggestion(pathSuggestions[currentSuggestionIndex]);
-            }
-        });
-        
-        // Hide dropdown when clicking outside
-        document.addEventListener('click', function(e) {
-            if (!workingDirInput.contains(e.target) && !autocompleteDropdown.contains(e.target)) {
-                hideAutocomplete();
-            }
-        });
-        
-        function fetchPathSuggestions(path) {
-            fetch('/list_directory', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ path: path })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.suggestions.length > 0) {
-                    pathSuggestions = data.suggestions;
-                    showSuggestions(data.suggestions);
-                } else {
-                    hideAutocomplete();
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching path suggestions:', error);
-                hideAutocomplete();
-            });
-        }
-        
-        function showSuggestions(suggestions) {
-            autocompleteDropdown.innerHTML = '';
-            currentSuggestionIndex = -1;
-            
-            suggestions.forEach((suggestion, index) => {
-                const div = document.createElement('div');
-                div.className = `path-suggestion ${suggestion.type}`;
-                div.innerHTML = `
-                    <span class="icon"></span>
-                    <span class="name">${suggestion.display}</span>
-                `;
-                div.addEventListener('click', () => selectSuggestion(suggestion));
-                div.addEventListener('mouseenter', () => {
-                    currentSuggestionIndex = index;
-                    updateSuggestionHighlight();
-                });
-                autocompleteDropdown.appendChild(div);
-            });
-            
-            autocompleteDropdown.classList.add('show');
-        }
-        
-        function hideAutocomplete() {
-            autocompleteDropdown.classList.remove('show');
-            pathSuggestions = [];
-            currentSuggestionIndex = -1;
-        }
-        
-        function navigateSuggestions(direction) {
-            if (pathSuggestions.length === 0) return;
-            
-            currentSuggestionIndex += direction;
-            if (currentSuggestionIndex < 0) {
-                currentSuggestionIndex = pathSuggestions.length - 1;
-            } else if (currentSuggestionIndex >= pathSuggestions.length) {
-                currentSuggestionIndex = 0;
-            }
-            
-            updateSuggestionHighlight();
-        }
-        
-        function updateSuggestionHighlight() {
-            const suggestions = autocompleteDropdown.querySelectorAll('.path-suggestion');
-            suggestions.forEach((elem, index) => {
-                if (index === currentSuggestionIndex) {
-                    elem.classList.add('selected');
-                    elem.scrollIntoView({ block: 'nearest' });
-                } else {
-                    elem.classList.remove('selected');
-                }
-            });
-        }
-        
-        function selectSuggestion(suggestion) {
-            workingDirInput.value = suggestion.path;
-            hideAutocomplete();
-            // Trigger new suggestions for subdirectories
-            fetchPathSuggestions(suggestion.path);
-        }
-        
-        // Global variable to store confirmed directory
-        let confirmedWorkingDirectory = '';
-        
-        function confirmWorkingDirectory() {
-            const dirPath = document.getElementById('working-directory').value.trim();
-            if (!dirPath) {
-                showDirectoryStatus('Please enter a directory path', 'error');
-                return;
-            }
-            
-            const confirmBtn = document.getElementById('confirm-directory-btn');
-            confirmBtn.disabled = true;
-            confirmBtn.innerHTML = '<span>⏳</span><span>Checking...</span>';
-            
-            fetch('/create_directory', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({directory: dirPath})
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    confirmedWorkingDirectory = data.directory;
-                    showDirectoryStatus(`✓ Directory confirmed: ${data.directory}`, 'success');
-                    document.getElementById('working-directory-badge').classList.add('show');
-                    document.getElementById('working-directory').style.borderColor = '#10b981';
-                    confirmBtn.innerHTML = '<span>✓</span><span>Confirmed</span>';
-                    
-                    // Flash success animation
-                    const input = document.getElementById('working-directory');
-                    input.style.transition = 'all 0.3s ease';
-                    setTimeout(() => {
-                        input.style.borderColor = 'var(--border-color)';
-                    }, 2000);
-                } else {
-                    showDirectoryStatus(`✗ Error: ${data.error}`, 'error');
-                    document.getElementById('working-directory').style.borderColor = '#ef4444';
-                    confirmBtn.innerHTML = '<span>✗</span><span>Failed</span>';
-                    
-                    setTimeout(() => {
-                        confirmBtn.innerHTML = '<span>✓</span><span>Confirm</span>';
-                        document.getElementById('working-directory').style.borderColor = 'var(--border-color)';
-                    }, 2000);
-                }
-            })
-            .catch(error => {
-                showDirectoryStatus(`✗ Network error: ${error.message}`, 'error');
-                confirmBtn.innerHTML = '<span>✗</span><span>Error</span>';
-                setTimeout(() => {
-                    confirmBtn.innerHTML = '<span>✓</span><span>Confirm</span>';
-                }, 2000);
-            })
-            .finally(() => {
-                confirmBtn.disabled = false;
-            });
-        }
-        
-        function showDirectoryStatus(message, type) {
-            const statusDiv = document.getElementById('working-directory-status');
-            const statusIcon = statusDiv.querySelector('.status-icon');
-            const statusText = statusDiv.querySelector('.status-text');
-            
-            statusDiv.className = `working-directory-status ${type} show`;
-            
-            if (type === 'success') {
-                statusIcon.textContent = '✓';
-            } else {
-                statusIcon.textContent = '✗';
-            }
-            
-            statusText.textContent = message;
-            
-            // Auto-hide after 5 seconds for success messages
-            if (type === 'success') {
-                setTimeout(() => {
-                    statusDiv.classList.remove('show');
-                }, 5000);
-            }
-        }
-        
-        function resetAllInputs() {
-            
-            // Reset primary vectors
-            document.getElementById('pv-00').value = '';
-            document.getElementById('pv-11').value = '';
-            document.getElementById('pv-22').value = '';
-            
-            // Clear all basis positions
-            clearAllBasisPositions();
-            
-            // Clear all crystal elements
-            clearAllCrystalElements();
-            
-            // Reset grid vectors to default
-            document.getElementById('gv-00').value = '2.1';
-            document.getElementById('gv-11').value = '2.1';
-            document.getElementById('gv-22').value = '2.1';
-            
-            // Reset box sizes
-            document.getElementById('box-x').value = '10';
-            document.getElementById('box-y').value = '20';
-            document.getElementById('box-z').value = '10';
-            
-            // Reset lattice ranges
-            document.getElementById('range-x-min').value = '0';
-            document.getElementById('range-x-max').value = '10';
-            document.getElementById('range-y-min').value = '0';
-            document.getElementById('range-y-max').value = '20';
-            document.getElementById('range-z-min').value = '5';
-            document.getElementById('range-z-max').value = '6';
-            
-            // Reset ion configuration
-            document.getElementById('ion-symbol').value = 'Ne';
-            document.getElementById('ion-energy').value = '1000';
-            document.getElementById('ion-dir-x').value = '0.0';
-            document.getElementById('ion-dir-y').value = '0.0';
-            document.getElementById('ion-dir-z').value = '-1.0';
-            
-            // Reset simulation parameters
-            document.getElementById('repetitions').value = '1000';
-            document.querySelector('input[name="irradiation-mode"][value="independent"]').checked = true;
-            document.getElementById('seed').value = '42';
-            document.getElementById('pmax').value = '1.45';
-            document.getElementById('vacancy-recover').value = '1.3';
-            document.getElementById('stop-energy').value = '0.1';
-            document.getElementById('temperature').value = '0';
-            document.getElementById('debye-temperature').value = '645';
-            document.getElementById('dynamic-load').checked = false;
-            document.getElementById('amorphous-mode').checked = false;
-            document.getElementById('record-vacancy').checked = true;
-            document.getElementById('record-penetration').checked = true;
-            
-            // Hide dynamic options
-            document.getElementById('dynamic-options').classList.add('hidden');
-            
-            // Reset 3D viewer
-            updateAtomCount();
-            
-            addOutput('All inputs have been reset to default values', 'success');
-        }
-        
-        function getCrystalElements() {
-            const elements = [];
-            const elementRows = document.querySelectorAll('.element-row');
-            
-            elementRows.forEach(row => {
-                const id = row.id.split('-')[1];
-                const symbol = document.getElementById(`symbol-${id}`).value;
-                const ed = parseFloat(document.getElementById(`ed-${id}`).value);
-                const displacement = parseFloat(document.getElementById(`disp-${id}`).value);
                 
-                if (symbol && !isNaN(ed) && !isNaN(displacement)) {
-                    elements.push({
-                        symbol: symbol,
-                        ed: ed,
-                        displacement_energy: displacement
+                // Create atoms with proper colors
+                const atomGeometry = new THREE.SphereGeometry(0.3, 16, 12);
+                const atomMeshes = [];
+                
+                data.atoms.forEach(atom => {
+                    const element = typeToElement[atom.type] || 'Unknown';
+                    const color = elementData[element] || 0x999999;
+                    
+                    const material = new THREE.MeshPhongMaterial({ 
+                        color: color,
+                        emissive: color,
+                        emissiveIntensity: 0.2,
+                        shininess: 100
                     });
-                }
-            });
-            
-            return elements;
-        }
-        
-        function getPrimaryVectors() {
-            const matrix = [];
-            for (let i = 0; i < 3; i++) {
-                const row = [];
-                for (let j = 0; j < 3; j++) {
-                    const value = parseFloat(document.getElementById(`pv-${i}${j}`).value) || 0.0;
-                    row.push(value);
-                }
-                matrix.push(row.join(' '));
-            }
-            return matrix.join('; ');
-        }
-        
-        function getGridVectors() {
-            const matrix = [];
-            for (let i = 0; i < 3; i++) {
-                const row = [];
-                for (let j = 0; j < 3; j++) {
-                    const value = parseFloat(document.getElementById(`gv-${i}${j}`).value) || 0.0;
-                    row.push(value);
-                }
-                matrix.push(row.join(' '));
-            }
-            return matrix.join('; ');
-        }
-        
-        function getBasisPositions() {
-            const positions = [];
-            const basisRows = document.querySelectorAll('.basis-row');
-            
-            basisRows.forEach(row => {
-                const id = row.id.split('-')[1];
-                const x = parseFloat(document.getElementById(`basis-x-${id}`).value) || 0.0;
-                const y = parseFloat(document.getElementById(`basis-y-${id}`).value) || 0.0;
-                const z = parseFloat(document.getElementById(`basis-z-${id}`).value) || 0.0;
+                    
+                    const mesh = new THREE.Mesh(atomGeometry, material);
+                    mesh.position.set(atom.x, atom.y, atom.z);
+                    mesh.userData = { element: element, type: atom.type };
+                    crystalGroup.add(mesh);
+                    atomMeshes.push({
+                        x: atom.x,
+                        y: atom.y,
+                        z: atom.z,
+                        element: element,
+                        mesh: mesh
+                    });
+                });
                 
-                positions.push(`${x} ${y} ${z}`);
-            });
-            
-            return positions.join('; ');
+                // Draw bonds between atoms
+                const bondMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x666666,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                
+                // Get user-defined bond threshold
+                const bondThresholdElement = document.getElementById('bond-threshold');
+                const userThresholdInput = bondThresholdElement ? bondThresholdElement.value : '0';
+                const userThreshold = parseFloat(userThresholdInput) || 0;
+                
+                // Draw bonds between atoms
+                for (let i = 0; i < atomMeshes.length; i++) {
+                    for (let j = i + 1; j < atomMeshes.length; j++) {
+                        const atom1 = atomMeshes[i];
+                        const atom2 = atomMeshes[j];
+                        
+                        const distance = Math.sqrt(
+                            Math.pow(atom1.x - atom2.x, 2) +
+                            Math.pow(atom1.y - atom2.y, 2) +
+                            Math.pow(atom1.z - atom2.z, 2)
+                        );
+                        
+                        // Use user threshold if > 0, otherwise use auto detection
+                        const bondThreshold = userThreshold > 0 ? userThreshold : getBondDistance(atom1.element, atom2.element);
+                        
+                        if (distance <= bondThreshold) {
+                            // Create cylinder for bond
+                            const bondGeometry = new THREE.CylinderGeometry(0.05, 0.05, distance, 8);
+                            const bondMesh = new THREE.Mesh(bondGeometry, bondMaterial);
+                            
+                            // Position and orient the bond
+                            const midpoint = new THREE.Vector3(
+                                (atom1.x + atom2.x) / 2,
+                                (atom1.y + atom2.y) / 2,
+                                (atom1.z + atom2.z) / 2
+                            );
+                            bondMesh.position.copy(midpoint);
+                            
+                            // Orient cylinder along bond direction
+                            const direction = new THREE.Vector3(
+                                atom2.x - atom1.x,
+                                atom2.y - atom1.y,
+                                atom2.z - atom1.z
+                            ).normalize();
+                            
+                            const axis = new THREE.Vector3(0, 1, 0);
+                            const quaternion = new THREE.Quaternion().setFromUnitVectors(axis, direction);
+                            bondMesh.quaternion.copy(quaternion);
+                            
+                            crystalGroup.add(bondMesh);
+                        }
+                    }
+                }
+                
+                // Create box borders
+                const boxBounds = data.box_bounds;
+                const boxWidth = boxBounds.x[1] - boxBounds.x[0];
+                const boxHeight = boxBounds.y[1] - boxBounds.y[0];
+                const boxDepth = boxBounds.z[1] - boxBounds.z[0];
+                
+                const edges = new THREE.EdgesGeometry(
+                    new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth)
+                );
+                const lineMaterial = new THREE.LineBasicMaterial({ 
+                    color: 0x666666,
+                    linewidth: 2 
+                });
+                const boxLines = new THREE.LineSegments(edges, lineMaterial);
+                
+                const boxCenterX = (boxBounds.x[0] + boxBounds.x[1]) / 2;
+                const boxCenterY = (boxBounds.y[0] + boxBounds.y[1]) / 2;
+                const boxCenterZ = (boxBounds.z[0] + boxBounds.z[1]) / 2;
+                
+                boxLines.position.set(boxCenterX, boxCenterY, boxCenterZ);
+                crystalGroup.add(boxLines);
+                
+                // Calculate center of mass of atoms
+                let centerX = 0, centerY = 0, centerZ = 0;
+                atomMeshes.forEach(atom => {
+                    centerX += atom.x;
+                    centerY += atom.y;
+                    centerZ += atom.z;
+                });
+                centerX /= atomMeshes.length;
+                centerY /= atomMeshes.length;
+                centerZ /= atomMeshes.length;
+                
+                // Adjust camera to focus on atom center
+                const maxDim = Math.max(boxWidth, boxHeight, boxDepth);
+                camera.position.set(
+                    centerX + maxDim * 0.8,
+                    centerY + maxDim * 0.8,
+                    centerZ + maxDim * 0.8
+                );
+                camera.lookAt(centerX, centerY, centerZ);
+                controls.target.set(centerX, centerY, centerZ);
+                controls.update();
+            }
         }
         
-        function getBasisTypes() {
-            const types = [];
-            const basisRows = document.querySelectorAll('.basis-row');
-            
-            basisRows.forEach(row => {
-                const id = row.id.split('-')[1];
-                const type = parseInt(document.getElementById(`basis-type-${id}`).value) || 1;
-                types.push(type);
-            });
-            
-            return types.join(', ');
-        }
-        
-        function getBoxSizes() {
-            const x = parseInt(document.getElementById('box-x').value) || 10;
-            const y = parseInt(document.getElementById('box-y').value) || 10;
-            const z = parseInt(document.getElementById('box-z').value) || 10;
-            return `${x}, ${y}, ${z}`;
-        }
-        
-        function getLatticeRanges() {
-            const xMin = parseFloat(document.getElementById('range-x-min').value) || 0;
-            const xMax = parseFloat(document.getElementById('range-x-max').value) || 10;
-            const yMin = parseFloat(document.getElementById('range-y-min').value) || 0;
-            const yMax = parseFloat(document.getElementById('range-y-max').value) || 10;
-            const zMin = parseFloat(document.getElementById('range-z-min').value) || 0;
-            const zMax = parseFloat(document.getElementById('range-z-max').value) || 10;
-            return `${xMin} ${xMax}; ${yMin} ${yMax}; ${zMin} ${zMax}`;
-        }
-        
-        function getPeriodic() {
-            // Fixed periodic boundary: x=true, y=true, z=false
-            return `true, true, false`;
-        }
-        
-        
-        function getIonDirection() {
-            const x = parseFloat(document.getElementById('ion-dir-x').value) || 0.0;
-            const y = parseFloat(document.getElementById('ion-dir-y').value) || 0.0;
-            const z = parseFloat(document.getElementById('ion-dir-z').value) || -1.0;
-            return [x, y, z];
-        }
-        
-        function getIrradiationMode() {
-            return document.querySelector('input[name="irradiation-mode"]:checked').value;
-        }
-        
-        function getParameters() {
-            const ionDir = getIonDirection();
-            
-            return {
-                primary_vectors: getPrimaryVectors(),
-                basis: getBasisPositions(),
-                basis_types: getBasisTypes(),
-                grid_vectors: getGridVectors(),
-                crystal_elements: getCrystalElements(),
-                box_sizes: getBoxSizes(),
-                lattice_ranges: getLatticeRanges(),
-                periodic: getPeriodic(),
-                pmax: parseFloat(document.getElementById('pmax').value),
-                vacancy_recover_distance: parseFloat(document.getElementById('vacancy-recover').value),
-                stop_energy: parseFloat(document.getElementById('stop-energy').value),
-                ion_symbol: document.getElementById('ion-symbol').value,
-                ion_displacement_energy: 0.1,
-                ion_energy: parseFloat(document.getElementById('ion-energy').value),
-                ion_direction_x: ionDir[0],
-                ion_direction_y: ionDir[1],
-                ion_direction_z: ionDir[2],
-                repetitions: parseInt(document.getElementById('repetitions').value),
-                irradiation_mode: getIrradiationMode(),
-                seed: parseInt(document.getElementById('seed').value),
-                dynamic_load: document.getElementById('dynamic-load').checked,
-                amorphous_mode: document.getElementById('amorphous-mode').checked,
-                temperature: parseFloat(document.getElementById('temperature').value) || 0,
-                debye_temperature: parseFloat(document.getElementById('debye-temperature').value) || 645,
-                record_vacancy: document.getElementById('record-vacancy').checked,
-                record_penetration: document.getElementById('record-penetration').checked,
-                working_directory: confirmedWorkingDirectory || document.getElementById('working-directory').value.trim()
-            };
-        }
-        
-        function previewScript() {
-            const params = getParameters();
-            
-            fetch('/run_simulation', {
+        // Functions for final.dump visualization
+        function loadFinalDump(workingDir) {
+            fetch('/get_dump_file', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    parameters: params,
-                    threads: 1,
-                    preview_only: true
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    working_directory: workingDir,
+                    dump_file: 'final.dump'
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.script) {
-                    document.getElementById('script-preview-modal').textContent = data.script;
-                    document.getElementById('scriptModal').style.display = 'block';
-                }
-            });
-        }
-        
-        function closeScriptModal() {
-            document.getElementById('scriptModal').style.display = 'none';
-        }
-        
-        // Close modal when clicking outside of it
-        window.onclick = function(event) {
-            const modal = document.getElementById('scriptModal');
-            if (event.target == modal) {
-                closeScriptModal();
-            }
-        }
-        
-        function runSimulation() {
-            const mode = document.querySelector('input[name="input-mode"]:checked').value;
-            let requestData = {};
-            
-            if (mode === 'parameters') {
-                const params = getParameters();
-                const crystalElements = getCrystalElements();
-                
-                const basisRows = document.querySelectorAll('.basis-row');
-                if (!params.primary_vectors || params.primary_vectors === '0 0 0; 0 0 0; 0 0 0' || basisRows.length === 0 || crystalElements.length === 0) {
-                    alert('Please fill in crystal structure (primary vectors, basis positions) and add at least one crystal element');
-                    return;
-                }
-                
-                requestData = {
-                    parameters: params,
-                    threads: 1
-                };
-            } else {
-                const script = document.getElementById('julia-script').value;
-                if (!script.trim()) {
-                    alert('Please enter a Julia script');
-                    return;
-                }
-                requestData = {
-                    script: script,
-                    threads: parseInt(document.getElementById('threads-script').value)
-                };
-            }
-            
-            // Disable run button, enable stop button
-            document.getElementById('run-button').disabled = true;
-            document.getElementById('stop-button').disabled = false;
-            
-            clearOutput();
-            addOutput('Starting simulation...', 'success');
-            
-            fetch('/run_simulation', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestData)
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    currentProcessId = data.process_id;
-                    socket.emit('join_process', {process_id: currentProcessId});
-                    addOutput(`Process started with ID: ${currentProcessId}`, 'success');
-                    if (data.script && mode === 'parameters') {
-                        document.getElementById('script-preview').textContent = data.script;
+                    const finalSection = document.getElementById('final-structure-section');
+                    const atomCountSpan = document.getElementById('final-atom-count');
+                    
+                    if (data.too_many) {
+                        finalSection.style.display = 'block';
+                        atomCountSpan.textContent = data.message;
+                        document.getElementById('final-viewer-placeholder').innerHTML = `
+                            <div>
+                                <p>⚠️ ${data.message}</p>
+                                <p style="font-size: 12px; margin-top: 8px;">3D visualization is limited to structures with 3000 atoms or less</p>
+                            </div>
+                        `;
+                    } else if (data.atoms && data.atoms.length > 0) {
+                        finalSection.style.display = 'block';
+                        atomCountSpan.textContent = `Total atoms: ${data.atom_count} | Atom types: ${data.atom_types.join(', ')}`;
+                        initFinalViewer(data.atoms, data.box_bounds, data.atom_types);
+                    } else {
+                        console.log('No atoms found in final.dump');
                     }
                 } else {
-                    addOutput(`Error: ${data.error}`, 'error');
-                    document.getElementById('run-button').disabled = false;
-                    document.getElementById('stop-button').disabled = true;
+                    console.error('Failed to load dump file:', data.error);
                 }
+            })
+            .catch(error => {
+                console.error('Error loading dump file:', error);
             });
         }
         
-        function stopSimulation() {
-            if (currentProcessId) {
-                fetch(`/stop_simulation/${currentProcessId}`, {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        addOutput('Simulation stopped', 'error');
-                    }
+        function initFinalViewer(atoms, boxBounds, atomTypes) {
+            const container = document.getElementById('final-crystal-viewer');
+            const placeholder = document.getElementById('final-viewer-placeholder');
+            
+            // Hide placeholder
+            if (placeholder) {
+                placeholder.style.display = 'none';
+            }
+            
+            // Clear any existing content
+            while (container.firstChild && container.firstChild !== placeholder) {
+                container.removeChild(container.firstChild);
+            }
+            
+            // Create scene, camera, renderer
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf5f5f5);
+            
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            const aspect = width / height;
+            
+            const camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+            camera.up.set(0, 0, 1);  // Make z-axis point upward
+            
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+            
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 10);
+            scene.add(directionalLight);
+            
+            // Add controls
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            
+            // Define colors for different atom types
+            const typeColors = {
+                1: 0x3b82f6,  // Blue
+                2: 0x10b981,  // Green
+                3: 0xf59e0b,  // Amber
+                4: 0xef4444,  // Red
+                5: 0x8b5cf6,  // Purple
+                6: 0x06b6d4,  // Cyan
+                7: 0xf97316,  // Orange
+                8: 0x84cc16   // Lime
+            };
+            
+            // Create atoms
+            const atomGroup = new THREE.Group();
+            const atomGeometry = new THREE.SphereGeometry(0.3, 16, 12);
+            
+            atoms.forEach(atom => {
+                const material = new THREE.MeshPhongMaterial({ 
+                    color: typeColors[atom.type] || 0x999999,
+                    emissive: typeColors[atom.type] || 0x999999,
+                    emissiveIntensity: 0.2,
+                    shininess: 100
                 });
-            }
-        }
-        
-        function clearOutput() {
-            document.getElementById('output').innerHTML = `
-                <div style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 40px; line-height: 1.6;">
-                    <p>🚀 Click "Run Simulation" to start the DISPLATH simulation</p>
-                    <p style="font-size: 14px; margin-top: 16px;">Real-time output from the Julia process will appear here.</p>
-                </div>
-            `;
-        }
-        
-        function addOutput(text, className = '') {
-            const output = document.getElementById('output');
+                
+                const mesh = new THREE.Mesh(atomGeometry, material);
+                mesh.position.set(atom.x, atom.y, atom.z);
+                atomGroup.add(mesh);
+            });
             
-            // Clear default content on first output
-            if (output.innerHTML.includes('Click "Run Simulation"')) {
-                output.innerHTML = '';
-            }
+            scene.add(atomGroup);
             
-            const line = document.createElement('div');
-            line.className = 'output-line ' + className;
-            line.textContent = text;
-            output.appendChild(line);
-            output.scrollTop = output.scrollHeight;
+            // Create box borders
+            const boxWidth = boxBounds.x[1] - boxBounds.x[0];
+            const boxHeight = boxBounds.y[1] - boxBounds.y[0];
+            const boxDepth = boxBounds.z[1] - boxBounds.z[0];
+            
+            const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+            const edges = new THREE.EdgesGeometry(boxGeometry);
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x333333, linewidth: 2 });
+            const boxLines = new THREE.LineSegments(edges, lineMaterial);
+            
+            const boxCenterX = (boxBounds.x[0] + boxBounds.x[1]) / 2;
+            const boxCenterY = (boxBounds.y[0] + boxBounds.y[1]) / 2;
+            const boxCenterZ = (boxBounds.z[0] + boxBounds.z[1]) / 2;
+            
+            boxLines.position.set(boxCenterX, boxCenterY, boxCenterZ);
+            scene.add(boxLines);
+            
+            // Set camera position
+            const maxDim = Math.max(boxWidth, boxHeight, boxDepth);
+            camera.position.set(maxDim * 1.5, maxDim * 1.5, maxDim * 1.5);
+            camera.lookAt(boxCenterX, boxCenterY, boxCenterZ);
+            controls.target.set(boxCenterX, boxCenterY, boxCenterZ);
+            
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+            
+            // Handle resize
+            window.addEventListener('resize', () => {
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            });
         }
-        
-        // Socket.IO event handlers
-        socket.on('output', function(data) {
-            if (data.process_id === currentProcessId) {
-                addOutput(data.data);
-            }
-        });
-        
-        socket.on('process_finished', function(data) {
-            if (data.process_id === currentProcessId) {
-                addOutput('Simulation finished', 'success');
-                document.getElementById('run-button').disabled = false;
-                document.getElementById('stop-button').disabled = true;
-                currentProcessId = null;
-            }
-        });
     </script>
 </body>
 </html>
+        

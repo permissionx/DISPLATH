@@ -401,10 +401,12 @@ function delete_dynamicLoad!(simulator::Simulator, atom::Atom; isDeleteVacancy::
     else
         deleteat!(cell.vacancies, findfirst(v -> v.index == atom.index, cell.vacancies))
         if cell.isLoaded
+            atom.type -= length(keys(simulator.parameters.typeDict))
             latom = CopyAtom(atom, simulator)
             simulator.minLatticeAtomID -= 1
             latom.index = simulator.minLatticeAtomID
             push!(cell.latticeAtoms, latom)
+            latom.isNewlyLoaded = true
         end 
         simulator.numberOfVacancies -= 1
     end
@@ -620,3 +622,4 @@ function Restore_dynamicLoad!(simulator::Simulator)
     simulator.numberOfAtoms = 0
     simulator.numberOfVacancies = 0
 end
+

@@ -8,7 +8,7 @@ function DefectStatics(simulator::Simulator)
         vacancies = Vector{LatticePoint}()
         interstitials = Vector{Atom}()
         for idx in simulator.displacedAtoms
-            if latticePoints[idx].atomIndex == -1 || atoms[latticePoints[idx].atomIndex].type == 3
+            if latticePoints[idx].atomIndex == -1 || atoms[latticePoints[idx].atomIndex].type == length(keys(simulator.parameters.typeDict))
                 push!(vacancies, latticePoints[idx])
             end
             if atoms[idx].isAlive && atoms[idx].latticePointIndex == -1

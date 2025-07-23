@@ -8,7 +8,7 @@ set -e  # Exit on any error
 echo "Setting up ARCS environment..."
 
 # Create the main ARCS repository directory
-ARCS_REPO="$HOME/.arcs_repository"
+ARCS_REPO="$HOME/.arcs"
 echo "Creating ARCS repository directory: $ARCS_REPO"
 mkdir -p "$ARCS_REPO"
 
