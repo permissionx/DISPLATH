@@ -2,112 +2,100 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Overview
+## Project Overview
 
-DISPLAΘ is a Julia-based Binary Collision Approximation (BCA) simulator for modeling ion irradiation processes in materials. It simulates collision cascades to predict damage like vacancies produced by ions at various energies.
+DISPLATH (DISPLAΘ Is the Second Program Leveraging Accurate Θ) is a Julia-based Binary Collision Approximation (BCA) simulator for modeling ion irradiation processes in materials. It simulates collision cascades to predict radiation damage (vacancies) in materials.
 
-## Core Architecture
-
-### Main Components
-
-- **`src/main.jl`**: Entry point that includes all modules and dependencies
-- **`src/types.jl`**: Core data structures (Atom, Simulator, Parameters, GridCell, etc.)
-- **`src/bca.jl`**: Binary Collision Approximation physics calculations 
-- **`src/dynamics.jl`**: Target finding and collision dynamics
-- **`src/geometry.jl`**: Spatial geometry operations and atom creation
-- **`src/dynamic_load.jl`**: Dynamic cell loading for large simulations
-- **`src/dte.jl`**: Dynamic Time Evolution simulation capabilities
-- **`src/kmc.jl`**: Kinetic Monte Carlo methods
-- **`src/io.jl`**: File I/O and data output
-- **`src/utils.jl`**: Utility functions
-
-### Key Data Structures
-
-- **`Simulator`**: Main simulation container holding atoms, lattice points, cell grid, and parameters
-- **`Atom`**: Represents individual atoms with position, velocity, energy, type, and collision state
-- **`GridCell`**: Spatial partitioning cells containing atoms and lattice points
-- **`Parameters`**: Configuration container for simulation settings, material properties, and physical constants
-
-### Simulation Flow
-
-1. **Initialization**: Create simulator with lattice structure and material parameters
-2. **Ion Injection**: Add ion with specified energy and direction  
-3. **Cascade Simulation**: Use BCA to simulate collision cascades through `Cascade!()` function
-4. **Target Finding**: Use spatial grid to efficiently find collision targets
-5. **Analysis**: Count vacancies and output results
-
-## Common Development Tasks
+## Key Commands
 
 ### Running Simulations
+```bash
+# Run a simulation example
+julia examples/Static_load/graphene/main.jl
 
-All simulations are executed by running Julia scripts that include `src/main.jl`:
-
-```julia
-include("src/main.jl")
-# Define parameters and run simulation
+# Run with specific number of threads
+julia -t 8 examples/Static_load/graphene/main.jl
 ```
 
-Examples are in the `examples/` directory with working scripts like:
-- `examples/SiC/run.jl`: SiC irradiation simulation
-- `examples/B-Si/run.jl`: B on Si simulation
+### Environment Setup
+```bash
+# Run the installation script to set up ARCS environment
+./install_arcs.sh
 
-### Performance Analysis
+# The script sets up:
+# - ARCS_REPO=$HOME/.arcs_repository
+# - ARCS_HOME=/beegfs/science-share/arcs/DISPLATH
+# - Julia PATH=/beegfs/science-share/julia/bin
+```
 
-Use the performance analysis tools in `examples/SiC/`:
-- `quick_profile.jl`: Fast performance check
-- `loadcell_profile.jl`: Analyze LoadCell function bottlenecks  
-- `profile_analysis.jl`: Comprehensive performance analysis
+### Testing
+There is no formal test runner. Test files exist in the `test/` directory but are run individually:
+```bash
+julia test/test.jl
+```
 
-### Material Setup
+## Code Architecture
 
-Material properties are defined through:
-- `primaryVectors`: Unit cell vectors
-- `basis`: Atomic positions in unit cell  
-- `basisTypes`: Atom types for each basis position
-- `typeDict`: Element properties (mass, radius, displacement energies)
-- Theta-tau files in `thetatau_repository/` for scattering calculations
+### Module Structure
+The main module is loaded via:
+```julia
+include("/path/to/DISPLATH/src/DISPLATH.jl")
+```
+
+### Core Components
+- **src/DISPLATH.jl**: Main module file that includes all components
+- **src/bca.jl**: Binary Collision Approximation core logic
+- **src/types.jl**: Type definitions (Atom, Simulator, Parameters)
+- **src/geometry.jl**: Geometric calculations and grid operations
+- **src/dynamics.jl**: Collision dynamics and cascade simulation
+- **src/dte.jl**: Dynamic Time Evolution functionality
+- **src/io.jl**: Input/output operations and data dumping
+
+### Key Types
+- `Atom`: Represents an atom with position, velocity, type
+- `Simulator`: Main simulation container with atoms and grid
+- `Parameters`: Simulation parameters including materials and thresholds
+
+### Typical Simulation Workflow
+1. Define material structure (lattice vectors, basis, atom types)
+2. Create Parameters object with collision settings
+3. Initialize Simulator with box size and grid
+4. Create ions with specific energy/direction
+5. Run Cascade! to simulate collisions
+6. Analyze defects with DefectStatics
+
+### Data Files
+- **θτ files** (.thetatau): Scattering angle and time data
+- **DTE files** (.dte): Dynamic time evolution parameters
+- **Dump files** (.dump): Atom position snapshots
 
 ### Key Functions
+- `Cascade!(atom, simulator)`: Run collision cascade
+- `DefectStatics(simulator)`: Analyze vacancies and interstitials
+- `Save!/Restore!`: State management for multiple runs
+- `@dump`: Macro for saving atom positions
+- `@record`: Macro for logging results to CSV
 
-- `Cascade!(ion, simulator)`: Main cascade simulation
-- `LoadCell!()`: Dynamic loading of simulation cells
-- `ShotTarget()`: Find collision targets using spatial grid
-- `CountVacancies()`: Count defects after simulation
-- `Save!()/Restore!()`: State management for multiple runs
+### Material Examples
+The codebase includes examples for:
+- 2D materials: graphene, hBN, MoS2
+- 3D materials: Si, SiC
+- Various ions: He, Ne, Ar, Kr, Xe
 
-### File Formats
+### Performance Considerations
+- Uses Julia's threading for parallel execution
+- StableRNG for reproducible parallel random numbers
+- Static arrays for performance in geometric calculations
 
-- `.dump`: Atomic structure files (similar to LAMMPS format)
-- `.dte`: Dynamic Time Evolution data files
-- `.thetatau`: Scattering angle and energy transfer data
-- `.csv`: Results output (vacancy counts, statistics)
+### Important Environment Variables
+- `ARCS_HOME`: Points to DISPLATH installation directory
+- `ARCS_REPO`: Repository for θτ and DTE data files
+- `IS_DYNAMIC_LOAD`: Flag for dynamic vs static loading mode
 
-## Dependencies
+## Development Notes
 
-Required Julia packages:
-- LinearAlgebra
-- QuadGK  
-- ProgressMeter
-- StableRNGs
-- Interpolations
-- Dates
-
-Optional for analysis:
-- BenchmarkTools (for performance profiling)
-
-## Directory Structure
-
-- `src/`: Core simulation code
-- `examples/`: Working simulation examples organized by material system
-- `test/`: Test scripts and validation
-- `thetatau_repository/`: Scattering data files
-- `dte_repository/`: Dynamic Time Evolution data
-- `dumps/`: Example atomic structure files
-- `my_calculations/`: Research calculations and benchmarks
-
-## Performance Considerations
-
-- The `LoadCell!()` function for dynamic loading is often a bottleneck
-- Spatial grid (`GridCell`) system enables efficient neighbor finding
-- Memory management is critical for large simulations with many atoms
-- Multi-threading support available through `Base.Threads`
+When modifying the simulator:
+- Maintain thread safety when using parallel features
+- Use `@dump` and `@record` macros for consistent output
+- Follow existing patterns in examples/ for new simulations
+- Defect analysis requires proper vacancy recovery distance settings

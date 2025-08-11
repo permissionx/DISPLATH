@@ -12,10 +12,10 @@ mutable struct Atom
     isAlive::Bool
     type::Int64
     coordinate::Vector{Float64}
-    cellIndex::Vector{Int64}
+    cellIndex::Tuple{Int64, Int64, Int64}
     radius::Float64
     mass::Float64
-    velocityDirection::Vector{Float64}
+    velocityDirection::SVector{3,Float64}
     energy::Float64
     Z::Float64
 
@@ -26,8 +26,8 @@ mutable struct Atom
 
     # for atom_t
     pValue::Float64
-    pPoint::Vector{Float64}
-    pVector::Vector{Float64}
+    pPoint::SVector{3,Float64}
+    pVector::SVector{3,Float64}
     pL::Float64
 
     # for atom_p
@@ -44,7 +44,7 @@ mutable struct Atom
 
     # for dynamic load 
     isNewlyLoaded::Bool
-    latticeCoordinate::Vector{Float64}
+    latticeCoordinate::SVector{3,Float64}
 
 end
 
@@ -55,7 +55,7 @@ mutable struct LatticePoint
     index::Int64
     type::Int64  # Initial Type, will not change
     coordinate::Vector{Float64}
-    cellIndex::Vector{Int64}
+    cellIndex::Tuple{Int64, Int64, Int64}
     environment::Vector{Int64}
 
     atomIndex::Int64 # -1 for vacancy
@@ -68,57 +68,55 @@ struct NeighborCellInfo
 end
 
 
-
-mutable struct GridCell
+mutable struct Cell
     # only for orthogonal box
-    index::Vector{Int64}
+    index::Tuple{Int64, Int64, Int64}
     atoms::Vector{Atom}
     latticePoints::Vector{LatticePoint}  
     ranges::Matrix{Float64}
-    centerCoordinate::Vector{Float64}
-    #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo}
     neighborCellsInfo::Array{NeighborCellInfo, 3}
     isExplored::Bool
     atomicDensity::Float64
     # for dynamic load
-    vertexMatrix::Matrix{Float64}
     latticeAtoms::Vector{Atom}
     isLoaded::Bool
     vacancies::Vector{Atom}
-    isSavedAtomRange::Bool
-    atomRange::Vector{UnitRange{Int64}}
+    isSavedLatticeRange::Bool
+    latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
 end
 
-function GridCell(
-    index::Vector{Int64},
+
+function Cell(
+    index::Tuple{Int64, Int64, Int64},
     atoms::Vector{Atom},
     latticePoints::Vector{LatticePoint},
     ranges::Matrix{Float64},
-    centerCoordinate::Vector{Float64},
     #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo},
     neighborCellsInfo::Array{NeighborCellInfo, 3},
     isExplored::Bool,
     atomicDensity::Float64)           
-    vertexMatrix = Matrix{Float64}(undef, 6, 3)
-    vertexMatrix[1,:] = [ranges[1,1], ranges[2,1], ranges[3,1]]
-    vertexMatrix[2,:] = [ranges[1,1], ranges[2,1], ranges[3,2]]
-    vertexMatrix[3,:] = [ranges[1,2], ranges[2,1], ranges[3,1]]
-    vertexMatrix[4,:] = [ranges[1,2], ranges[2,1], ranges[3,2]]
-    vertexMatrix[5,:] = [ranges[1,1], ranges[2,2], ranges[3,1]]
-    vertexMatrix[6,:] = [ranges[1,1], ranges[2,2], ranges[3,2]]
     latticeAtoms = Vector{Atom}()
     isLoaded = false
     vacancies = Vector{Atom}()
-    isSavedAtomRange = false
-    atomRange = Vector{UnitRange{Int64}}()
+    isSavedLatticeRange = false
+    latticeRanges = Matrix{Int64}(undef, 3, 2)
     isPushedNeighbor = false
-    return GridCell(index, atoms, latticePoints, ranges, centerCoordinate, neighborCellsInfo, isExplored, atomicDensity, 
-                    vertexMatrix, latticeAtoms, isLoaded, vacancies, isSavedAtomRange, atomRange, isPushedNeighbor)     
+    return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
+                    latticeAtoms, isLoaded, vacancies, isSavedLatticeRange, latticeRanges, isPushedNeighbor)     
 end
 
-mutable struct CellGrid
-    cells::Array{GridCell, 3}
+
+macro cell_storage_type()
+    if IS_DYNAMIC_LOAD
+        return :(Dict{Tuple{Int64, Int64, Int64}, Cell}) #:(SparseVector{Cell})
+    else
+        return :(Array{Cell, 3})
+    end
+end
+
+mutable struct Grid
+    cells::@cell_storage_type()
     vectors::Matrix{Float64}
     sizes::Vector{Int64}      
     cellVolume::Float64
@@ -152,9 +150,9 @@ struct Element
 end
 
 
-struct Parameters
+mutable struct Parameters
     primaryVectors::Matrix{Float64}
-    primaryVectors_INV::Matrix{Float64}
+    primaryVectors_INV::Matrix{Float64} # not a input 
     latticeRanges::Matrix{Int64}
     basisTypes::Vector{Int64}
     basis::Matrix{Float64}
@@ -162,18 +160,15 @@ struct Parameters
     pMax::Float64
     vacancyRecoverDistance_squared::Float64
     typeDict::Dict{Int64, Element}
-    seed::Int64
     #optional 
     periodic::Vector{Bool}
     isOrthogonal::Bool
+    isPrimaryVectorOrthogonal::Bool  # not a input 
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     pRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     stopEnergy::Float64
     DebyeTemperature::Float64
-    pLMax::Float64     
     isDumpInCascade::Bool
-    dumpFolder::String
-    isLog::Bool
     DTEMode::Int64 
     #soapParameters::Vector{Float64}
     DTEFile::String
@@ -183,8 +178,9 @@ struct Parameters
     temperature_kb::Float64
     perfectEnvIndex::Int64
     irrdiationFrequency::Float64
-    isDynamicLoad::Bool
     nCascadeEveryLoad::Int64
+    maxRSS::Int64
+    isAmorphous::Bool
 end
 
 
@@ -194,22 +190,18 @@ function Parameters(
     latticeRanges::Matrix{Int64},
     basisTypes::Vector{Int64},
     basis::Matrix{Float64},
-    θτRepository::String,
     pMax::Float64,  
     vacancyRecoverDistance::Float64, 
-    typeDict::Dict{Int64, Element}, 
-    seed::Int64;
+    typeDict::Dict{Int64, Element};
     # optional
     periodic::Vector{Bool} = [true, true, false],
     isOrthogonal::Bool = true,
+    θτRepository::String = ENV["ARCS_REPO"] * "/thetatau_repository/",
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -1.0:0.045:8.0,
     pRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = 0.0:0.01:5.0,
-    stopEnergy::Float64 = 10.0, 
+    stopEnergy::Float64 = 0.1, 
     DebyeTemperature::Float64 = 1000.0, 
-    pLMax::Float64 = 2.0, 
     isDumpInCascade::Bool = false, 
-    dumpFolder::String = ".",
-    isLog::Bool = false,
     DTEMode::Int64 = 1,
     #soapParameters::Vector{Float64} = [2.6, 8.0, 6.0],
     DTEFile::String="",
@@ -218,31 +210,88 @@ function Parameters(
     temperature::Float64 = 0.0,   # K
     perfectEnvIndex::Int64 = 0,
     irrdiationFrequency::Float64 = 0.0,
-    isDynamicLoad = false,
-    nCascadeEveryLoad = 1)
+    nCascadeEveryLoad = 100,
+    maxRSS::Int = 20, # unit: GB
+    isAmorphous = false) 
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
     if !isdir(θτRepository)
         error("θτRepository $(θτRepository) does not exist.")
     end
+    isPrimaryVectorOrthogonal = (primaryVectors[1,2] == 0.0 && primaryVectors[1,3] == 0.0 && 
+                    primaryVectors[2,1] == 0.0 && primaryVectors[2,3] == 0.0 && 
+                    primaryVectors[3,1] == 0.0 && primaryVectors[3,2] == 0.0)
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
+    maxRSS *= 1048576  # unit: kB
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
-                      θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict, seed,
-                      periodic, isOrthogonal,
-                      EPowerRange, pRange, stopEnergy, DebyeTemperature, pLMax, isDumpInCascade, dumpFolder, isLog,
+                      θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict,
+                      periodic, isOrthogonal, isPrimaryVectorOrthogonal,
+                      EPowerRange, pRange, stopEnergy, DebyeTemperature, isDumpInCascade, 
                       DTEMode, 
                       #soapParameters, 
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      isDynamicLoad, nCascadeEveryLoad)
+                      nCascadeEveryLoad, maxRSS, isAmorphous)
 end 
 
+mutable struct CollisionParamsBuffers
+    tanφList::Vector{Float64}  
+    tanψList::Vector{Float64}
+    E_tList::Vector{Float64}
+    x_pList::Vector{Float64}
+    x_tList::Vector{Float64}
+    Q_locList::Vector{Float64}
+    function CollisionParamsBuffers()
+        return new(
+            Vector{Float64}(), Vector{Float64}(), Vector{Float64}(),
+            Vector{Float64}(), Vector{Float64}(), Vector{Float64}()
+        )
+    end
+end
+
+mutable struct WorkBuffers
+    coordinate::Vector{Float64}
+    candidateTargets::Vector{Atom}
+    collisionParames::CollisionParamsBuffers
+    threadCandidates::Vector{Vector{Atom}}
+    function WorkBuffers(max_threads::Int64=Threads.nthreads())
+        candidateTargets = Vector{Atom}()
+        sizehint!(candidateTargets, 100)
+        collisionParams = CollisionParamsBuffers()
+        threadCandidates = [Vector{Atom}() for _ in 1:max_threads]
+        for tc in threadCandidates
+            sizehint!(tc, 50)
+        end
+        return new(Vector{Float64}(undef, 3), candidateTargets, 
+                  collisionParams, threadCandidates)
+    end
+end
+
+function EnsureCollisionCapacity!(buffers::CollisionParamsBuffers, n::Int)
+    if length(buffers.tanφList) < n
+        resize!(buffers.tanφList, n)
+        resize!(buffers.tanψList, n)
+        resize!(buffers.E_tList, n)
+        resize!(buffers.x_pList, n)
+        resize!(buffers.x_tList, n)
+        resize!(buffers.Q_locList, n)
+    end
+end
+
+function ClearBuffers!(buffers::WorkBuffers)
+    empty!(buffers.coordinate)
+    empty!(buffers.targets)
+    empty!(buffers.candidateTargets)
+    for tc in buffers.threadCandidates
+        empty!(tc)
+    end
+end
 
 mutable struct Simulator
     atoms::Vector{Atom}
     latticePoints::Vector{LatticePoint}
     box::Box
-    cellGrid::CellGrid
+    grid::Grid
     maxAtomID::Int64
     numberOfAtoms::Int64
     constantsByType::ConstantsByType
@@ -251,7 +300,7 @@ mutable struct Simulator
     numberOfAtomsWhenStored::Int64
     nCascade::Int64
     nCollisionEvent::Int64
-    exploredCells::Vector{GridCell}
+    exploredCells::Vector{Cell}
     θFunctions::Dict{Vector{Int64}, Function}
     τFunctions::Dict{Vector{Int64}, Function}
     #soap::PyObject
@@ -263,20 +312,21 @@ mutable struct Simulator
     frequencies::Vector{Float64}
     mobileAtoms::Vector{Atom}
     #for dynamic load
-    loadedCells::Vector{GridCell}
+    loadedCells::Vector{Cell}
     vacancies::Vector{Atom}
     numberOfVacancies::Int64
     maxVacancyID::Int64
     minLatticeAtomID::Int64
-
     # for debug
     debugAtom::Atom
-
     parameters::Parameters
+    workBuffers::WorkBuffers
 end
 
+
+
 function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    cellGrid = CreateCellGrid(box, inputGridVectors, parameters)
+    grid = CreateGrid(box, inputGridVectors)
     constantsByType = InitConstantsByType(parameters.typeDict, parameters)
     θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
     #soap = InitSoap(parameters)
@@ -289,28 +339,28 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     frequency = 0.0
     frequencies = Vector{Float64}()
     mobileAtoms = Vector{Atom}()
-    loadedCells = Vector{GridCell}()
+    loadedCells = Vector{Cell}()
     vacancies = Vector{Atom}()
     nCollisionEvent = 0
     numberOfVacancies = 0
     maxVacancyID = 1E6
     minLatticeAtomID = 0
     debugAtom = Atom(1, [0.0,0.0,0.0], parameters)
-
-
+    workBuffers = WorkBuffers()
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
-                     box, cellGrid, 
+                     box, grid, 
                      0, 0, 
                      constantsByType,
                      false, Vector{Int64}(), 0, 
                      0,nCollisionEvent,
-                     Vector{GridCell}(),
+                     Vector{Cell}(),
                      θFunctions, τFunctions,
                      #soap, 
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
                      loadedCells, vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
                      debugAtom,
-                     parameters)  
+                     parameters,
+                     workBuffers)  
 end
 

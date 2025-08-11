@@ -1,23 +1,27 @@
 function DefectStatics(simulator::Simulator)
-    if !simulator.isStore
-        error("simulator must be stored when counting defects")
-    end
-    latticePoints = simulator.latticePoints
-    atoms = simulator.atoms
-    vacancies = Vector{LatticePoint}()
-    interstitials = Vector{Atom}()
-    for idx in simulator.displacedAtoms
-        if latticePoints[idx].atomIndex == -1 || atoms[latticePoints[idx].atomIndex].type == 3
-            push!(vacancies, latticePoints[idx])
+    if !IS_DYNAMIC_LOAD
+        if !simulator.isStore
+            error("simulator must be stored when counting defects")
         end
-        if atoms[idx].isAlive && atoms[idx].latticePointIndex == -1
-            push!(interstitials, atoms[idx])
+        latticePoints = simulator.latticePoints
+        atoms = simulator.atoms
+        vacancies = Vector{LatticePoint}()
+        interstitials = Vector{Atom}()
+        for idx in simulator.displacedAtoms
+            if latticePoints[idx].atomIndex == -1 || atoms[latticePoints[idx].atomIndex].type == length(keys(simulator.parameters.typeDict))
+                push!(vacancies, latticePoints[idx])
+            end
+            if atoms[idx].isAlive && atoms[idx].latticePointIndex == -1
+                push!(interstitials, atoms[idx])
+            end
         end
-    end
-    for idx in simulator.numberOfAtomsWhenStored:simulator.maxAtomID
-        if atoms[idx].isAlive && atoms[idx].latticePointIndex == -1
-            push!(interstitials, atoms[idx])
+        for idx in simulator.numberOfAtomsWhenStored:simulator.maxAtomID
+            if atoms[idx].isAlive && atoms[idx].latticePointIndex == -1
+                push!(interstitials, atoms[idx])
+            end
         end
+    else
+        interstitials, vacancies = (simulator.atoms, simulator.vacancies)
     end
     return interstitials, vacancies
 end

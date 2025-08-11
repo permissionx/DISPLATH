@@ -42,6 +42,67 @@ function Dump(simulator::Simulator, fileName::String, step::Int64, type::String=
     end
 end
 
+function ReadDate(fileName::String)
+    xlo = 0.0
+    xhi = 0.0
+    ylo = 0.0
+    yhi = 0.0
+    zlo = 0.0
+    zhi = 0.0
+    types = Int64[]
+    xs = Float64[]
+    ys = Float64[]
+    zs = Float64[]
+    open(fileName, "r") do f
+        lines = readlines(f)
+        i = 1
+        while i <= length(lines)
+            if !startswith(lines[i], "#")
+                words = split(lines[i])
+                if length(words) == 0
+                    i += 1
+                    continue
+                end
+                if length(words) >= 4 && words[4] == "xhi"
+                    xlo = parse(Float64, words[1])
+                    xhi = parse(Float64, words[2])
+                    i += 1
+                    words = split(lines[i])
+                    ylo = parse(Float64, words[1])
+                    yhi = parse(Float64, words[2])
+                    i += 1
+                    words = split(lines[i])
+                    zlo = parse(Float64, words[1])
+                    zhi = parse(Float64, words[2])
+                end
+                if words[1] == "Atoms"
+                    i += 1
+                    while true
+                        if i > length(lines)
+                            break
+                        end
+                        words = split(lines[i])
+                        if length(words) > 0
+                            type = parse(Int64, words[2])
+                            x = parse(Float64, words[3])
+                            y = parse(Float64, words[4])
+                            z = parse(Float64, words[5])
+                            push!(types, type)
+                            push!(xs, x)
+                            push!(ys, y)
+                            push!(zs, z)
+                        end
+                        i += 1
+                    end
+                end
+            end
+            i += 1
+        end
+
+    end
+    return xlo - xlo, xhi - xlo, ylo - ylo, yhi - ylo, zlo - zlo, zhi - zlo, types, xs .- xlo, ys .- ylo, zs .- zlo 
+end
+
 
 
 
@@ -119,8 +180,8 @@ function LoadθτData(type_p::Int64, type_t::Int64, parameters::Parameters)
                 word = split(lines[i])[end]
                 EPowerRange = parse_range(word)
                 if EPowerRange != parameters.EPowerRange
-                    println("Warning: The EPowerRange in the file $(name_p)_$(name_t).thetatau is not the same as the EPowerRange in the parameters.")
-                    println("Generate new thetatau file? (y/n)")
+                            log_warning("Warning: The EPowerRange in the file $(name_p)_$(name_t).thetatau is not the same as the EPowerRange in the parameters.")
+        log_warning("Generate new thetatau file? (y/n)")
                     answer = readline()
                     if answer == "y"
                         error()
@@ -131,8 +192,8 @@ function LoadθτData(type_p::Int64, type_t::Int64, parameters::Parameters)
                 word = split(lines[i])[end]
                 pRange = parse_range(word)
                 if pRange != parameters.pRange
-                    println("Warning: The pRange in the file $(name_p)_$(name_t).thetatau is not the same as the pRange in the parameters.")
-                    println("Generate new thetatau file? (y/n)")
+                            log_warning("Warning: The pRange in the file $(name_p)_$(name_t).thetatau is not the same as the pRange in the parameters.")
+        log_warning("Generate new thetatau file? (y/n)")
                     answer = readline()
                     if answer == "y"
                         error()
@@ -280,11 +341,14 @@ function _dumpTitle(buf::IOBuffer, simulator::Simulator, step::Int64, atomNumber
 end
 
 
-function _ensure(file::String)
+function _ensure(file::String, title::String="")
     haskey(_fh, file) && return
     io = open(file, "w")
     _fh[file] = io
     _buf[file] = IOBuffer()
+    if title != ""
+        print(_buf[file], title, "\n")
+    end
 end
 
 function _flush!(file::String)
@@ -335,10 +399,10 @@ macro dump(file, atoms, properties=[], stepProperty=:nCascade)
     end
 end
 
-macro record(file, value, isSmall=false)
+macro record(file, value, title="", isSmall=false)
     quote
         local _file = $(esc(file))    
-        Output._ensure(_file)
+        Output._ensure(_file, $(esc(title)))
         local buf = Output._buf[_file]
         print(buf, $(esc(value)), '\n')
         if !$(isSmall)
@@ -358,3 +422,4 @@ atexit() do
 end
 
 end
+

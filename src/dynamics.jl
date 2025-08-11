@@ -2,9 +2,9 @@ using .BCA
 using Printf
 
 function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
-    cellGrid = simulator.cellGrid
+    grid = simulator.grid
     periodic = simulator.parameters.periodic    
-    cell = cellGrid.cells[atom.cellIndex...]
+    cell = GetCell(grid, atom.cellIndex)
     atom.numberOfEmptyCells = 0
     while true
         (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, filterIndexes, simulator)
@@ -34,7 +34,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
                 return Vector{Atom}(), false # means find nothing  
             end 
             index = neighborInfo.index
-            cell = cellGrid.cells[index...]
+            cell = GetCell(grid, index)
         end
     end
 end
@@ -42,7 +42,7 @@ end
 
 
 
-function AtomOutFaceDimension(atom::Atom, cell::GridCell)
+function AtomOutFaceDimension(atom::Atom, cell::Cell)
     coordinate = atom.coordinate
     for d in 1:3
         if atom.velocityDirection[d] >= 0
@@ -70,16 +70,16 @@ function AtomOutFaceDimension(atom::Atom, cell::GridCell)
 end
 
 
-function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::Vector{Int64}, simulator::Simulator)
-    cellGrid = simulator.cellGrid
+function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{Int64}, simulator::Simulator)
+    grid = simulator.grid
     box = simulator.box
     targets = Vector{Atom}()
     infiniteFlag = true
     candidateTargets = Vector{Atom}()
     pMax = simulator.parameters.pMax
-    for neighborCellInfo in gridCell.neighborCellsInfo
+    for neighborCellInfo in cell.neighborCellsInfo
         index = neighborCellInfo.index
-        neighborCell = cellGrid.cells[index...]
+        neighborCell = GetCell(grid, index)
         if neighborCell.isExplored
             continue
         end
@@ -91,7 +91,7 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::V
                 continue
             end
             if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
-                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box, pMax)
+                p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
                 if p >= pMax
                     continue
                 end
@@ -115,7 +115,7 @@ function GetTargetsFromNeighbor(atom::Atom, gridCell::GridCell, filterIndexes::V
         end
         matchFlag = true
         for target in targets            
-            if !SimultaneousCriteria(atom, candidateTarget, target, simulator)
+            if !SimultaneousCriteria(candidateTarget, target, simulator)
                 matchFlag = false
                 break
             end
@@ -130,7 +130,7 @@ end
 
 function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     N_t = length(atoms_t)
-    cellGrid = simulator.cellGrid
+    grid = simulator.grid
     tanφList = Vector{Float64}(undef, N_t)
     tanψList = Vector{Float64}(undef, N_t)
     E_tList = Vector{Float64}(undef, N_t)
@@ -147,7 +147,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
         pL *= 1 / atom_p.numberOfEmptyCells
     end
     atom_t = atoms_t[1]
-    N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity
+    N = GetCell(grid, atom_t.cellIndex).atomicDensity
     Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
                          pL, N, simulator.constantsByType)  
     atom_p.energy -= Q_nl_v
@@ -156,7 +156,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     end
     for (i, atom_t) in enumerate(atoms_t)
         p = atom_t.pValue
-        N = cellGrid.cells[atom_t.cellIndex[1], atom_t.cellIndex[2], atom_t.cellIndex[3]].atomicDensity 
+        N = GetCell(grid, atom_t.cellIndex).atomicDensity 
         tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
             atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
             simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])
@@ -200,6 +200,15 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
 end 
 
 function Cascade!(atom_p::Atom, simulator::Simulator)
+    if !IS_DYNAMIC_LOAD
+        Cascade_staticLoad!(atom_p, simulator)
+    else
+        Cascade_dynamicLoad!(atom_p, simulator)
+    end
+end
+
+
+function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
     pAtoms = Vector{Atom}([atom_p])
     pAtomsIndex = [a.index for a in pAtoms]
     parameters = simulator.parameters

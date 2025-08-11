@@ -1,6 +1,8 @@
+using StaticArrays
+
 function Box(Vectors::Matrix{Float64})
-    # println("\n🚀 Initializing the simulator...\n")  # 删除多余的初始化输出
-    println("📦 Box created! Size: $(round(Vectors[1,1]; digits=3)) × $(round(Vectors[2,2]; digits=3)) × $(round(Vectors[3,3]; digits=3)) Å\n")
+    
+log_info("Box created: $(round(Vectors[1,1]; digits=2)) × $(round(Vectors[2,2]; digits=2)) × $(round(Vectors[3,3]; digits=2)) Å")
     return Box(Vectors, inv(Vectors'), true)
 end 
 
@@ -13,14 +15,14 @@ end
 function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     index = 0
     isAlive = true
-    cellIndex = Vector{Int64}(undef, 3)
-    velocityDirection = Float64[0.0,0.0,0.0]  # length： 0 or one
+    cellIndex = (0,0,0)
+    velocityDirection = SVector{3,Float64}(0.0, 0.0, 0.0)  
     energy = 0.0
     radius, mass, Z, dte, bde, _, _ = TypeToProperties(type, parameters.typeDict)
     numberOfEmptyCells = 0
     pValue = 0.0
-    pVector = Vector{Float64}(undef, 3)
-    pPoint = Vector{Float64}(undef, 3)  
+    pVector = SVector{3,Float64}(0.0, 0.0, 0.0)  
+    pPoint = SVector{3,Float64}(0.0, 0.0, 0.0)   
     lastTargets = Vector{Int64}()
     pL = 0.0
     latticePointIndex = -1
@@ -29,7 +31,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     finalLatticePointEnvIndexs = Vector{Int64}()
     eventIndex = -1
     isNewlyLoaded = false
-    lattcieCoordinate = Vector{Float64}(undef, 3)
+    lattcieCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
     return Atom(index, isAlive, type, coordinate, cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
                 dte, bde, numberOfEmptyCells,
@@ -50,41 +52,42 @@ function TypeToProperties(type::Int64, typeDict::Dict{Int64, Element})
 end 
 
 
-function IterPushCellNeighbors!(cellGrid::CellGrid, gridCell::GridCell)
+function SetCellNeighborInfo!(cell::Cell, grid::Grid)
     # Direct triple loop implementation - much faster than recursion
     for delta_x in [-1, 0, 1]
         for delta_y in [-1, 0, 1]
             for delta_z in [-1, 0, 1]
-                neighborKeys = Int8[delta_x, delta_y, delta_z]
-                neighborIndex = Vector{Int64}(undef, 3)
-                neighborCross = Vector{Int8}(undef, 3)
+                neighborKeys = (Int8(delta_x), Int8(delta_y), Int8(delta_z))  
+                neighborIndex = [0, 0, 0]  
+                neighborCross = [Int8(0), Int8(0), Int8(0)]  
                 
                 # Calculate neighbor cell index and cross flags for each dimension
                 for d in 1:3
                     delta = neighborKeys[d]
-                    index = gridCell.index[d] + delta
-                    cross = 0
+                    index = cell.index[d] + delta
+                    cross = Int8(0)
                     if index < 1
-                        index += cellGrid.sizes[d]
-                        cross = -1
-                    elseif index > cellGrid.sizes[d]
-                        index -= cellGrid.sizes[d]
-                        cross = 1
+                        index += grid.sizes[d]
+                        cross = Int8(-1)
+                    elseif index > grid.sizes[d]
+                        index -= grid.sizes[d]
+                        cross = Int8(1)
                     end
                     neighborIndex[d] = index
                     neighborCross[d] = cross
                 end
-                neighborIndex = Tuple(neighborIndex)
-                neighborCross = Tuple(neighborCross)
-                neighborCellInfo = NeighborCellInfo(neighborIndex, neighborCross)
+                neighborIndex_tuple = (neighborIndex[1], neighborIndex[2], neighborIndex[3])
+                neighborCross_tuple = (neighborCross[1], neighborCross[2], neighborCross[3])
+                neighborCellInfo = NeighborCellInfo(neighborIndex_tuple, neighborCross_tuple)
                 idx = (delta_x + 2, delta_y + 2, delta_z + 2)
-                gridCell.neighborCellsInfo[idx...] = neighborCellInfo
+                cell.neighborCellsInfo[idx...] = neighborCellInfo
             end
         end
     end
 end
 
-function CreateCellGrid(box::Box, inputVectors::Matrix{Float64}, parameters::Parameters)
+
+function CreateGrid(box::Box, inputVectors::Matrix{Float64})
     if !box.isOrthogonal
         error("The box is not orthogonal, please use the orthogonal box.")
     end
@@ -94,39 +97,67 @@ function CreateCellGrid(box::Box, inputVectors::Matrix{Float64}, parameters::Par
         sizes[d] = Int64(floor(box.vectors[d,d] / inputVectors[d,d]))
         vectors[d,d] = box.vectors[d,d] / sizes[d]
     end
-    println("🧩 Cell grid: $(sizes[1]) × $(sizes[2]) × $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells, each size: $(round(vectors[1,1]; digits=3)) × $(round(vectors[2,2]; digits=3)) × $(round(vectors[3,3]; digits=3)) Å\n")
-    println("----------------------------------------")
-    
-    cells = Array{GridCell, 3}(undef, sizes[1], sizes[2], sizes[3])
-    @showprogress desc="Creating cell grid: " @threads for x in 1:sizes[1]
-        for y in 1:sizes[2]
-            for z in 1:sizes[3]
-                ranges = Matrix{Float64}(undef, 3, 2)
-                ranges[1,1] = (x-1) * vectors[1,1]
-                ranges[1,2] = x * vectors[1,1]
-                ranges[2,1] = (y-1) * vectors[2,2]
-                ranges[2,2] = y * vectors[2,2]
-                ranges[3,1] = (z-1) * vectors[3,3]
-                ranges[3,2] = z * vectors[3,3]  
-                centerCoordinate = Vector{Float64}(undef, 3)  
-                for d in 1:3
-                    centerCoordinate[d] = (ranges[d,1] + ranges[d,2])/2
+    log_info("Cell grid: $(sizes[1]) × $(sizes[2]) × $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells")
+    log_info("Cell size: $(round(vectors[1,1]; digits=2)) × $(round(vectors[2,2]; digits=2)) × $(round(vectors[3,3]; digits=2)) Å")
+    if ! IS_DYNAMIC_LOAD
+        cells = Array{Cell, 3}(undef, sizes[1], sizes[2], sizes[3])
+        @showprogress desc="Creating cells: " for x in 1:sizes[1]
+            for y in 1:sizes[2]
+                for z in 1:sizes[3]
+                    cells[x, y, z] = CreateCell((x, y, z), vectors)
                 end
-                cells[x, y, z] = GridCell(Vector{Int64}([x,y,z]), Vector{Atom}(), Vector{LatticePoint}(), 
-                                          ranges, centerCoordinate, 
-                                          Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
-            end
-        end    
-    end
-    cellVolume = vectors[1,1] * vectors[2,2] * vectors[3,3]
-    cellGrid = CellGrid(cells, vectors, sizes, cellVolume) 
-    if ! parameters.isDynamicLoad
-        @showprogress desc="Pushing cell neighbors: " for cell in cellGrid.cells
-            IterPushCellNeighbors!(cellGrid, cell)
+            end    
         end
+        cellVolume = vectors[1,1] * vectors[2,2] * vectors[3,3]
+        grid = Grid(cells, vectors, sizes, cellVolume) 
+        @showprogress desc="Pushing cell neighbors: " for cell in grid.cells
+            SetCellNeighborInfo!(cell, grid)
+        end
+    else
+        cells = Dict{Tuple{Int64, Int64, Int64}, Cell}()    
+        cellVolume = vectors[1,1] * vectors[2,2] * vectors[3,3]
+        grid = Grid(cells, vectors, sizes, cellVolume) 
     end
-    println("✅ Cell grid created!\n----------------------------------------\n")
-    return cellGrid
+    log_success("Cell grid created")
+    log_separator()
+    return grid
+end
+
+
+function _GetCellDense(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
+    return grid.cells[cellIndex...]
+end
+
+
+function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64})
+    x, y, z = cellIndex
+    ranges = Matrix{Float64}(undef, 3, 2)
+    ranges[1,1] = (x-1) * vectors[1,1]
+    ranges[1,2] = x * vectors[1,1]
+    ranges[2,1] = (y-1) * vectors[2,2]
+    ranges[2,2] = y * vectors[2,2]
+    ranges[3,1] = (z-1) * vectors[3,3]
+    ranges[3,2] = z * vectors[3,3]  
+    cell = Cell(cellIndex, Vector{Atom}(), Vector{LatticePoint}(), 
+                            ranges, 
+                            Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
+    return cell
+end
+
+
+function _GetCellDict!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
+    return get!(grid.cells, cellIndex) do
+        CreateCell(cellIndex, grid.vectors)
+    end
+end 
+
+
+function GetCell(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
+    if !IS_DYNAMIC_LOAD
+        return _GetCellDense(grid, cellIndex)
+    else
+        return _GetCellDict!(grid, cellIndex)
+    end
 end
 
 
@@ -146,7 +177,8 @@ function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Paramet
     types = keys(typeDict)
     qMax = Dict{Vector{Int64}, Float64}()
     sigma = Dict{Int64, Float64}()
-    println("Vibration σ for each type:")
+    log_info("")
+    log_info("Vibration σ for each type:")
     for p in types
         radius_p, mass_p, Z_p, _, _, α_p, β_p = TypeToProperties(p, typeDict)
         for t in types
@@ -162,9 +194,8 @@ function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Paramet
         end
         E_m[p] = BCA.ConstantFunctions.E_m(Z_p, mass_p)
         sigma[p] = TemperatureToSigma(parameters.temperature, parameters.DebyeTemperature, mass_p)
-        println("  • Type $(p): σ = $(round(sigma[p]; digits=4)) Å")
+        log_info("  Type $(p): σ = $(round(sigma[p]; digits=3)) Å")
     end
-    println("\n----------------------------------------")
     return ConstantsByType(V_upterm, a_U, E_m, S_e_upTerm, S_e_downTerm, x_nl, a, Q_nl, Q_loc, qMax, sigma)
 end
 
@@ -173,7 +204,8 @@ function InitθτFunctions(parameters::Parameters, constantsByType::ConstantsByT
     typeDict = parameters.typeDict
     θFunctions = Dict{Vector{Int64}, Function}()
     τFunctions = Dict{Vector{Int64}, Function}()
-    println("📥 θ and τ functions loading:")
+    log_separator()
+    log_info("Loading θ and τ functions...")
     for type_p in keys(typeDict)
         for type_t in keys(typeDict)
             mass_p = typeDict[type_p].mass
@@ -181,10 +213,11 @@ function InitθτFunctions(parameters::Parameters, constantsByType::ConstantsByT
             θInterpolation, τInterpolation = θτFunctions(mass_p, mass_t, type_p, type_t, constantsByType, parameters)
             θFunctions[[type_p, type_t]] = (E_p, p) -> θInterpolation(E_p, p)
             τFunctions[[type_p, type_t]] = (E_p, p) -> τInterpolation(E_p, p)
-            println("  📄 $(parameters.typeDict[type_p].name) → $(parameters.typeDict[type_t].name) loaded. ✅")
+            log_debug("  $(parameters.typeDict[type_p].name) → $(parameters.typeDict[type_t].name) loaded")
         end
     end
-    println("\n🧩 All θ and τ functions initialized! 🎉\n----------------------------------------\n")
+    log_success("All θ and τ functions initialized")
+    log_separator()
     return θFunctions, τFunctions
 end
 
@@ -223,37 +256,36 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
     return θFunction, τFunction
 end
 
-function Simulator_dynamicLoad(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    println("🚀 Initializing the simulator...")
+
+function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    log_section("Initializing Simulator")
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
     ranges = parameters.latticeRanges 
     atomNumber = (ranges[1,2] - ranges[1,1]) * (ranges[2,2] - ranges[2,1]) * (ranges[3,2] - ranges[3,1]) * length(parameters.basisTypes)
-    println("🔬 Number of atoms in the box: $(atomNumber)  (= $(ranges[1,2] - ranges[1,1]) × $(ranges[2,2] - ranges[2,1]) × $(ranges[3,2] - ranges[3,1]) × $(length(parameters.basisTypes)))\n")
+    log_info("Number of atoms: $(atomNumber) ($(ranges[1,2] - ranges[1,1]) × $(ranges[2,2] - ranges[2,1]) × $(ranges[3,2] - ranges[3,1]) × $(length(parameters.basisTypes)))")
     simulator = Simulator(box, inputGridVectors, parameters)
-    vectors = parameters.primaryVectors     
-    unitCellVolume = abs(dot(cross(vectors[:,1], vectors[:,2]), vectors[:,3]))
-    for cell in simulator.cellGrid.cells
-        cell.atomicDensity = length(parameters.basisTypes) / unitCellVolume
+    if !IS_DYNAMIC_LOAD
+        _initSimulatorAtoms!(simulator, parameters)
     end
-    println("🎉 Simulator initialized!\n")
-    return simulator    
-end 
-
-function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    println("🚀 Initializing the simulator...")
-    box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
-    simulator = Simulator(box, inputGridVectors, parameters)
-    _initSimulatorAtoms!(simulator, parameters)
+    log_success("Simulator initialized")
     return simulator    
 end 
 
 function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    println("🚀 Initializing the simulator...")
+    # this function should be improved by warining is orthogonal and type error when desird for boxsize but in float
+    log_section("Initializing Simulator")
     box = Box(boxVectors)
+    ranges = parameters.latticeRanges 
+    atomNumber = (ranges[1,2] - ranges[1,1]) * (ranges[2,2] - ranges[2,1]) * (ranges[3,2] - ranges[3,1]) * length(parameters.basisTypes)
+    log_info("Number of atoms: $(atomNumber) ($(ranges[1,2] - ranges[1,1]) × $(ranges[2,2] - ranges[2,1]) × $(ranges[3,2] - ranges[3,1]) × $(length(parameters.basisTypes)))")
     simulator = Simulator(box, inputGridVectors, parameters)
-    _initSimulatorAtoms!(simulator, parameters)
-    return simulator
+    if !IS_DYNAMIC_LOAD
+        _initSimulatorAtoms!(simulator, parameters)
+    end
+    log_success("Simulator initialized")
+    return simulator    
 end 
+
 
 function _initSimulatorAtoms!(simulator::Simulator, parameters::Parameters)
     primaryVectors = parameters.primaryVectors
@@ -275,35 +307,72 @@ function _initSimulatorAtoms!(simulator::Simulator, parameters::Parameters)
             end
         end
     end
-    println("🧪 $(simulator.numberOfAtoms) atoms created.\n")
+    log_success("$(simulator.numberOfAtoms) atoms created")
     InitLatticePointEnvronment(simulator)
-    for cell in simulator.cellGrid.cells
-        cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume
+    for cell in simulator.grid.cells
+        cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume
     end 
     for atom in simulator.atoms
         Pertubation!(atom, simulator)
     end
-    println("🎉 Simulator initialized!\n")
 end
 
+function Parameters(pMax::Float64, vacancyRecoverDistance::Float64, typeDict::Dict{Int64, Element}; kwargs...)
+    primaryVectors = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
+    latticeRanges = [0 1; 0 1; 0 1]
+    basis = [0.0 0.0 0.0]
+    basisTypes = [1]  
+    parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis, pMax, vacancyRecoverDistance, typeDict; kwargs...)
+    return parameters
+end
+
+function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    if IS_DYNAMIC_LOAD
+        error("Simulator from date file is not supported in dynamic load mode.")
+    end
+    log_section("Initializing Simulator")
+    xlo, xhi, ylo, yhi, zlo, zhi, types, xs, ys, zs = ReadDate(fileName)
+    box = Box([xhi-xlo 0.0 0.0; 0.0 yhi-ylo 0.0; 0.0 0.0 zhi-zlo])
+    log_info("Number of atoms: $(length(types))")
+    simulator = Simulator(box, inputGridVectors, parameters)
+    for (type, x, y, z) in zip(types, xs, ys, zs)
+        atom = Atom(type, [x, y, z], parameters)
+        push!(simulator, atom) 
+        latticePoint = LatticePoint(atom)
+        push!(simulator, latticePoint)
+    end
+    log_success("Simulator initialized")
+    InitLatticePointEnvronment(simulator)
+    for cell in simulator.grid.cells
+        cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume
+    end 
+    for atom in simulator.atoms
+        Pertubation!(atom, simulator)
+    end
+    log_success("Simulator initialized")
+    return simulator
+end
+
+
 function LatticePoint(atom::Atom)
-    environment = Vector{Int64}()
+    environment = Vector{Int64}() 
     return LatticePoint(copy(atom.index), copy(atom.type), 
-                        copy(atom.coordinate), copy(atom.cellIndex), environment,
+                        copy(atom.coordinate), atom.cellIndex, environment,
                         atom.index)
 end
 
-function WhichCell(coordinate::Vector{Float64}, cellGrid::CellGrid)
+
+function WhichCell(coordinate::Vector{Float64}, grid::Grid)
     cellIndex = Vector{Int64}(undef, 3)
     for d in 1:3
-        cellIndex[d] = Int64(floor(coordinate[d] / cellGrid.vectors[d,d])) + 1
+        cellIndex[d] = Int64(floor(coordinate[d] / grid.vectors[d,d])) + 1
         if cellIndex[d] < 1 
             cellIndex[d] = 1
-        elseif cellIndex[d] > cellGrid.sizes[d]
-            cellIndex[d] = cellGrid.sizes[d]
+        elseif cellIndex[d] > grid.sizes[d]
+            cellIndex[d] = grid.sizes[d]
         end
     end
-    return cellIndex
+    return (cellIndex[1], cellIndex[2], cellIndex[3])
 end
 
 
@@ -312,29 +381,29 @@ function push!(simulator::Simulator, atom::Atom)
     simulator.maxAtomID += 1
     push!(simulator.atoms, atom)
     simulator.numberOfAtoms += 1
-    cellIndex = WhichCell(atom.coordinate, simulator.cellGrid)
-    atom.cellIndex .= cellIndex
-    push!(simulator.cellGrid.cells[cellIndex...].atoms, atom)
+    cellIndex = WhichCell(atom.coordinate, simulator.grid)
+    atom.cellIndex = cellIndex
+    push!(GetCell(simulator.grid, cellIndex).atoms, atom)
 end 
 
 
 function push!(simulator::Simulator, latticePoint::LatticePoint)
     push!(simulator.latticePoints, latticePoint)
-    push!(simulator.cellGrid.cells[latticePoint.cellIndex...].latticePoints, latticePoint)
+    push!(GetCell(simulator.grid, latticePoint.cellIndex).latticePoints, latticePoint)
     simulator.atoms[latticePoint.atomIndex].latticePointIndex = latticePoint.index
 end 
 
-function push!(cell::GridCell, atom::Atom, simulator::Simulator)
-    atom.cellIndex .= cell.index
+function push!(cell::Cell, atom::Atom, simulator::Simulator)
+    atom.cellIndex = cell.index
     push!(cell.atoms, atom)
-    if !simulator.parameters.isDynamicLoad
-        cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume
+    if !IS_DYNAMIC_LOAD
+        cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume
     end
 end 
 
 
 function delete!(simulator::Simulator, atom::Atom)
-    originalCell = simulator.cellGrid.cells[atom.cellIndex...]
+    originalCell = GetCell(simulator.grid, atom.cellIndex)
     deleteat!(originalCell.atoms, findfirst(a -> a.index == atom.index, originalCell.atoms))
     simulator.numberOfAtoms -= 1
     atom.isAlive = false 
@@ -355,40 +424,53 @@ function LeaveLatticePoint!(atom::Atom, simulator::Simulator; isUpdateEnv::Bool 
 end
 
 
-function delete!(cell::GridCell, atom::Atom, simulator::Simulator)
+function delete!(cell::Cell, atom::Atom, simulator::Simulator)
     if !atom.isAlive
         error("Atom $(atom.index) is not alive when deleting")
     end
+    #@show atom.index, atom.cellIndex, simulator.nCascade, simulator.nCollisionEvent, atom.coordinate
     deleteat!(cell.atoms, findfirst(a -> a.index == atom.index, cell.atoms))
-    atom.cellIndex = Vector{Int64}([-1, -1, -1])
-    if !simulator.parameters.isDynamicLoad
-        cell.atomicDensity = length(cell.atoms) / simulator.cellGrid.cellVolume  
+    atom.cellIndex = (-1, -1, -1)
+    if !IS_DYNAMIC_LOAD
+        cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume  
     end
 end
 
 
-function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
+function DisplaceAtom!(atom::Atom, newPosition::SVector{3,Float64}, simulator::Simulator)
+    pos = if newPosition isa SVector
+        [newPosition[1], newPosition[2], newPosition[3]]
+    else
+        copy(newPosition)
+    end
+    
     for d in 1:3
         # need to adappt non-periodic condition
-        if newPosition[d] < 0
+        if pos[d] < 0
             if simulator.parameters.periodic[d] == false
-                newPosition[d] = 0.01
+                pos[d] = 0.01
             else
-                newPosition[d] += simulator.box.vectors[d,d]
+                pos[d] += simulator.box.vectors[d,d]
             end
-        elseif newPosition[d] >= simulator.box.vectors[d,d]
+        elseif pos[d] >= simulator.box.vectors[d,d]
             if simulator.parameters.periodic[d] == false
-                newPosition[d] = simulator.box.vectors[d,d] - 0.01
+                pos[d] = simulator.box.vectors[d,d] - 0.01
             else
-                newPosition[d] -= simulator.box.vectors[d,d]
+                pos[d] -= simulator.box.vectors[d,d]
             end
         end
     end
-    SetCoordinate!(atom, newPosition)
-    cellIndex = WhichCell(atom.coordinate, simulator.cellGrid)
+    
+    SetCoordinate!(atom, pos)
+    cellIndex = WhichCell(atom.coordinate, simulator.grid)
+
     if cellIndex != atom.cellIndex
         ChangeCell!(atom, cellIndex, simulator)
     end
+end
+
+function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
+    DisplaceAtom!(atom, SVector{3,Float64}(newPosition[1], newPosition[2], newPosition[3]), simulator)
 end
 
 
@@ -412,61 +494,64 @@ end
 
 
 function VectorDifference(v1::Vector{Float64}, v2::Vector{Float64}, crossFlag::NTuple{3, Int8}, box::Box)
-    # return v2 - v1
-    if crossFlag == Vector{Int64}([0,0,0])
+    if crossFlag == (Int8(0), Int8(0), Int8(0))
         return v2 - v1
     end 
-    result = Vector{Float64}(undef, 3)
-    for d in 1:3
-        dv = v2[d] - v1[d] + crossFlag[d] * box.vectors[d,d]
-        result[d] = dv
-    end
-    return result
+    return SVector{3,Float64}(
+        v2[1] - v1[1] + crossFlag[1] * box.vectors[1,1],
+        v2[2] - v1[2] + crossFlag[2] * box.vectors[2,2],
+        v2[3] - v1[3] + crossFlag[3] * box.vectors[3,3]
+    )
 end
 
 
-function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::Box, pMax::Float64)
+function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::Box)
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
-    #@show dv
-    #for d in dv
-    #    if abs(d) > pMax
-    #        return Inf
-    #    end
-    #end
     t = dot(dv, atom_p.velocityDirection)
     atom_t.pL = t
-    atom_t.pPoint = atom_p.coordinate + t * atom_p.velocityDirection
-    atom_t.pVector = atom_t.pPoint - atom_t.coordinate
+    pPoint_calc = atom_p.coordinate + t * atom_p.velocityDirection
+    atom_t.pPoint = SVector{3,Float64}(pPoint_calc[1], pPoint_calc[2], pPoint_calc[3])
+    pVector_calc = atom_t.pPoint - atom_t.coordinate
+    atom_t.pVector = SVector{3,Float64}(pVector_calc[1], pVector_calc[2], pVector_calc[3])
     p = norm(atom_t.pVector)
     atom_t.pValue = p
+    # need to check periodic condition
+    #if atom_t.index == 3055
+    #    @show atom_p.coordinate, atom_t.coordinate, p, atom_t.pValue, dv, atom_t.pPoint, atom_t.pVector
+    #end
     return p
 end
 
 
 
 
-function SimultaneousCriteria(atom::Atom, neighborAtom::Atom, addedTarget::Atom, simulator::Simulator)
+function SimultaneousCriteria(neighborAtom::Atom, addedTarget::Atom, simulator::Simulator)
     flagP = abs(neighborAtom.pValue - addedTarget.pValue) <= simulator.parameters.pMax
     flagQ = abs(neighborAtom.pL - addedTarget.pL) <= simulator.constantsByType.qMax[[neighborAtom.type, addedTarget.type]]
     return flagP && flagQ
 end
 
 
-function ChangeCell!(atom::Atom, nextCellIndex::Vector{Int64}, simulator::Simulator)
-    originalCell = simulator.cellGrid.cells[atom.cellIndex...]
+function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
+    originalCell = GetCell(simulator.grid, atom.cellIndex)
     delete!(originalCell, atom, simulator)
-    nextCell = simulator.cellGrid.cells[nextCellIndex[1], nextCellIndex[2], nextCellIndex[3]]
+    nextCell = GetCell(simulator.grid, nextCellIndex)
     push!(nextCell, atom, simulator)
 end
 
 
-function SetVelocityDirection!(atom::Atom, velocity::Vector{Float64})
+function SetVelocityDirection!(atom::Atom, velocity::SVector{3,Float64})
     n = norm(velocity)
     if isnan(n) || n == Inf
-        atom.velocityDirection = [0.0, 0.0, 0.0]
+        atom.velocityDirection = SVector{3,Float64}(0.0, 0.0, 0.0)
     else
-        atom.velocityDirection = velocity / n
+        normalized_velocity = velocity / n
+        atom.velocityDirection = SVector{3,Float64}(normalized_velocity[1], normalized_velocity[2], normalized_velocity[3])
     end
+end
+
+function SetVelocityDirection!(atom::Atom, velocity::Vector{Float64})
+    SetVelocityDirection!(atom, SVector{3,Float64}(velocity[1], velocity[2], velocity[3]))
 end
 
 
@@ -479,14 +564,13 @@ function SetEnergy!(atom::Atom, energy::Float64)
 end
 
 function GetNeighborVacancy(atom::Atom, simulator::Simulator)
-    cells = simulator.cellGrid.cells        
-    cell = cells[atom.cellIndex...]
+    grid = simulator.grid    
+    cell = GetCell(grid, atom.cellIndex)
     nearestVacancyDistance_squared = Inf
     nearestVacancyIndex = -1
     for neighborCellInfo in cell.neighborCellsInfo
-        index = neighborCellInfo.index
-        cross = neighborCellInfo.cross
-        neighborCell = cells[index...]
+        index, cross = neighborCellInfo.index, neighborCellInfo.cross
+        neighborCell = GetCell(grid, index)
         for latticePoint in neighborCell.latticePoints
             if latticePoint.atomIndex == -1
                 dr2 = ComputeDistance_squared(atom.coordinate, latticePoint.coordinate, cross, simulator.box)
@@ -523,7 +607,7 @@ function SetOnLatticePoint!(atom::Atom, latticePoint::LatticePoint, simulator::S
         ChangeCell!(atom, latticePoint.cellIndex, simulator)
     elseif !atom.isAlive
         atom.isAlive = true
-        nextCell = simulator.cellGrid.cells[latticePoint.cellIndex...]
+        nextCell = GetCell(simulator.grid, latticePoint.cellIndex)
         push!(nextCell, atom, simulator)
     end 
     if simulator.parameters.isKMC && isUpdateEnv
@@ -547,11 +631,19 @@ function DeleteFromStore!(atom::Atom, simulator::Simulator)
 end 
 
 function Restore!(simulator::Simulator)
+    if ! IS_DYNAMIC_LOAD
+        Restore_staticLoad!(simulator)
+    else
+        Restore_dynamicLoad!(simulator)
+    end
+end
+
+function Restore_staticLoad!(simulator::Simulator)
     for atom in simulator.atoms[simulator.numberOfAtomsWhenStored+1:end]
         # Delete ions remained in the system from their cells.
         # Ions in simulator.atoms will be deleted latter by setting simulator.atoms = simulator.atoms[1:maxAtomID]. 
         if atom.isAlive
-            delete!(simulator.cellGrid.cells[atom.cellIndex...], atom, simulator)
+            delete!(GetCell(simulator.grid, atom.cellIndex), atom, simulator)
         end
     end
     for index in Set(simulator.displacedAtoms)
@@ -584,15 +676,15 @@ end
 
 function GetEnvironmentLatticePoints(latticePoint::LatticePoint, simulator::Simulator)
     cellIndex = latticePoint.cellIndex
-    theCell = simulator.cellGrid.cells[cellIndex...]
-    cells = simulator.cellGrid.cells
+    theCell = GetCell(simulator.grid, cellIndex)
+    grid = simulator.grid
     cut_squared = simulator.environmentCut^2
     box = simulator.box
     environmentLatticePointsIndex = Vector{Int64}()
     dVectors = Vector{Vector{Float64}}()
     for neighborCellInfo in theCell.neighborCellsInfo
         index, cross = neighborCellInfo.index, neighborCellInfo.cross
-        cell = cells[index...]
+        cell = GetCell(grid, index)
         latticePoints = cell.latticePoints
         for neighborLatticePoint in latticePoints
             neighborLatticePointIndex = neighborLatticePoint.index
@@ -612,7 +704,7 @@ end
 
 function InitLatticePointEnvronment(simulator::Simulator)
     if simulator.parameters.DTEMode != 1 && simulator.parameters.DTEMode != 4
-        println("🌐 Initializing lattice point environment...\n")
+        log_info("🌐 Initializing lattice point environment...\n")
         for latticePoint in simulator.latticePoints
             latticePoint.environment = GetEnvironmentLatticePoints(latticePoint, simulator)
         end
@@ -641,9 +733,14 @@ end
 
 
 function Pertubation!(atom::Atom, simulator::Simulator)
-    if simulator.parameters.temperature > 0.0
-        for d in 1:3
-            atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
+    if simulator.parameters.isAmorphous
+        rng = THREAD_RNG[Threads.threadid()]
+        atom.coordinate .= GetCell(simulator.grid, atom.cellIndex).ranges[:,1] .+ [rand(rng) * simulator.grid.vectors[d, d] for d in 1:3]
+    else
+        if simulator.parameters.temperature > 0.0
+            for d in 1:3
+                atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
+            end
         end
     end
 end
@@ -655,7 +752,7 @@ end
 
 function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-10, rtol=1e-8)
     if T == 0.0
-        println("🌡️ Temperature is 0.0 K")
+        log_debug("Temperature is 0 K")
         return 0
     end
     ħ   = 1.054_571_817e-34      # J·s
@@ -665,7 +762,7 @@ function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-1
     M = m_rel * amu
     y_max = θ_D / T      
 
-    # 积分 ∫ x/(e^x-1) dx
+    # Integration of x/(e^x-1) dx
     integrand(x) = x / (exp(x) - 1)
     I, _ = quadgk(integrand, 0.0, y_max; atol, rtol)
 
