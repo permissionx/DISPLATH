@@ -317,8 +317,45 @@ function _initSimulatorAtoms!(simulator::Simulator, parameters::Parameters)
     end
 end
 
+function Parameters(pMax::Float64, vacancyRecoverDistance::Float64, typeDict::Dict{Int64, Element}; kwargs...)
+    primaryVectors = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
+    latticeRanges = [0 1; 0 1; 0 1]
+    basis = [0.0 0.0 0.0]
+    basisTypes = [1]  
+    parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis, pMax, vacancyRecoverDistance, typeDict; kwargs...)
+    return parameters
+end
+
+function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    if IS_DYNAMIC_LOAD
+        error("Simulator from date file is not supported in dynamic load mode.")
+    end
+    log_section("Initializing Simulator")
+    xlo, xhi, ylo, yhi, zlo, zhi, types, xs, ys, zs = ReadDate(fileName)
+    box = Box([xhi-xlo 0.0 0.0; 0.0 yhi-ylo 0.0; 0.0 0.0 zhi-zlo])
+    log_info("Number of atoms: $(length(types))")
+    simulator = Simulator(box, inputGridVectors, parameters)
+    for (type, x, y, z) in zip(types, xs, ys, zs)
+        atom = Atom(type, [x, y, z], parameters)
+        push!(simulator, atom) 
+        latticePoint = LatticePoint(atom)
+        push!(simulator, latticePoint)
+    end
+    log_success("Simulator initialized")
+    InitLatticePointEnvronment(simulator)
+    for cell in simulator.grid.cells
+        cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume
+    end 
+    for atom in simulator.atoms
+        Pertubation!(atom, simulator)
+    end
+    log_success("Simulator initialized")
+    return simulator
+end
+
+
 function LatticePoint(atom::Atom)
-    environment = Vector{Int64}()
+    environment = Vector{Int64}() 
     return LatticePoint(copy(atom.index), copy(atom.type), 
                         copy(atom.coordinate), atom.cellIndex, environment,
                         atom.index)

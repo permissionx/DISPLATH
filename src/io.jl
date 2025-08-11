@@ -42,6 +42,67 @@ function Dump(simulator::Simulator, fileName::String, step::Int64, type::String=
     end
 end
 
+function ReadDate(fileName::String)
+    xlo = 0.0
+    xhi = 0.0
+    ylo = 0.0
+    yhi = 0.0
+    zlo = 0.0
+    zhi = 0.0
+    types = Int64[]
+    xs = Float64[]
+    ys = Float64[]
+    zs = Float64[]
+    open(fileName, "r") do f
+        lines = readlines(f)
+        i = 1
+        while i <= length(lines)
+            if !startswith(lines[i], "#")
+                words = split(lines[i])
+                if length(words) == 0
+                    i += 1
+                    continue
+                end
+                if length(words) >= 4 && words[4] == "xhi"
+                    xlo = parse(Float64, words[1])
+                    xhi = parse(Float64, words[2])
+                    i += 1
+                    words = split(lines[i])
+                    ylo = parse(Float64, words[1])
+                    yhi = parse(Float64, words[2])
+                    i += 1
+                    words = split(lines[i])
+                    zlo = parse(Float64, words[1])
+                    zhi = parse(Float64, words[2])
+                end
+                if words[1] == "Atoms"
+                    i += 1
+                    while true
+                        if i > length(lines)
+                            break
+                        end
+                        words = split(lines[i])
+                        if length(words) > 0
+                            type = parse(Int64, words[2])
+                            x = parse(Float64, words[3])
+                            y = parse(Float64, words[4])
+                            z = parse(Float64, words[5])
+                            push!(types, type)
+                            push!(xs, x)
+                            push!(ys, y)
+                            push!(zs, z)
+                        end
+                        i += 1
+                    end
+                end
+            end
+            i += 1
+        end
+
+    end
+    return xlo - xlo, xhi - xlo, ylo - ylo, yhi - ylo, zlo - zlo, zhi - zlo, types, xs .- xlo, ys .- ylo, zs .- zlo 
+end
+
 
 
 
