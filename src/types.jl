@@ -181,6 +181,7 @@ mutable struct Parameters
     nCascadeEveryLoad::Int64
     maxRSS::Int64
     isAmorphous::Bool
+    amorphousHeight::Float64
 end
 
 
@@ -212,7 +213,8 @@ function Parameters(
     irrdiationFrequency::Float64 = 0.0,
     nCascadeEveryLoad = 100,
     maxRSS::Int = 20, # unit: GB
-    isAmorphous = false) 
+    isAmorphous = false,
+    amorphousLength::Float64 = -100.0) 
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
     if !isdir(θτRepository)
@@ -223,6 +225,7 @@ function Parameters(
                     primaryVectors[3,1] == 0.0 && primaryVectors[3,2] == 0.0)
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     maxRSS *= 1048576  # unit: kB
+    amorphousHeight = latticeRanges[3,2] * primaryVectors[3,3] - amorphousLength
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
@@ -231,7 +234,7 @@ function Parameters(
                       #soapParameters, 
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      nCascadeEveryLoad, maxRSS, isAmorphous)
+                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousHeight)
 end 
 
 mutable struct CollisionParamsBuffers
@@ -250,11 +253,12 @@ mutable struct CollisionParamsBuffers
 end
 
 mutable struct WorkBuffers
-    coordinate::Vector{Float64}
+    coordinates::Vector{Vector{Float64}}
     candidateTargets::Vector{Atom}
     collisionParames::CollisionParamsBuffers
     threadCandidates::Vector{Vector{Atom}}
     function WorkBuffers(max_threads::Int64=Threads.nthreads())
+        coordinates = [Vector{Float64}(undef, 3) for _ in 1:max_threads]
         candidateTargets = Vector{Atom}()
         sizehint!(candidateTargets, 100)
         collisionParams = CollisionParamsBuffers()
@@ -262,7 +266,7 @@ mutable struct WorkBuffers
         for tc in threadCandidates
             sizehint!(tc, 50)
         end
-        return new(Vector{Float64}(undef, 3), candidateTargets, 
+        return new(coordinates, candidateTargets, 
                   collisionParams, threadCandidates)
     end
 end
@@ -318,7 +322,7 @@ mutable struct Simulator
     maxVacancyID::Int64
     minLatticeAtomID::Int64
     # for debug
-    debugAtom::Atom
+    debugAtoms::Vector{Atom}
     parameters::Parameters
     workBuffers::WorkBuffers
 end
@@ -345,7 +349,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     numberOfVacancies = 0
     maxVacancyID = 1E6
     minLatticeAtomID = 0
-    debugAtom = Atom(1, [0.0,0.0,0.0], parameters)
+    debugAtoms = Atom[]
     workBuffers = WorkBuffers()
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
@@ -359,7 +363,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
                      loadedCells, vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
-                     debugAtom,
+                     debugAtoms,
                      parameters,
                      workBuffers)  
 end

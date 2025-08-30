@@ -240,7 +240,7 @@ function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
                 Collision!(pAtom, targets, simulator)
                 for target in targets
                     if target.energy > 0.0   
-                        DisplaceAtom!(target, target.coordinate, simulator)
+                        #DisplaceAtom!(target, target.coordinate, simulator)
                         push!(nextPAtoms, target)
                     end
                 end

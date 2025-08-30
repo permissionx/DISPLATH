@@ -15,8 +15,7 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
         end
         cell.isSavedLatticeRange = true
     end
-    #coordinate = Vector{Float64}(undef, 3)
-    coordinate = simulator.workBuffers.coordinates[Threads.threadid()]
+    coordinate = simulator.workBuffers.coordinate
     for x in cell.latticeRanges[1,1]:cell.latticeRanges[1,2]
         for y in cell.latticeRanges[2,1]:cell.latticeRanges[2,2]
             for z in cell.latticeRanges[3,1]:cell.latticeRanges[3,2]
@@ -37,9 +36,14 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
                     atom = Atom(basisTypes[i], copy(coordinate), parameters)
                     atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
                     atom.cellIndex = cell.index
-                    atom.index = 0 
+                    atom.index = 0  # temporary value
                     atom.isNewlyLoaded = true
-                    Pertubation!(atom, simulator)  
+                    if atom.coordinate[3] >= latticeRanges[3,2] * primaryVectors[3,3] - 14.0
+                        isForceAmorphous = true
+                    else
+                        isForceAmorphous = false
+                    end
+                    Pertubation!(atom, simulator, isForceAmorphous = isForceAmorphous)  
                     push!(cell.latticeAtoms, atom)
                 end
             end
@@ -47,6 +51,19 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
     end
     if simulator.parameters.isAmorphous
         resize!(cell.latticeAtoms, length(cell.latticeAtoms) - length(cell.vacancies))
+    end
+end
+
+function Pertubation!(coordinate::Vector{Float64}, type::Int64, ranges::Matrix{Float64}, vectors::Matrix{Float64}, simulator::Simulator; isForceAmorphous::Bool = false)
+    if simulator.parameters.isAmorphous || isForceAmorphous
+        rng = THREAD_RNG[Threads.threadid()]
+        coordinate .= ranges[:,1] .+ [rand(rng) * vectors[d, d] for d in 1:3]
+    else
+        if simulator.parameters.temperature > 0.0
+            for d in 1:3
+                coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[type])
+            end
+        end
     end
 end
 
@@ -102,8 +119,8 @@ function ComputeLatticeAtoms_General!(cell::Cell, simulator::Simulator)
                     continue
                 end
             end
-            atom = Atom(basisTypes[i], coordinate, parameters)
-            atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
+                          atom = Atom(basisTypes[i], coordinate, parameters)
+              atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
             atom.cellIndex = cell.index
             atom.index = 0  # temporary value
             atom.isNewlyLoaded = true
@@ -131,6 +148,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
     targets = Vector{Atom}()
     pMax = simulator.parameters.pMax
     nthreads = Threads.nthreads()
+    #cands_tls = [Atom[] for _ in 1:nthreads]
     neighborCellsInfo = cell.neighborCellsInfo
     AlreadyLoadedFlags = [true for _ in 1:27]
     infiniteFlag_tls = [true for _ in 1:27]
@@ -139,13 +157,13 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
         empty!(tc)
     end
 
-    if nthreads >= 1 
+    #if Threads.nthreads() > 1 
         for n in 1:length(neighborCellsInfo)
             neighborCellInfo = neighborCellsInfo[n]
             index = neighborCellInfo.index
             GetCell(grid, index)  # preload the cell to avoid race condition
         end
-    end
+    #end
     @threads :static for n in 1:length(neighborCellsInfo)
         neighborCellInfo = neighborCellsInfo[n]
         buf = threadCandidates[Threads.threadid()]
@@ -179,7 +197,18 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
     for tc in threadCandidates
         append!(candidateTargets, tc)
     end
+    #if length(candidateTargets) > 0
+    #    println(length(candidateTargets))
+    #    for t in candidateTargets
+    #        println(t.pL)
+    #        println(t.pValue)
+    #        println(t.cellIndex)
+    #    end
+    #    exit()
+    #end
     infiniteFlag = reduce(&, infiniteFlag_tls)
+
+
     for (neighborCellInfo, flag) in zip(neighborCellsInfo, AlreadyLoadedFlags)
         idx = neighborCellInfo.index
         cell = GetCell(simulator.grid, idx)
@@ -216,6 +245,13 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
             push!(targets, candidateTarget)
         end
     end    
+    if length(targets) > 0
+        println(length(targets))
+        for t in targets
+            println(t.pL, " ", t.pValue, " ", t.cellIndex)
+        end
+        exit()
+    end
     return (targets, infiniteFlag)
 end
 
@@ -299,7 +335,7 @@ end
 
 function DumpInCascade_dynamicLoad(simulator::Simulator)
     if simulator.parameters.isDumpInCascade
-        @dump "Cascade_$(simulator.nCascade).dump" [simulator.atoms; simulator.vacancies; simulator.debugAtoms] ["vx", "vy", "vz", "e"]
+        @dump "Cascade_$(simulator.nCascade).dump" [simulator.atoms; simulator.vacancies] []
         #Dump_dynamicLoad(simulator, "$(simulator.parameters.dumpFolder)/Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, type)
     end
 end

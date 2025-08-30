@@ -317,7 +317,7 @@ module Output
 using Main: Simulator
 export @dump, @record
 
-FLUSH_BYTES = 8_192
+FLUSH_BYTES = 4_096
 const _fh = Dict{String, IO}()
 const _buf = Dict{String, IOBuffer}()
 
