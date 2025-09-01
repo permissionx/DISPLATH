@@ -29,7 +29,7 @@ function Element(name::String, dte::Float64, bde::Float64)
     elseif name == "Al"
         return Element(name, 1.18, 27.0, 13.0, dte, bde, 1.0, 0.12)
     elseif name == "Si"
-        return Element(name, 1.0, 28.0, 14.0, dte, bde, 1.0, 0.44)
+        return Element(name, 1.11, 28.0, 14.0, dte, bde, 1.0, 0.44)
     elseif name == "P"
         return Element(name, 0.98, 31.0, 15.0, dte, bde, 1.25, 0.44)
     elseif name == "S"
@@ -149,7 +149,7 @@ function Element(name::String, dte::Float64, bde::Float64)
     elseif name == "Ta"
         return Element(name, 2.00, 181.0, 73.0, dte, bde, 1.0, 0.44)
     elseif name == "W"
-        return Element(name, 1.33, 184.0, 74.0, dte, bde, 1.0, 0.44)  # 1.93 original number 
+        return Element(name, 1.93, 184.0, 74.0, dte, bde, 1.0, 0.44)
     elseif name == "Re"
         return Element(name, 1.88, 187.0, 75.0, dte, bde, 1.0, 0.44)
     elseif name == "Os"
