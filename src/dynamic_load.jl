@@ -230,17 +230,13 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     x_pList = @view buffers.x_pList[1:N_t]
     x_tList = @view buffers.x_tList[1:N_t]
     Q_locList = @view buffers.Q_locList[1:N_t]
-    pL = 0.0
-    for atom_t in atoms_t
-        l = atom_t.pL
-        pL += l
-    end
-    pL /= N_t   
+    atom_t = atoms_t[1]
+    pL = atom_t.pL   
+    pPoint = atom_t.pPoint
     if atom_p.numberOfEmptyCells > 1
         # This is an approximation, the pL is not accurate, but for most situations in bulk simulation, numberOfEmptyCells is 0.
         pL *= 1 / atom_p.numberOfEmptyCells
     end
-    atom_t = atoms_t[1]
     N = GetCell(grid, atom_t.cellIndex).atomicDensity
     Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
                          pL, N, simulator.constantsByType)
@@ -265,7 +261,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     #end
     η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ_loc))
     E_tList *= η   
-    avePPoint = @SVector [0.0, 0.0, 0.0]  
+    #avePPoint = @SVector [0.0, 0.0, 0.0]  
     momentum = @SVector [0.0, 0.0, 0.0]   
     for (i, atom_t) in enumerate(atoms_t)
         if atom_t.pValue != 0
@@ -282,14 +278,15 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
         else
             SetEnergy!(atom_t, 0.0)
         end
-        avePPoint += atom_t.pPoint
+
+        #avePPoint += atom_t.pPoint
         momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
     end
 
     # Update atom_p
-    avePPoint /= N_t
-    x_p = η * sum(x_pList) / N_t  # important modification
-    pCoordinate = avePPoint - x_p * atom_p.velocityDirection
+    #avePPoint /= N_t
+    x_p = η * sum(x_pList) / N_t  # important 
+    pCoordinate = pPoint - x_p * atom_p.velocityDirection
     #DisplaceAtom!(atom_p, avePPoint, simulator)
     DisplaceAtom!(atom_p, pCoordinate, simulator)
     velocity = (sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum)  / atom_p.mass

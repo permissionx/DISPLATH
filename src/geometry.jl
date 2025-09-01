@@ -509,16 +509,13 @@ function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
     t = dot(dv, atom_p.velocityDirection)
     atom_t.pL = t
-    pPoint_calc = atom_p.coordinate + t * atom_p.velocityDirection
+    pPoint_calc = atom_p.coordinate + t * atom_p.velocityDirection - crossFlag .* [simulator.box.vectors[i,i] for i in 1:3]
     atom_t.pPoint = SVector{3,Float64}(pPoint_calc[1], pPoint_calc[2], pPoint_calc[3])
     pVector_calc = atom_t.pPoint - atom_t.coordinate
     atom_t.pVector = SVector{3,Float64}(pVector_calc[1], pVector_calc[2], pVector_calc[3])
     p = norm(atom_t.pVector)
     atom_t.pValue = p
     # need to check periodic condition
-    #if atom_t.index == 3055
-    #    @show atom_p.coordinate, atom_t.coordinate, p, atom_t.pValue, dv, atom_t.pPoint, atom_t.pVector
-    #end
     return p
 end
 
@@ -769,6 +766,6 @@ function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-1
     σ2 = 3 * ħ^2 / (M * kB * θ_D) * (0.25 + (T/θ_D)^2 * I)
     σ  = sqrt(σ2) * 1e10         # m → Å
 
-    return 0.079 #σ
+    return 0.071 #σ
 end
 

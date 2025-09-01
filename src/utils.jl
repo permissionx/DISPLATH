@@ -81,3 +81,52 @@ function RandomVectorInUnitSphere(θrange::Float64)
     z = cos(θ)
     return [x, y, -z]
 end
+
+
+function rotation_matrix_from_vectors(vec1::AbstractVector, vec2::AbstractVector)
+    a = normalize(vec1)
+    b = normalize(vec2)
+    v = cross(a, b)
+    c = dot(a, b)
+
+    if c ≈ 1.0
+        return I(3) 
+    end
+
+
+    if c ≈ -1.0
+
+        other = abs(dot(a, [0, 0, 1])) < 0.9 ? [0, 0, 1] : [1, 0, 0]
+        axis = normalize(cross(a, other))
+        return AngleAxis(π, axis...)|>RotMatrix
+    end
+    
+
+    s = norm(v)
+    vx = [0 -v[3] v[2]; v[3] 0 -v[1]; -v[2] v[1] 0]
+    R = I(3) + vx + vx^2 * (1 / (1 + c))
+    
+    return R
+end
+
+
+function RandomlyDeviatedVector(incident_direction::AbstractVector, θrange::Float64)
+    rng = THREAD_RNG[Threads.threadid()]
+    θ = θrange * rand(rng)
+    φ = 2π * rand(rng)
+    
+    x = sin(θ) * cos(φ)
+    y = sin(θ) * sin(φ)
+    z = cos(θ)
+    
+
+    local_vec = [x, y, -z]
+
+
+    standard_axis = [0.0, 0.0, -1.0]
+    R = rotation_matrix_from_vectors(standard_axis, incident_direction)
+
+    final_vec = R * local_vec
+    
+    return final_vec
+end

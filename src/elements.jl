@@ -149,7 +149,7 @@ function Element(name::String, dte::Float64, bde::Float64)
     elseif name == "Ta"
         return Element(name, 2.00, 181.0, 73.0, dte, bde, 1.0, 0.44)
     elseif name == "W"
-        return Element(name, 1.93, 184.0, 74.0, dte, bde, 1.0, 0.44)
+        return Element(name, 1.37, 184.0, 74.0, dte, bde, 1.0, 0.44)  # 1.93 original number 
     elseif name == "Re"
         return Element(name, 1.88, 187.0, 75.0, dte, bde, 1.0, 0.44)
     elseif name == "Os"
