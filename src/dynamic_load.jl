@@ -41,6 +41,9 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
                     atom.isNewlyLoaded = true
                     Pertubation!(atom, simulator)  
                     push!(cell.latticeAtoms, atom)
+                    if simulator.parameters.debugMode == true
+                        push!(simulator.debugAtoms, atom)
+                    end
                 end
             end
         end

@@ -182,6 +182,7 @@ mutable struct Parameters
     maxRSS::Int64
     isAmorphous::Bool
     amorphousHeight::Float64
+    debugMode::Bool
 end
 
 
@@ -214,7 +215,8 @@ function Parameters(
     nCascadeEveryLoad = 100,
     maxRSS::Int = 20, # unit: GB
     isAmorphous = false,
-    amorphousLength::Float64 = -100.0) 
+    amorphousLength::Float64 = -100.0,
+    debugMode::Bool = false) 
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
     if !isdir(θτRepository)
@@ -234,7 +236,8 @@ function Parameters(
                       #soapParameters, 
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousHeight)
+                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousHeight, 
+                      debugMode)
 end 
 
 mutable struct CollisionParamsBuffers
