@@ -509,7 +509,16 @@ function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
     t = dot(dv, atom_p.velocityDirection)
     atom_t.pL = t
-    pPoint_calc = atom_p.coordinate + t * atom_p.velocityDirection - crossFlag .* [simulator.box.vectors[i,i] for i in 1:3]
+    if 1 in crossFlag || -1 in crossFlag
+        pPoint_calc = Vector{Float64}(atom_p.coordinate + t * atom_p.velocityDirection)
+        for d in 1:3
+            if crossFlag[d] != 0
+                pPoint_calc[d] -= crossFlag[d] * box.vectors[d,d]
+            end
+        end
+    else
+        pPoint_calc = atom_p.coordinate + t * atom_p.velocityDirection
+    end
     atom_t.pPoint = SVector{3,Float64}(pPoint_calc[1], pPoint_calc[2], pPoint_calc[3])
     pVector_calc = atom_t.pPoint - atom_t.coordinate
     atom_t.pVector = SVector{3,Float64}(pVector_calc[1], pVector_calc[2], pVector_calc[3])
