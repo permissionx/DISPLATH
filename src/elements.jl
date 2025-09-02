@@ -5,13 +5,13 @@ function Element(name::String, dte::Float64, bde::Float64)
     elseif name == "D"
         return Element(name, 0.53, 2.0, 1.0, dte, bde, 1.0, 0.05)
     elseif name == "He"
-        return Element(name, 0.31, 4.0, 2.0, dte, bde, 1.0, 0.05)
+        return Element(name, 0.31, 4.0, 2.0, dte, bde, 1.5, 0.05)
     elseif name == "Li"
         return Element(name, 1.67, 7.0, 3.0, dte, bde, 1.5, 0.05)
     elseif name == "Be"
         return Element(name, 1.12, 9.0, 4.0, dte, bde, 1.5, 0.44) 
     elseif name == "B"
-        return Element(name, 0.87, 11.0, 5.0, dte, bde, BAlpha, 0.44)  # BAlpha = 1.5
+        return Element(name, 0.87, 11.0, 5.0, dte, bde, 1.5, 0.44)  # BAlpha = 1.5  BBeta = 0.44
     elseif name == "C"
         return Element(name, 0.67, 12.0, 6.0, dte, bde, 1.0, 0.44)
     elseif name == "N"
@@ -29,7 +29,7 @@ function Element(name::String, dte::Float64, bde::Float64)
     elseif name == "Al"
         return Element(name, 1.18, 27.0, 13.0, dte, bde, 1.0, 0.12)
     elseif name == "Si"
-        return Element(name, 1.00, 28.0, 14.0, dte, bde, 1.0, 0.44)
+        return Element(name, 0.4, 28.0, 14.0, dte, bde, 1.0, 0.44)   
     elseif name == "P"
         return Element(name, 0.98, 31.0, 15.0, dte, bde, 1.25, 0.44)
     elseif name == "S"

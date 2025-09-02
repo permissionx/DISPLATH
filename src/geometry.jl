@@ -775,6 +775,6 @@ function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-1
     σ2 = 3 * ħ^2 / (M * kB * θ_D) * (0.25 + (T/θ_D)^2 * I)
     σ  = sqrt(σ2) * 1e10         # m → Å
 
-    return 0.079/sqrt(3) #σ
+    return 0.079
 end
 
