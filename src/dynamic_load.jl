@@ -163,7 +163,14 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
         LoadCellAtoms!(neighborCell, simulator)
         neighborCell.isExplored = true
         infiniteFlag_tls[n] = false
-        for neighborAtom in [neighborCell.atoms; neighborCell.latticeAtoms]
+        na = length(neighborCell.atoms) 
+        for n in 1:na+ length(neighborCell.latticeAtoms)
+        #for neighborAtom in [neighborCell.atoms; neighborCell.latticeAtoms]
+            if n <= na
+                neighborAtom = neighborCell.atoms[n]
+            else
+                neighborAtom = neighborCell.latticeAtoms[n - na]
+            end
             if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
                 continue
             end
@@ -208,18 +215,23 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
         if candidateTarget.index == nearestTarget.index
             continue
         end
-        matchFlag = true
-        for target in targets   
-            if !SimultaneousCriteria(candidateTarget, target, simulator)
-                matchFlag = false
-                break
-            end
-        end
-        if matchFlag
+        if SimultaneousCriteria(candidateTarget, nearestTarget, simulator)
             push!(targets, candidateTarget)
         end
     end    
     return (targets, infiniteFlag)
+end
+
+function SimultaneousCriteria(candidateTarget::Atom, nearestTarget::Atom, simulator::Simulator)
+    deltaPL = candidateTarget.pL - nearestTarget.pL
+    if deltaPL > simulator.constantsByType.qMax[[candidateTarget.type, nearestTarget.type]]
+        return false
+    elseif nearestTarget.pValue * nearestTarget.pValue + deltaPL * deltaPL > simulator.parameters.pMax_squared 
+        return false
+    elseif candidateTarget.pValue * candidateTarget.pValue + deltaPL * deltaPL > simulator.parameters.pMax_squared 
+        return false
+    end
+    return true
 end
 
 function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
@@ -233,24 +245,13 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     x_pList = @view buffers.x_pList[1:N_t]
     x_tList = @view buffers.x_tList[1:N_t]
     Q_locList = @view buffers.Q_locList[1:N_t]
-    mode = 1 # 1 for new, 2 for old 
-    if mode == 1
-        atom_t = atoms_t[1]
-        pL = atom_t.pL   
-        pPoint = atom_t.pPoint
-    else
-        pL = 0.0
-        for atom_t in atoms_t
-            l = atom_t.pL
-            pL += l
-        end
-        pL /= N_t   
-    end
+    atom_t = atoms_t[1]
+    pL = atom_t.pL   
+    pPoint = atom_t.pPoint
     if atom_p.numberOfEmptyCells > 1
         # This is an approximation, the pL is not accurate, but for most situations in bulk simulation, numberOfEmptyCells is 0.
         pL *= 1 / atom_p.numberOfEmptyCells
     end
-    atom_t = atoms_t[1]
     N = GetCell(grid, atom_t.cellIndex).atomicDensity
     Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
                          pL, N, simulator.constantsByType)
@@ -261,55 +262,40 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     if atom_p.energy < 0.1 && atom_p.energy + Q_nl_v >= 0.1
         atom_p.energy = 0.11
     end
+    momentum = @SVector [0.0, 0.0, 0.0] 
     for (i, atom_t) in enumerate(atoms_t)
         p = atom_t.pValue
         N = GetCell(grid, atom_t.cellIndex).atomicDensity 
         tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
             atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
-            simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])
-    end
-    sumE_t = sum(E_tList)
-    sumQ_loc = sum(Q_locList)
-    #if atom_p.type == 2
-    #global Q_loss += sumQ_loc  #debug 
-    #end
-    η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ_loc))
-    E_tList *= η   
-    avePPoint = @SVector [0.0, 0.0, 0.0]  
-    momentum = @SVector [0.0, 0.0, 0.0]   
-    for (i, atom_t) in enumerate(atoms_t)
+            simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])        
         if atom_t.pValue != 0
             velocityDirectionTmp = -atom_t.pVector / atom_t.pValue * tanψList[i] + atom_p.velocityDirection
         else
             velocityDirectionTmp = atom_p.velocityDirection
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
+        momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
+    end
+    pMomentum = sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum
+    pVelocity = pMomentum  / atom_p.mass
+    SetVelocityDirection!(atom_p, pVelocity)
+    pEnergy =  sum(pMomentum .* pMomentum) / 2 / atom_p.mass
+    sumE_t = sum(E_tList)
+    sumQ_loc = sum(Q_locList) 
+    ENeed = atom_p.energy - sumQ_loc
+    λ = ENeed / (pEnergy + sumE_t)
+    DisplaceAtom!(atom_p, pPoint, simulator)
+    SetEnergy!(atom_p, pEnergy * λ)
+    E_tList *= λ
+    for (i, atom_t) in enumerate(atoms_t)
         if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.1
             LeaveLatticePoint_dynamicLoad!(atom_t, simulator)
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
-            tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
-            DisplaceAtom!(atom_t, tCoordinate, simulator)  
         else
             SetEnergy!(atom_t, 0.0)
         end
-
-        avePPoint += atom_t.pPoint
-        momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
     end
-
-    # Update atom_p
-    avePPoint /= N_t
-    x_p = η * sum(x_pList) / N_t  # important 
-    if mode == 1
-        pCoordinate = pPoint - x_p * atom_p.velocityDirection
-    else
-        pCoordinate = avePPoint - x_p * atom_p.velocityDirection
-    end
-    #DisplaceAtom!(atom_p, avePPoint, simulator)
-    DisplaceAtom!(atom_p, pCoordinate, simulator)
-    velocity = (sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum)  / atom_p.mass
-    SetVelocityDirection!(atom_p, velocity)
-    SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ_loc) * η)
 end 
 
 function DumpInCascade_dynamicLoad(simulator::Simulator)
@@ -376,24 +362,12 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         end
     end
     if simulator.nCascade % parameters.nCascadeEveryLoad == 0
-        for cell in simulator.loadedCells
-            cell.isLoaded = false
-            empty!(cell.latticeAtoms) 
-        end
-        empty!(simulator.loadedCells)
         simulator.minLatticeAtomID = 0
         rss = parse(Int, read(`ps -o rss= -p $(getpid())`, String)) 
         if rss > simulator.parameters.maxRSS
-            empty!(simulator.grid.cells)
-            for atom in simulator.atoms
-                if atom.isAlive
-                    push!(GetCell(simulator.grid, atom.cellIndex).atoms, atom)
-                end
-            end
-            for vacancy in simulator.vacancies
-                if vacancy.isAlive
-                    push!(GetCell(simulator.grid, vacancy.cellIndex).vacancies, vacancy)
-                end
+            for cell in values(simulator.grid.cells)
+                empty!(cell.latticeAtoms) 
+                cell.isLoaded = false
             end
         end
     end

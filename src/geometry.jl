@@ -531,13 +531,6 @@ end
 
 
 
-function SimultaneousCriteria(neighborAtom::Atom, addedTarget::Atom, simulator::Simulator)
-    flagP = abs(neighborAtom.pValue - addedTarget.pValue) <= simulator.parameters.pMax
-    flagQ = abs(neighborAtom.pL - addedTarget.pL) <= simulator.constantsByType.qMax[[neighborAtom.type, addedTarget.type]]
-    return flagP && flagQ
-end
-
-
 function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
     originalCell = GetCell(simulator.grid, atom.cellIndex)
     delete!(originalCell, atom, simulator)

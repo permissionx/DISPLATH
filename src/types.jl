@@ -158,6 +158,7 @@ mutable struct Parameters
     basis::Matrix{Float64}
     θτRepository::String
     pMax::Float64
+    pMax_squared::Float64 # automatic
     vacancyRecoverDistance_squared::Float64
     typeDict::Dict{Int64, Element}
     #optional 
@@ -217,6 +218,7 @@ function Parameters(
     isAmorphous = false,
     amorphousLength::Float64 = -100.0,
     debugMode::Bool = false) 
+    pMax_squared = pMax * pMax 
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
     if !isdir(θτRepository)
@@ -229,7 +231,7 @@ function Parameters(
     maxRSS *= 1048576  # unit: kB
     amorphousHeight = latticeRanges[3,2] * primaryVectors[3,3] - amorphousLength
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
-                      θτRepository, pMax,  vacancyRecoverDistance_squared, typeDict,
+                      θτRepository, pMax, pMax_squared, vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
                       EPowerRange, pRange, stopEnergy, DebyeTemperature, isDumpInCascade, 
                       DTEMode, 

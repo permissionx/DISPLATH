@@ -29,7 +29,7 @@ function Element(name::String, dte::Float64, bde::Float64)
     elseif name == "Al"
         return Element(name, 1.18, 27.0, 13.0, dte, bde, 1.0, 0.12)
     elseif name == "Si"
-        return Element(name, 0.4, 28.0, 14.0, dte, bde, 1.0, 0.44)   
+        return Element(name, 0.4, 28.0, 14.0, dte, bde, 1.0, 0.44)     # shrinked radius  1.11
     elseif name == "P"
         return Element(name, 0.98, 31.0, 15.0, dte, bde, 1.25, 0.44)
     elseif name == "S"

@@ -119,8 +119,10 @@ function CollisionParams(energy_p::Float64, mass_p::Float64, mass_t::Float64, ty
     #rStart = FindTurningPoint(p_squared, E_r_v, type_p, type_t, p, constantsByType)
     #θ_v = θ(p, p_squared, E_r_v, type_p, type_t, rStart, constantsByType)
     #τ_v = τ(p_squared, type_p, type_t, E_r_v, rStart, constantsByType)
+    #@show θ_v, τ_v
     θ_v = θFunction(energy_p, p)
     τ_v = τFunction(energy_p, p)
+    #@show θ_v, τ_v
     tanφ_v = tanφ(mass_p, mass_t, θ_v)
     tanψ_v = tanψ(θ_v)
     E_t_v = E_t(mass_p, mass_t, energy_p, θ_v)
