@@ -22,7 +22,8 @@ mutable struct Atom
     dte::Float64
     bde::Float64
 
-    numberOfEmptyCells::Int64
+    #numberOfEmptyCells::Int64
+    emptyPath::Float64
 
     # for atom_t
     pValue::Float64

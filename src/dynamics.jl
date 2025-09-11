@@ -5,7 +5,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
     grid = simulator.grid
     periodic = simulator.parameters.periodic    
     cell = GetCell(grid, atom.cellIndex)
-    atom.numberOfEmptyCells = 0
+    atom.emptyPath = 0.0
     while true
         (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, filterIndexes, simulator)
         # delete repeated targets in lastTargets
@@ -16,8 +16,8 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
             empty!(simulator.exploredCells)
             return targets, true
         else
-            atom.numberOfEmptyCells += 1
-            dimension, direction = AtomOutFaceDimension(atom, cell)
+            dimension, direction,t = AtomOutFaceDimension(atom, cell)
+            atom.emptyPath += t
             neighborIndex = Vector{Int8}([0,0,0])
             neighborIndex[dimension] = direction == 1 ? Int8(-1) : Int8(1)
             neighborIndex .+= 2
@@ -30,6 +30,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
                 for cell in simulator.exploredCells
                     cell.isExplored = false
                 end
+                atom.emptyPath = 0.0
                 empty!(simulator.exploredCells)
                 return Vector{Atom}(), false # means find nothing  
             end 
@@ -62,7 +63,7 @@ function AtomOutFaceDimension(atom::Atom, cell::Cell)
             end
         end
         if allInRange
-            return d, rangeIndex
+            return d, rangeIndex, t
         end
     end
     error("Out face not found\n ########Atom#######\n $(atom) \n 
@@ -143,9 +144,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
         pL += l
     end
     pL /= N_t   
-    if atom_p.numberOfEmptyCells > 1
-        pL *= 1 / atom_p.numberOfEmptyCells
-    end
+    pL -= atom_p.emptyPath
     atom_t = atoms_t[1]
     N = GetCell(grid, atom_t.cellIndex).atomicDensity
     Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,

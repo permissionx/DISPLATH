@@ -19,7 +19,8 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     velocityDirection = SVector{3,Float64}(0.0, 0.0, 0.0)  
     energy = 0.0
     radius, mass, Z, dte, bde, _, _ = TypeToProperties(type, parameters.typeDict)
-    numberOfEmptyCells = 0
+    #numberOfEmptyCells = 0
+    emptyPath = 0.0
     pValue = 0.0
     pVector = SVector{3,Float64}(0.0, 0.0, 0.0)  
     pPoint = SVector{3,Float64}(0.0, 0.0, 0.0)   
@@ -34,7 +35,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     lattcieCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
     return Atom(index, isAlive, type, coordinate, cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
-                dte, bde, numberOfEmptyCells,
+                dte, bde, emptyPath, #numberOfEmptyCells,
                 pValue, pVector, pPoint, pL, lastTargets,
                 latticePointIndex,
                 frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, 
@@ -732,13 +733,22 @@ end
 
 
 function Pertubation!(atom::Atom, simulator::Simulator)
-    if simulator.parameters.isAmorphous || atom.coordinate[3] >= simulator.parameters.amorphousHeight
+    if simulator.parameters.isAmorphous 
         rng = THREAD_RNG[Threads.threadid()]
         atom.coordinate .= GetCell(simulator.grid, atom.cellIndex).ranges[:,1] .+ [rand(rng) * simulator.grid.vectors[d, d] for d in 1:3]
     else
-        if simulator.parameters.temperature > 0.0
-            for d in 1:3
-                atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
+        ah = simulator.parameters.amorphousHeight
+        if atom.coordinate[3] > ah
+            rng = THREAD_RNG[Threads.threadid()]
+            cell = GetCell(simulator.grid, atom.cellIndex)
+            atom.coordinate[1] = cell.ranges[1,1] + rand(rng) * simulator.grid.vectors[1, 1]
+            atom.coordinate[2] = cell.ranges[2,1] + rand(rng) * simulator.grid.vectors[2, 2]
+            atom.coordinate[3] = ah + rand(rng) * (simulator.parameters.latticeRanges[3,2] * simulator.parameters.primaryVectors[3,3] - ah)
+        else
+            if simulator.parameters.temperature > 0.0
+                for d in 1:3
+                    atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
+                end
             end
         end
     end
