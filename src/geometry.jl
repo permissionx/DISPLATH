@@ -1,8 +1,7 @@
 using StaticArrays
 
 function Box(Vectors::Matrix{Float64})
-    
-log_info("Box created: $(round(Vectors[1,1]; digits=2)) × $(round(Vectors[2,2]; digits=2)) × $(round(Vectors[3,3]; digits=2)) Å")
+    log_info("Box created: $(round(Vectors[1,1]; digits=2)) × $(round(Vectors[2,2]; digits=2)) × $(round(Vectors[3,3]; digits=2)) Å")
     return Box(Vectors, inv(Vectors'), true)
 end 
 
@@ -232,23 +231,24 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
         E_p_axis, p_axis, θMatrix, τMatrix = LoadθτData(type_p, type_t, parameters)
     catch
         EPowerRange = parameters.EPowerRange    
-        pRange = parameters.pRange
+        pPowerRange = parameters.pPowerRange
         nE = length(EPowerRange)
-        np = length(pRange)
+        np = length(pPowerRange)
         θMatrix = Array{Float64, 2}(undef, nE, np)
         τMatrix = Array{Float64, 2}(undef, nE, np)
         N = length(EPowerRange)
         @showprogress @threads for i in 1:N
             E_p_power = EPowerRange[i]
             E_p = 10.0^E_p_power
-            for (j, p) in enumerate(pRange)
+            for (j, p_power) in enumerate(pPowerRange)
+                p = 10.0^p_power
                 θ, τ = BCA.θτ(E_p, mass_p, mass_t, type_p, type_t, p, constantsByType)
                 θMatrix[i, j] = θ
                 τMatrix[i, j] = τ
             end
         end
-        E_p_axis = [10.0^E_p_power for E_p_power in EPowerRange]
-        p_axis = collect(pRange)    
+        E_p_axis = collect(EPowerRange)
+        p_axis = collect(pPowerRange)    
         SaveθτData(type_p, type_t, θMatrix, τMatrix, E_p_axis, p_axis, parameters)
     end
     # interpolate
@@ -743,7 +743,8 @@ function Pertubation!(atom::Atom, simulator::Simulator)
             cell = GetCell(simulator.grid, atom.cellIndex)
             atom.coordinate[1] = cell.ranges[1,1] + rand(rng) * simulator.grid.vectors[1, 1]
             atom.coordinate[2] = cell.ranges[2,1] + rand(rng) * simulator.grid.vectors[2, 2]
-            atom.coordinate[3] = ah + rand(rng) * (simulator.parameters.latticeRanges[3,2] * simulator.parameters.primaryVectors[3,3] - ah)
+            base = cell.ranges[3,1] > ah ? cell.ranges[3,1] : ah
+            atom.coordinate[3] = base + rand(rng) * (cell.ranges[3,2] - base)
         else
             if simulator.parameters.temperature > 0.0
                 for d in 1:3
@@ -753,6 +754,7 @@ function Pertubation!(atom::Atom, simulator::Simulator)
         end
     end
 end
+
 
 function SetCoordinate!(atom::Atom, coordinate::Vector{Float64})
     atom.coordinate .= coordinate

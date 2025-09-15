@@ -116,7 +116,7 @@ function SaveθτData(type_p::Int64, type_t::Int64,
     fileName = parameters.θτRepository*"/$(name_p)_$(name_t).thetatau"  
     open(fileName, "w") do f
         write(f, "# EPowerRange: $(parameters.EPowerRange)\n")
-        write(f, "# pRange: $(parameters.pRange)\n")
+        write(f, "# pPowerRange: $(parameters.pPowerRange)\n")
         write(f, "# Generated at: $(Dates.now())\n\n")
         write(f, "@ P type: $(name_p) & T type: $(name_t)\n") # to be modified: not neccessry because of the file name has indicated the elements. 
         write(f, "E axis length: $(length(E_p_axis))\n") 

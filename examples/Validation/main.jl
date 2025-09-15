@@ -25,14 +25,14 @@ inputGridVectors = [3.4 0.0 0.0; 0.0 3.4 0.0; 0.0 0.0 3.4]
 simulator = Simulator(box, inputGridVectors, parameters)
 
 
-E = 1_700_000.
-p = 0.5
+E = 500.
+p = 1.716330802791826
 atom_p = Atom(2, [5., 5., 6.], parameters)
 SetVelocityDirection!(atom_p, [0.,0.,-1.])
 SetEnergy!(atom_p, E)
 push!(simulator, atom_p)
 
-atom_t =  Atom(1, [5., 4.5, 4.], parameters)
+atom_t =  Atom(1, [5., 5.0-p , 4.], parameters)
 push!(simulator, atom_t)
 
 Cascade!(atom_p, simulator)

@@ -195,7 +195,6 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
         cell = GetCell(simulator.grid, idx)
         push!(simulator.exploredCells, cell)
         if flag == false
-            push!(simulator.loadedCells, cell)
             for atom in cell.latticeAtoms
                 simulator.minLatticeAtomID -= 1
                 atom.index = simulator.minLatticeAtomID
@@ -280,7 +279,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     pEnergy =  sum(pMomentum .* pMomentum) / 2 / atom_p.mass
     sumE_t = sum(E_tList)
     sumQ_loc = sum(Q_locList) 
-    ENeed = atom_p.energy - sumQ_loc
+    ENeed = atom_p.energy - sumQ_loc - (N_t - 1) * Q_nl_v
     λ = ENeed / (pEnergy + sumE_t)
     DisplaceAtom!(atom_p, pPoint, simulator)
     SetEnergy!(atom_p, pEnergy * λ)
@@ -325,9 +324,6 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         othersTargetIndexes = Int64[]
         for (na, pAtom) in enumerate(pAtoms)
             targets, isAlive = ShotTarget_dynamicLoad(pAtom, [pAtomsIndex; pAtom.lastTargets; othersTargetIndexes], simulator)
-            if simulator.nCascade == 19 && (1035 >= simulator.nCollisionEvent >= 1030) && pAtom.type == 2
-                @show [target.pValue for target in targets]
-            end
             if !isAlive
                 empty!(pAtom.lastTargets)
                 delete_dynamicLoad!(simulator, pAtom)
@@ -378,12 +374,24 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
 end
 
 function CleanUpLatticeAtoms(simulator::Simulator)
-    simulator.minLatticeAtomID = 0
-    for cell in values(simulator.grid.cells)
-        empty!(cell.latticeAtoms) 
-        cell.isLoaded = false
+    empty!(simulator.exploredCells)
+    empty!(simulator.grid.cells)
+    GC.gc()
+    for atom in simulator.atoms
+        if atom.isAlive 
+            cell = GetCell(simulator.grid, atom.cellIndex)
+            push!(cell.atoms, atom)
+        end
     end
+    for vacancy in simulator.vacancies
+        if vacancy.isAlive
+            cell = GetCell(simulator.grid, vacancy.cellIndex)
+            push!(cell.vacancies, vacancy)
+        end
+    end
+    simulator.minLatticeAtomID = 0
 end
+
 
 function delete_dynamicLoad!(simulator::Simulator, atom::Atom; isDeleteVacancy::Bool = false)
     cell = GetCell(simulator.grid, atom.cellIndex)

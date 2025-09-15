@@ -167,7 +167,7 @@ mutable struct Parameters
     isOrthogonal::Bool
     isPrimaryVectorOrthogonal::Bool  # not a input 
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
-    pRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
+    pPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     stopEnergy::Float64
     DebyeTemperature::Float64
     isDumpInCascade::Bool
@@ -202,7 +202,7 @@ function Parameters(
     isOrthogonal::Bool = true,
     θτRepository::String = ENV["ARCS_REPO"] * "/thetatau_repository/",
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -1.0:0.045:8.0,
-    pRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = 0.0:0.01:5.0,
+    pPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -5.0:0.01:1.0,
     stopEnergy::Float64 = 0.1, 
     DebyeTemperature::Float64 = 1000.0, 
     isDumpInCascade::Bool = false, 
@@ -234,7 +234,7 @@ function Parameters(
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax, pMax_squared, vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
-                      EPowerRange, pRange, stopEnergy, DebyeTemperature, isDumpInCascade, 
+                      EPowerRange, pPowerRange, stopEnergy, DebyeTemperature, isDumpInCascade, 
                       DTEMode, 
                       #soapParameters, 
                       DTEFile,
@@ -322,7 +322,6 @@ mutable struct Simulator
     frequencies::Vector{Float64}
     mobileAtoms::Vector{Atom}
     #for dynamic load
-    loadedCells::Vector{Cell}
     vacancies::Vector{Atom}
     numberOfVacancies::Int64
     maxVacancyID::Int64
@@ -349,7 +348,6 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     frequency = 0.0
     frequencies = Vector{Float64}()
     mobileAtoms = Vector{Atom}()
-    loadedCells = Vector{Cell}()
     vacancies = Vector{Atom}()
     nCollisionEvent = 0
     numberOfVacancies = 0
@@ -368,7 +366,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      #soap, 
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
-                     loadedCells, vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
+                     vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
                      debugAtoms,
                      parameters,
                      workBuffers)  
