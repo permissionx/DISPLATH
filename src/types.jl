@@ -313,6 +313,7 @@ mutable struct Simulator
     exploredCells::Vector{Cell}
     θFunctions::Dict{Vector{Int64}, Function}
     τFunctions::Dict{Vector{Int64}, Function}
+    uniformDensity::Float64
     #soap::PyObject
     environmentCut::Float64
     DTEData::Vector{Vector{Float64}}
@@ -355,6 +356,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     minLatticeAtomID = 0
     debugAtoms = Atom[]
     workBuffers = WorkBuffers()
+    uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
                      0, 0, 
@@ -363,6 +365,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      0,nCollisionEvent,
                      Vector{Cell}(),
                      θFunctions, τFunctions,
+                     uniformDensity,
                      #soap, 
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,

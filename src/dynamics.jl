@@ -17,7 +17,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
             return targets, true
         else
             dimension, direction,t = AtomOutFaceDimension(atom, cell)
-            atom.emptyPath += t
+            atom.emptyPath = t
             neighborIndex = Vector{Int8}([0,0,0])
             neighborIndex[dimension] = direction == 1 ? Int8(-1) : Int8(1)
             neighborIndex .+= 2
@@ -155,7 +155,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     end
     for (i, atom_t) in enumerate(atoms_t)
         p = atom_t.pValue
-        N = GetCell(grid, atom_t.cellIndex).atomicDensity 
+        #N = GetCell(grid, atom_t.cellIndex).atomicDensity 
         tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
             atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
             simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])

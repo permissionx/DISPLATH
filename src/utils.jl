@@ -110,9 +110,9 @@ function rotation_matrix_from_vectors(vec1::AbstractVector, vec2::AbstractVector
 end
 
 
-function RandomlyDeviatedVector(incident_direction::AbstractVector, θrange::Float64)
+function RandomlyDeviatedVector(incident_direction::AbstractVector, divergence::Float64)
     rng = THREAD_RNG[Threads.threadid()]
-    θ = θrange * rand(rng)
+    θ = abs(rand(rng, Normal(0.0, divergence))) 
     φ = 2π * rand(rng)
     
     x = sin(θ) * cos(φ)

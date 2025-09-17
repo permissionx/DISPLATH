@@ -8,6 +8,7 @@ import Base: delete!
 using Interpolations   
 using Dates
 using ProgressMeter
+using Distributions
 
 
 #using PyCall

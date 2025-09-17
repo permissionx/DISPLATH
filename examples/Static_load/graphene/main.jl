@@ -11,11 +11,15 @@ periodic = [true, true, false]
 latticeRanges = [0 10; 0 20; 5 6]   
 basis = [0.0 0.0 0.0; 1.0/3.0 0.0 0.0; 1.0/2.0 1.0/2.0 0.0; 5.0/6.0 1.0/2.0 0.0]
 basisTypes = [1, 1, 1, 1]
-inputGridVectors = [a*2.1 0.0 0.0; 0.0 a*2.1 0.0; 0.0 0.0 a*2.1]  # never be same as primaryVectors 
+
+inputGridVectors = [2.1 0.0 0.0; 0.0 a*2.1 0.0; 0.0 0.0 a*2.1]  # never be same as primaryVectors 
+
+
 typeDict = Dict(
-    1 => Element("C", 22.0, 11.0),  
-    2 => Element("Ne", 0.1, 0.1)  
+    1 => Element("C", 22.0, 11.0),   # dte, binding energy 
+    2 => Element("Ne", 0.1, 0.1)
 )
+
 # Parameters
 pMax = 1.45
 vacancyRecoverDistance = 1.3
