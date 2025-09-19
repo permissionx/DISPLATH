@@ -77,12 +77,12 @@ function τ(p_squared::Float64, type_p::Int64, type_t::Int64, E_r::Float64, rSta
 end
 
 
-function tanφ(mass_p::Float64, mass_t::Float64, θ::Float64)
-    return mass_t * sin(θ) / (mass_p + mass_t * cos(θ))
+function tanφ(mass_p::Float64, mass_t::Float64, θ::Float64, f::Float64)
+    return mass_t * sin(θ) * f / (mass_p + mass_t * cos(θ) * f)
 end
 
-function tanψ(θ::Float64)
-    return sin(θ) / (1 - cos(θ))
+function tanψ(θ::Float64, f::Float64)
+    return sin(θ) * f / (1 - cos(θ) * f)
 end
 
 function E_t(mass_p::Float64, mass_t::Float64, energy_p::Float64, θ::Float64)
@@ -116,21 +116,27 @@ function CollisionParams(energy_p::Float64, mass_p::Float64, mass_t::Float64, ty
                          p::Float64, constantsByType::ConstantsByType,
                          θFunction::Function, τFunction::Function)
     E_r_v = E_r(energy_p, mass_p, mass_t)
+    Q_loc_v = QLoss.Q_loc(energy_p, type_p, type_t, E_r_v, p, constantsByType)
+    Q_loc_v = min(Q_loc_v, (1 - 1E-6) * E_r_v)
+    f = sqrt(1 - Q_loc_v / E_r_v)
     #rStart = FindTurningPoint(p_squared, E_r_v, type_p, type_t, p, constantsByType)
     #θ_v = θ(p, p_squared, E_r_v, type_p, type_t, rStart, constantsByType)
     #τ_v = τ(p_squared, type_p, type_t, E_r_v, rStart, constantsByType)
     #@show θ_v, τ_v
-    ePPower = log10(energy_p)
-    pPower = log10(p)
-    θ_v = θFunction(ePPower, pPower)
-    τ_v = τFunction(ePPower, pPower)
+    if p != 0
+        ePPower = log10(energy_p)
+        pPower = log10(p)
+        θ_v = θFunction(ePPower, pPower)
+        τ_v = τFunction(ePPower, pPower)
+    else
+        θ_v, τ_v = θτ(energy_p, mass_p, mass_t, type_p, type_t, p, constantsByType)
+    end
     #@show θ_v, τ_v
-    tanφ_v = tanφ(mass_p, mass_t, θ_v)
-    tanψ_v = tanψ(θ_v)
+    tanφ_v = tanφ(mass_p, mass_t, θ_v, f)
+    tanψ_v = tanψ(θ_v, f)
     E_t_v = E_t(mass_p, mass_t, energy_p, θ_v)
     x_p_v = x_p(mass_p, mass_t, p, θ_v, τ_v)
     x_t_v = x_t(p, θ_v, x_p_v)
-    Q_loc_v = QLoss.Q_loc(energy_p, type_p, type_t, E_r_v, p, constantsByType)
     return tanφ_v, tanψ_v,  E_t_v, x_p_v, x_t_v, Q_loc_v
 end
 

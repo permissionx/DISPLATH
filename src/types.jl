@@ -169,6 +169,7 @@ mutable struct Parameters
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     pPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     stopEnergy::Float64
+    isNonQnl::Bool
     DebyeTemperature::Float64
     isDumpInCascade::Bool
     DTEMode::Int64 
@@ -204,6 +205,7 @@ function Parameters(
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -1.0:0.045:8.0,
     pPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -5.0:0.01:1.0,
     stopEnergy::Float64 = 0.1, 
+    isNonQnl::Bool = false,     #only works when static loading  
     DebyeTemperature::Float64 = 1000.0, 
     isDumpInCascade::Bool = false, 
     DTEMode::Int64 = 1,
@@ -234,7 +236,7 @@ function Parameters(
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax, pMax_squared, vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
-                      EPowerRange, pPowerRange, stopEnergy, DebyeTemperature, isDumpInCascade, 
+                      EPowerRange, pPowerRange, stopEnergy, isNonQnl, DebyeTemperature, isDumpInCascade, 
                       DTEMode, 
                       #soapParameters, 
                       DTEFile,

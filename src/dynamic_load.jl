@@ -292,7 +292,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     DisplaceAtom!(atom_p, pPoint, simulator)
     SetEnergy!(atom_p, pEnergy * λ)
     #if atom_p.type == 2
-    #    @record "log/$(simulator.nCascade).csv" "$(pEnergy * λ),$(minimum([a.pValue for a in atoms_t])),$(pL),$(N_t)" "e,p,pL,N_t" 
+    #    @record "log/$(simulator.nCascade).csv" "$(pEnergy * λ),$(minimum([a.pValue for a in atoms_t])),$(pL),$(N_t),$(atom_p.coordinate[1]),$(atom_p.coordinate[2]),$(atom_p.coordinate[3]),$(atom_p.velocityDirection[1]),$(atom_p.velocityDirection[2]),$(atom_p.velocityDirection[3])" "e,p,pL,N_t,x,y,z,vx,vy,vz" 
     #end
     E_tList *= λ
     for (i, atom_t) in enumerate(atoms_t)
@@ -316,7 +316,6 @@ function DumpInCascade_dynamicLoad(simulator::Simulator)
             b = [atom for cell in cells for atom in cell.atoms]
             @dump "Cascade_$(simulator.nCascade).dump" [a; b] ["vx", "vy", "vz", "e"]
         end
-        #Dump_dynamicLoad(simulator, "$(simulator.parameters.dumpFolder)/Cascade_$(simulator.nCascade).dump", simulator.nCollisionEvent, type)
     end
 end
 

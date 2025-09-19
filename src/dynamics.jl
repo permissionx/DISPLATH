@@ -147,9 +147,13 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     pL -= atom_p.emptyPath
     atom_t = atoms_t[1]
     N = GetCell(grid, atom_t.cellIndex).atomicDensity
-    Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
-                         pL, N, simulator.constantsByType)  
-    atom_p.energy -= Q_nl_v
+    if !simulator.parameters.isNonQnl
+        Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
+                            pL, N, simulator.constantsByType)  
+        atom_p.energy -= Q_nl_v
+    else
+        Q_nl_v = 0.0
+    end
     if atom_p.energy < 0.1 && atom_p.energy + Q_nl_v >= 0.1
         atom_p.energy = 0.11
     end
