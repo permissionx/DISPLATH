@@ -79,6 +79,17 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
     candidateTargets = Vector{Atom}()
     pMax = simulator.parameters.pMax
     for neighborCellInfo in cell.neighborCellsInfo
+        cross = neighborCellInfo.cross
+        nonPeriodicFlag = false 
+        for d in 1:3
+            if cross[d] != 0 && !simulator.parameters.periodic[d] 
+                nonPeriodicFlag = true
+                break
+            end
+        end
+        if nonPeriodicFlag
+            continue 
+        end 
         index = neighborCellInfo.index
         neighborCell = GetCell(grid, index)
         if neighborCell.isExplored
@@ -177,8 +188,8 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
         else
             velocityDirectionTmp = atom_p.velocityDirection
         end   
-        SetVelocityDirection!(atom_t, velocityDirectionTmp)
         if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.1
+            SetVelocityDirection!(atom_t, velocityDirectionTmp)
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
             DisplaceAtom!(atom_t, tCoordinate, simulator)  
@@ -189,7 +200,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             SetEnergy!(atom_t, 0.0)
         end
         avePPoint += atom_t.pPoint
-        momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
+        momentum += sqrt(2 * atom_t.mass * E_tList[i]) * velocityDirectionTmp
     end
 
     avePPoint /= N_t

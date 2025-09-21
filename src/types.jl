@@ -203,7 +203,7 @@ function Parameters(
     isOrthogonal::Bool = true,
     θτRepository::String = ENV["ARCS_REPO"] * "/thetatau_repository/",
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -1.0:0.045:8.0,
-    pPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -5.0:0.01:1.0,
+    pPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -10.0:0.01:1.0,
     stopEnergy::Float64 = 0.1, 
     isNonQnl::Bool = false,     #only works when static loading  
     DebyeTemperature::Float64 = 1000.0, 

@@ -60,7 +60,6 @@ function SetCellNeighborInfo!(cell::Cell, grid::Grid)
                 neighborKeys = (Int8(delta_x), Int8(delta_y), Int8(delta_z))  
                 neighborIndex = [0, 0, 0]  
                 neighborCross = [Int8(0), Int8(0), Int8(0)]  
-                
                 # Calculate neighbor cell index and cross flags for each dimension
                 for d in 1:3
                     delta = neighborKeys[d]
@@ -586,7 +585,8 @@ end
 
 
 function Stop!(atom::Atom, simulator::Simulator)
-    #SetEnergy!(atom, 0.0)
+    SetEnergy!(atom, 0.0)
+    SetVelocityDirection!(atom, SVector{3,Float64}([0.0, 0.0, 0.0]))
     Recover!(atom, simulator)
 end
 
@@ -652,6 +652,8 @@ function Restore_staticLoad!(simulator::Simulator)
             continue
         end
         latticePoint = simulator.latticePoints[atom.index]
+        SetEnergy!(atom, 0.0)
+        SetVelocityDirection!(atom, SVector{3,Float64}([0.0, 0.0, 0.0]))
         SetOnLatticePoint!(atom, latticePoint, simulator)
     end
     maxAtomID = simulator.numberOfAtomsWhenStored

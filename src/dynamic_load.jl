@@ -141,7 +141,6 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
     for tc in threadCandidates
         empty!(tc)
     end
-
     if nthreads >= 1 
         for n in 1:length(neighborCellsInfo)
             neighborCellInfo = neighborCellsInfo[n]
@@ -151,6 +150,17 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
     end
     @threads :static for n in 1:length(neighborCellsInfo)
         neighborCellInfo = neighborCellsInfo[n]
+        cross = neighborCellInfo.cross
+        nonPeriodicFlag = false 
+        for d in 1:3
+            if cross[d] != 0 && !simulator.parameters.periodic[d] 
+                nonPeriodicFlag = true
+                break
+            end
+        end
+        if nonPeriodicFlag
+            continue 
+        end 
         buf = threadCandidates[Threads.threadid()]
         index = neighborCellInfo.index
         neighborCell = GetCell(grid, index)
@@ -279,7 +289,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
             velocityDirectionTmp = atom_p.velocityDirection
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
-        momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
+        momentum += sqrt(2 * atom_t.mass * E_tList[i]) * velocityDirectionTmp
     end
     pMomentum = sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum
     pVelocity = pMomentum  / atom_p.mass
