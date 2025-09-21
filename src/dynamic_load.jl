@@ -289,7 +289,7 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
             velocityDirectionTmp = atom_p.velocityDirection
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
-        momentum += sqrt(2 * atom_t.mass * E_tList[i]) * velocityDirectionTmp
+        momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
     end
     pMomentum = sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum
     pVelocity = pMomentum  / atom_p.mass

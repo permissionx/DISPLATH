@@ -119,6 +119,7 @@ function CollisionParams(energy_p::Float64, mass_p::Float64, mass_t::Float64, ty
     Q_loc_v = QLoss.Q_loc(energy_p, type_p, type_t, E_r_v, p, constantsByType)
     Q_loc_v = min(Q_loc_v, (1 - 1E-6) * E_r_v)
     f = sqrt(1 - Q_loc_v / E_r_v)
+    #f = 1.0
     #rStart = FindTurningPoint(p_squared, E_r_v, type_p, type_t, p, constantsByType)
     #θ_v = θ(p, p_squared, E_r_v, type_p, type_t, rStart, constantsByType)
     #τ_v = τ(p_squared, type_p, type_t, E_r_v, rStart, constantsByType)
