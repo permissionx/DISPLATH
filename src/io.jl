@@ -83,6 +83,7 @@ function ReadDate(fileName::String)
                         end
                         words = split(lines[i])
                         if length(words) > 0
+                            #@show lines[i], words
                             type = parse(Int64, words[2])
                             x = parse(Float64, words[3])
                             y = parse(Float64, words[4])

@@ -124,7 +124,7 @@ function CollisionParams(energy_p::Float64, mass_p::Float64, mass_t::Float64, ty
     #θ_v = θ(p, p_squared, E_r_v, type_p, type_t, rStart, constantsByType)
     #τ_v = τ(p_squared, type_p, type_t, E_r_v, rStart, constantsByType)
     #@show θ_v, τ_v
-    if p != 0
+    if p > 1E-10
         ePPower = log10(energy_p)
         pPower = log10(p)
         θ_v = θFunction(ePPower, pPower)

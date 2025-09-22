@@ -67,7 +67,7 @@ function Element(name::String, dte::Float64, bde::Float64)
     elseif name == "Ge"
         return Element(name, 1.25, 74.0, 32.0, dte, bde, 1.0, 0.44)
     elseif name == "As"
-        return Element(name, 1.14, 75.0, 33.0, dte, bde, 1.0, 0.44)
+        return Element(name, 0.25, 75.0, 33.0, dte, bde, 1.0, 0.44)
     elseif name == "Se"
         return Element(name, 1.03, 80.0, 34.0, dte, bde, 1.0, 0.44)
     elseif name == "Br"
