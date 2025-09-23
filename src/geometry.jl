@@ -541,7 +541,7 @@ end
 
 function SetVelocityDirection!(atom::Atom, velocity::SVector{3,Float64})
     n = norm(velocity)
-    if isnan(n) || n == Inf
+    if isnan(n) || n == Inf || n == 0.0
         atom.velocityDirection = SVector{3,Float64}(0.0, 0.0, 0.0)
     else
         normalized_velocity = velocity / n
@@ -587,7 +587,12 @@ end
 function Stop!(atom::Atom, simulator::Simulator)
     SetEnergy!(atom, 0.0)
     SetVelocityDirection!(atom, SVector{3,Float64}([0.0, 0.0, 0.0]))
+    #@show atom.velocityDirection
+    x = atom.coordinate[:]
+    @show atom.index, atom.coordinate
     Recover!(atom, simulator)
+    @show atom.index, atom.coordinate, atom.coordinate - x
+    #exit()
 end
 
 

@@ -149,14 +149,9 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     x_pList = Vector{Float64}(undef, N_t)
     x_tList = Vector{Float64}(undef, N_t)
     Q_locList = Vector{Float64}(undef, N_t)
-    pL = 0.0
-    for atom_t in atoms_t
-        l = atom_t.pL
-        pL += l
-    end
-    pL /= N_t   
-    pL -= atom_p.emptyPath
     atom_t = atoms_t[1]
+    pL = atom_t.pL - atom_p.emptyPath
+    pPoint = atom_t.pPoint
     N = GetCell(grid, atom_t.cellIndex).atomicDensity
     if !simulator.parameters.isNonQnl
         Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
@@ -179,7 +174,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     sumQ_loc = sum(Q_locList)
     η = N_t * atom_p.energy / (N_t * atom_p.energy + (N_t - 1) * (sumE_t + sumQ_loc))
     E_tList *= η     
-    avePPoint = Vector{Float64}([0.0,0.0,0.0])
+    #avePPoint = Vector{Float64}([0.0,0.0,0.0])
     momentum = Vector{Float64}([0.0,0.0,0.0])
 
     for (i, atom_t) in enumerate(atoms_t)
@@ -189,12 +184,12 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             velocityDirectionTmp = atom_p.velocityDirection
         end   
         SetVelocityDirection!(atom_t, velocityDirectionTmp)
-        avePPoint += atom_t.pPoint
+        #avePPoint += atom_t.pPoint
         momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
         if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.1
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
-            tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
-            DisplaceAtom!(atom_t, tCoordinate, simulator)  
+            #tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
+            #DisplaceAtom!(atom_t, tCoordinate, simulator)  
             if atom_t.latticePointIndex != -1
                 LeaveLatticePoint!(atom_t, simulator)
             end     
@@ -204,10 +199,10 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
         end
     end
 
-    avePPoint /= N_t
-    x_p = η * sum(x_pList) / N_t  # important modification
-    pCoordinate = avePPoint - x_p * atom_p.velocityDirection
-    DisplaceAtom!(atom_p, pCoordinate, simulator)
+    #avePPoint /= N_t
+    #x_p = η * sum(x_pList) / N_t  # important modification
+    #pCoordinate = avePPoint - x_p * atom_p.velocityDirection
+    DisplaceAtom!(atom_p, pPoint, simulator)
     velocity = (sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum)  / atom_p.mass
     SetVelocityDirection!(atom_p, velocity)
     
