@@ -587,12 +587,7 @@ end
 function Stop!(atom::Atom, simulator::Simulator)
     SetEnergy!(atom, 0.0)
     SetVelocityDirection!(atom, SVector{3,Float64}([0.0, 0.0, 0.0]))
-    #@show atom.velocityDirection
-    x = atom.coordinate[:]
-    @show atom.index, atom.coordinate
     Recover!(atom, simulator)
-    @show atom.index, atom.coordinate, atom.coordinate - x
-    #exit()
 end
 
 
