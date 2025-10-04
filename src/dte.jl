@@ -44,9 +44,6 @@ function GetBDEByEnvironment(atom::Atom, simulator::Simulator)
     return GetDTE(atom, simulator)
 end
 
-function GetBDECustom(atom::Atom, simulator::Simulator)
-    return GetDTECustom(atom, simulator)
-end
 
 
 #function InitSoap(parameters::Parameters)

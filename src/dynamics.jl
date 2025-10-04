@@ -7,14 +7,21 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
     cell = GetCell(grid, atom.cellIndex)
     atom.emptyPath = 0.0
     while true
-        (targets, isInfinity) = GetTargetsFromNeighbor(atom, cell, filterIndexes, simulator)
+        (targets, isInfinity, vacancy) = GetTargetsFromNeighbor(atom, cell, filterIndexes, simulator)
+        if !isnothing(vacancy)
+            for cell in simulator.exploredCells
+                cell.isExplored = false
+            end
+            empty!(simulator.exploredCells)
+            return Vector{Atom}(), true, vacancy
+        end
         # delete repeated targets in lastTargets
         if length(targets) > 0
             for cell in simulator.exploredCells
                 cell.isExplored = false
             end
             empty!(simulator.exploredCells)
-            return targets, true
+            return targets, true, nothing
         else
             dimension, direction,t = AtomOutFaceDimension(atom, cell)
             atom.emptyPath = t
@@ -32,7 +39,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
                 end
                 atom.emptyPath = 0.0
                 empty!(simulator.exploredCells)
-                return Vector{Atom}(), false # means find nothing  
+                return Vector{Atom}(), false, nothing # means find atom target or vacancy 
             end 
             index = neighborInfo.index
             cell = GetCell(grid, index)
@@ -78,6 +85,8 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
     infiniteFlag = true
     candidateTargets = Vector{Atom}()
     pMax = simulator.parameters.pMax
+    minVacancyPL = Float64(Inf)
+    nearestVacancy::Union{Atom, Nothing} = nothing
     for neighborCellInfo in cell.neighborCellsInfo
         cross = neighborCellInfo.cross
         nonPeriodicFlag = false 
@@ -110,16 +119,34 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
                 push!(candidateTargets, neighborAtom)
             end
         end
+        #continue
+        if atom.energy <= GetDTE(atom, simulator)
+            for vacancy in neighborCell.vacancies
+                if ComputeVDistance(atom, vacancy, neighborCellInfo.cross, box) > 0 
+                    p = ComputeP!(atom, vacancy, neighborCellInfo.cross, box)
+                    if p >= pMax      # need to assgin in the parameters  
+                        continue
+                    end 
+                    if vacancy.pL <= minVacancyPL
+                        minVacancyPL = vacancy.pL
+                        nearestVacancy = vacancy
+                    end
+                end
+            end
+        end
     end
     if infiniteFlag
         @record "log" "Infinitely fly atom in the $(simulator.nCascade)th irradiation:\n$(atom)"
-    end
+    end     # infinity checking should be applied in the ShotTarget function. 
     if isempty(candidateTargets)
-        return (targets, infiniteFlag)
+        return targets, infiniteFlag, nearestVacancy
     end
     # Find target with minimum pL value using Julia's built-in findmin
     _, minIdx = findmin(t -> t.pL, candidateTargets)
-    nearestTarget = candidateTargets[minIdx]    
+    nearestTarget = candidateTargets[minIdx]  
+    if !isnothing(nearestVacancy) && nearestVacancy.pL <= nearestTarget.pL
+        return targets, infiniteFlag, nearestVacancy 
+    end
     push!(targets, nearestTarget)
     for candidateTarget in candidateTargets
         if candidateTarget.index == nearestTarget.index
@@ -136,7 +163,7 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
             push!(targets, candidateTarget)
         end
     end    
-    return (targets, infiniteFlag)
+    return (targets, infiniteFlag, nothing)
 end
 
 
@@ -192,7 +219,9 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             #DisplaceAtom!(atom_t, tCoordinate, simulator)  
             if atom_t.latticePointIndex != -1
                 LeaveLatticePoint!(atom_t, simulator)
-            end     
+            end    
+            atom_t.pAtomIndex = atom_p.index # for temperory  
+            atom_t.pDirection =atom_p.velocityDirection # temperory 
         else 
             SetEnergy!(atom_t, 0.0)
             SetVelocityDirection!(atom_t, SVector{3,Float64}([0.0,0.0,0.0]))
@@ -231,7 +260,17 @@ function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
         deleteIndexes = Int64[]
         othersTargetIndexes = Int64[]
         for (na, pAtom) in enumerate(pAtoms)
-            targets, isAlive = ShotTarget(pAtom, [pAtomsIndex; pAtom.lastTargets; othersTargetIndexes], simulator)
+            targets, isAlive, vacancy = ShotTarget(pAtom, [pAtomsIndex; pAtom.lastTargets; othersTargetIndexes], simulator)
+            if !isnothing(vacancy) 
+                latticePoint = simulator.latticePoints[vacancy.index]
+                SetOnLatticePoint!(pAtom, latticePoint, simulator)
+                deleteat!(simulator.vacancies, findfirst(v -> v.index == vacancy.index, simulator.vacancies))
+                cell = GetCell(simulator.grid, latticePoint.cellIndex)
+                deleteat!(cell.vacancies, findfirst(v -> v.index == vacancy.index, cell.vacancies))
+                empty!(pAtom.lastTargets)
+                push!(deleteIndexes, na)
+                continue 
+            end
             if !isAlive
                 empty!(pAtom.lastTargets)
                 delete!(simulator, pAtom)

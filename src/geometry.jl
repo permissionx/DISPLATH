@@ -25,6 +25,8 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     pPoint = SVector{3,Float64}(0.0, 0.0, 0.0)   
     lastTargets = Vector{Int64}()
     pL = 0.0
+    pAtomIndex = -1 # temperory 
+    pDirection = Float64[0.0,0.0,0.0] # temperory 
     latticePointIndex = -1
     frequency = 0.0
     frequencies = Vector{Float64}()
@@ -35,7 +37,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     return Atom(index, isAlive, type, coordinate, cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
                 dte, bde, emptyPath, #numberOfEmptyCells,
-                pValue, pVector, pPoint, pL, lastTargets,
+                pValue, pVector, pPoint, pL, pAtomIndex, pDirection, lastTargets, # temperory 
                 latticePointIndex,
                 frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, 
                 isNewlyLoaded, lattcieCoordinate)
@@ -417,6 +419,10 @@ function LeaveLatticePoint!(atom::Atom, simulator::Simulator; isUpdateEnv::Bool 
     latticePoint = simulator.latticePoints[atom.latticePointIndex]
     latticePoint.atomIndex = -1
     atom.latticePointIndex = -1
+    vacancy = Atom(latticePoint.type, latticePoint.coordinate, simulator.parameters)
+    vacancy.index = latticePoint.index
+    push!(simulator.vacancies, vacancy)
+    push!(GetCell(simulator.grid, latticePoint.cellIndex).vacancies, vacancy)
     if isUpdateEnv && simulator.parameters.isKMC
         DeleteAtomEvents!(simulator, atom)
         UpdateEvents!(Set(latticePoint.environment), simulator)
@@ -570,14 +576,12 @@ function GetNeighborVacancy(atom::Atom, simulator::Simulator)
     for neighborCellInfo in cell.neighborCellsInfo
         index, cross = neighborCellInfo.index, neighborCellInfo.cross
         neighborCell = GetCell(grid, index)
-        for latticePoint in neighborCell.latticePoints
-            if latticePoint.atomIndex == -1
-                dr2 = ComputeDistance_squared(atom.coordinate, latticePoint.coordinate, cross, simulator.box)
-                if dr2 < simulator.parameters.vacancyRecoverDistance_squared && dr2 < nearestVacancyDistance_squared
-                    nearestVacancyDistance_squared = dr2
-                    nearestVacancyIndex = latticePoint.index
-                end
-            end 
+        for vacancy in neighborCell.vacancies
+            dr2 = ComputeDistance_squared(atom.coordinate, vacancy.coordinate, cross, simulator.box)
+            if dr2 < simulator.parameters.vacancyRecoverDistance_squared && dr2 < nearestVacancyDistance_squared
+                nearestVacancyDistance_squared = dr2
+                nearestVacancyIndex = vacancy.index
+            end
         end
     end
     return nearestVacancyIndex
@@ -595,11 +599,16 @@ function Recover!(atom::Atom, simulator::Simulator)
     nearestVacancyIndex = GetNeighborVacancy(atom, simulator)
     if nearestVacancyIndex != -1
         SetOnLatticePoint!(atom, simulator.latticePoints[nearestVacancyIndex], simulator)
+        deleteat!(simulator.vacancies, findfirst(v -> v.index == nearestVacancyIndex, simulator.vacancies))
+        cell = GetCell(simulator.grid, atom.cellIndex)
+        deleteat!(cell.vacancies, findfirst(v -> v.index == nearestVacancyIndex, cell.vacancies))
     end
 end
 
 
 function SetOnLatticePoint!(atom::Atom, latticePoint::LatticePoint, simulator::Simulator; isUpdateEnv::Bool = true)
+    SetEnergy!(atom, 0.0)
+    SetVelocityDirection!(atom, SVector{3,Float64}([0.0, 0.0, 0.0]))
     latticePoint.atomIndex = atom.index
     atom.latticePointIndex = latticePoint.index
     SetCoordinate!(atom, latticePoint.coordinate)
@@ -646,14 +655,20 @@ function Restore_staticLoad!(simulator::Simulator)
             delete!(GetCell(simulator.grid, atom.cellIndex), atom, simulator)
         end
     end
+    latticePoints = simulator.latticePoints
+    for vacancy in simulator.vacancies
+        latticePoint = latticePoints[vacancy.index]
+        cell = GetCell(simulator.grid, latticePoint.cellIndex)
+        empty!(cell.vacancies)
+    end
+    empty!(simulator.vacancies)
+
     for index in Set(simulator.displacedAtoms)
         atom = simulator.atoms[index]
         if atom.index == atom.latticePointIndex
             continue
         end
         latticePoint = simulator.latticePoints[atom.index]
-        SetEnergy!(atom, 0.0)
-        SetVelocityDirection!(atom, SVector{3,Float64}([0.0, 0.0, 0.0]))
         SetOnLatticePoint!(atom, latticePoint, simulator)
     end
     maxAtomID = simulator.numberOfAtomsWhenStored
@@ -782,6 +797,6 @@ function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-1
     σ2 = 3 * ħ^2 / (M * kB * θ_D) * (0.25 + (T/θ_D)^2 * I)
     σ  = sqrt(σ2) * 1e10         # m → Å
 
-    return 0.079
+    return σ
 end
 

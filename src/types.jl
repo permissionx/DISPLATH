@@ -30,6 +30,8 @@ mutable struct Atom
     pPoint::SVector{3,Float64}
     pVector::SVector{3,Float64}
     pL::Float64
+    pAtomIndex::Int64 # temperory 
+    pDirection::Vector{Float64}  # temperory 
 
     # for atom_p
     lastTargets::Vector{Int64}
@@ -81,7 +83,7 @@ mutable struct Cell
     # for dynamic load
     latticeAtoms::Vector{Atom}
     isLoaded::Bool
-    vacancies::Vector{Atom}
+    vacancies::Vector{Atom}  # also for static load 
     isSavedLatticeRange::Bool
     latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
@@ -206,7 +208,7 @@ function Parameters(
     pPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64} = -10.0:0.01:1.0,
     stopEnergy::Float64 = 0.1, 
     isNonQnl::Bool = false,     #only works when static loading  
-    DebyeTemperature::Float64 = 1000.0, 
+    DebyeTemperature::Float64 = 519.0,  # K
     isDumpInCascade::Bool = false, 
     DTEMode::Int64 = 1,
     #soapParameters::Vector{Float64} = [2.6, 8.0, 6.0],
