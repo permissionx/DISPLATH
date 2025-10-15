@@ -48,6 +48,7 @@ mutable struct Atom
     # for dynamic load 
     isNewlyLoaded::Bool
     latticeCoordinate::SVector{3,Float64}
+    indexInCell::Int64
 
 end
 

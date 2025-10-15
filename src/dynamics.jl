@@ -48,8 +48,6 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
 end
 
 
-
-
 function AtomOutFaceDimension(atom::Atom, cell::Cell)
     coordinate = atom.coordinate
     for d in 1:3
@@ -111,7 +109,7 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
             if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
                 continue
             end
-            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
+            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) >= 0 
                 p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
                 if p >= pMax
                     continue
@@ -122,7 +120,7 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
         #continue
         if atom.energy <= GetDTE(atom, simulator)
             for vacancy in neighborCell.vacancies
-                if ComputeVDistance(atom, vacancy, neighborCellInfo.cross, box) > 0 
+                if ComputeVDistance(atom, vacancy, neighborCellInfo.cross, box) >= -pMax
                     p = ComputeP!(atom, vacancy, neighborCellInfo.cross, box)
                     if p >= pMax      # need to assgin in the parameters  
                         continue
@@ -190,7 +188,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     if atom_p.energy < 0.1 && atom_p.energy + Q_nl_v >= 0.1
         atom_p.energy = 0.11
     end
-    for (i, atom_t) in enumerate(atoms_t)
+    for (i, atom_t) in enumerate(atoms_t) 
         p = atom_t.pValue
         #N = GetCell(grid, atom_t.cellIndex).atomicDensity 
         tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
@@ -217,9 +215,6 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
             #tCoordinate = atom_t.coordinate + x_tList[i] * η * atom_p.velocityDirection
             #DisplaceAtom!(atom_t, tCoordinate, simulator)  
-            if atom_t.latticePointIndex != -1
-                LeaveLatticePoint!(atom_t, simulator)
-            end    
             atom_t.pAtomIndex = atom_p.index # for temperory  
             atom_t.pDirection =atom_p.velocityDirection # temperory 
         else 
@@ -237,6 +232,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     
     SetEnergy!(atom_p, atom_p.energy - (sumE_t + sumQ_loc) * η)
 end 
+
 
 function Cascade!(atom_p::Atom, simulator::Simulator)
     if !IS_DYNAMIC_LOAD
@@ -287,17 +283,20 @@ function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
             if length(targets) > 0
                 pAtom.lastTargets = [t.index for t in targets]
                 Collision!(pAtom, targets, simulator)
-                for target in targets
-                    if target.energy > 0.0   
-                        #DisplaceAtom!(target, target.coordinate, simulator)
-                        push!(nextPAtoms, target)
-                    end
-                end
                 if pAtom.energy > parameters.stopEnergy 
                     push!(nextPAtoms, pAtom)
                 else
                     pAtom.lastTargets = Vector{Int64}()
                     Stop!(pAtom, simulator)
+                end
+                for target in targets
+                    if target.energy > 0.0   
+                        #DisplaceAtom!(target, target.coordinate, simulator)
+                        push!(nextPAtoms, target)
+                        if target.latticePointIndex != -1
+                            LeaveLatticePoint!(target, simulator)
+                        end    
+                    end
                 end
             else      
                 push!(nextPAtoms, pAtom)
@@ -313,6 +312,7 @@ function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
         end
     end
 end
+
 
 function DumpInCascade(simulator::Simulator)
     if simulator.parameters.isDumpInCascade

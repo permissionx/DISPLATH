@@ -34,13 +34,14 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     eventIndex = -1
     isNewlyLoaded = false
     lattcieCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
+    indexInCell = 0
     return Atom(index, isAlive, type, coordinate, cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
                 dte, bde, emptyPath, #numberOfEmptyCells,
                 pValue, pVector, pPoint, pL, pAtomIndex, pDirection, lastTargets, # temperory 
                 latticePointIndex,
                 frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, 
-                isNewlyLoaded, lattcieCoordinate)
+                isNewlyLoaded, lattcieCoordinate, indexInCell)
 end
 
 
@@ -343,7 +344,6 @@ function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, paramete
         latticePoint = LatticePoint(atom)
         push!(simulator, latticePoint)
     end
-    log_success("Simulator initialized")
     InitLatticePointEnvronment(simulator)
     for cell in simulator.grid.cells
         cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume
@@ -761,7 +761,9 @@ function Pertubation!(atom::Atom, simulator::Simulator)
             atom.coordinate[1] = cell.ranges[1,1] + rand(rng) * simulator.grid.vectors[1, 1]
             atom.coordinate[2] = cell.ranges[2,1] + rand(rng) * simulator.grid.vectors[2, 2]
             base = cell.ranges[3,1] > ah ? cell.ranges[3,1] : ah
-            atom.coordinate[3] = base + rand(rng) * (cell.ranges[3,2] - base)
+            latticeTop = simulator.parameters.primaryVectors[3,3] * simulator.parameters.latticeRanges[3,2]     
+            top = cell.ranges[3,2] < latticeTop ? cell.ranges[3,2] : latticeTop
+            atom.coordinate[3] = base + rand(rng) * (top - base)
         else
             if simulator.parameters.temperature > 0.0
                 for d in 1:3

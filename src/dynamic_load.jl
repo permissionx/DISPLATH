@@ -17,10 +17,15 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
     end
     #coordinate = Vector{Float64}(undef, 3)
     coordinate = simulator.workBuffers.coordinates[Threads.threadid()]
+    indexInCell = 0
     for x in cell.latticeRanges[1,1]:cell.latticeRanges[1,2]
         for y in cell.latticeRanges[2,1]:cell.latticeRanges[2,2]
             for z in cell.latticeRanges[3,1]:cell.latticeRanges[3,2]
                 for i in 1:length(basisTypes)
+                    indexInCell += 1
+                    if !simulator.parameters.isAmorphous && any(v -> v.indexInCell == indexInCell, cell.vacancies)
+                        continue
+                    end
                     coordinate[1] = primaryVectors[1,1] * (x + basis[i, 1])
                     coordinate[2] = primaryVectors[2,2] * (y + basis[i, 2])
                     coordinate[3] = primaryVectors[3,3] * (z + basis[i, 3])
@@ -31,14 +36,12 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
                             continue
                         end
                     end      
-                    if !simulator.parameters.isAmorphous && any(v -> ComputeDistance_squared(coordinate, v.coordinate, (Int8(0),Int8(0),Int8(0)), simulator.box) < 1e-10, cell.vacancies)
-                        continue
-                    end
                     atom = Atom(basisTypes[i], copy(coordinate), parameters)
                     atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
                     atom.cellIndex = cell.index
                     atom.index = 0 
                     atom.isNewlyLoaded = true
+                    atom.indexInCell = indexInCell
                     Pertubation!(atom, simulator)  
                     push!(cell.latticeAtoms, atom)
                     #if simulator.parameters.debugMode == true
@@ -121,7 +124,7 @@ function LoadCellAtoms!(cell::Cell, simulator::Simulator)
         if simulator.parameters.isPrimaryVectorOrthogonal
             ComputeLatticeAtoms_Orthogonal!(cell, simulator)
         else
-            ComputeLatticeAtoms_General!(cell, simulator)
+            ComputeLatticeAtoms_General!(cell, simulator) # not working correctly
         end
         cell.atomicDensity = length(cell.latticeAtoms) / simulator.grid.cellVolume
         cell.isLoaded = true
@@ -443,6 +446,9 @@ function Stop_dynamicLoad!(atom::Atom, simulator::Simulator)
         SetCellNeighborInfo!(cell, grid)
         cell.isPushedNeighbor = true
     end
+    if simulator.parameters.vacancyRecoverDistance_squared == 0.0
+        return
+    end
     for neighborCellInfo in cell.neighborCellsInfo
         index = neighborCellInfo.index
         cross = neighborCellInfo.cross
@@ -496,7 +502,6 @@ function CopyAtom(atom::Atom, simulator::Simulator)
 end
 
 function CreateVacancy(atom::Atom, simulator::Simulator)
-    
     coord = if atom.latticeCoordinate isa SVector
         [atom.latticeCoordinate[1], atom.latticeCoordinate[2], atom.latticeCoordinate[3]]
     else
@@ -505,6 +510,7 @@ function CreateVacancy(atom::Atom, simulator::Simulator)
     vacancy = Atom(atom.type, coord, simulator.parameters)
     vacancy.cellIndex = atom.cellIndex
     vacancy.type += length(keys(simulator.parameters.typeDict))
+    vacancy.indexInCell = atom.indexInCell
     return vacancy
 end
 
