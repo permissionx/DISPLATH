@@ -164,7 +164,7 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
     return (targets, infiniteFlag, nothing)
 end
 
-function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+function Collision_!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     N_t = length(atoms_t)
     grid = simulator.grid   
     tanφList = Vector{Float64}(undef, N_t)
@@ -225,7 +225,7 @@ function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     end
 end 
 
-function Collision_!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     N_t = length(atoms_t)
     grid = simulator.grid
     tanφList = Vector{Float64}(undef, N_t)
