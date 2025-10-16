@@ -109,7 +109,7 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
             if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
                 continue
             end
-            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) >= 0 
+            if ComputeVDistance(atom, neighborAtom, neighborCellInfo.cross, box) > 0 
                 p = ComputeP!(atom, neighborAtom, neighborCellInfo.cross, box)
                 if p >= pMax
                     continue
@@ -120,7 +120,7 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
         #continue
         if atom.energy <= GetDTE(atom, simulator)
             for vacancy in neighborCell.vacancies
-                if ComputeVDistance(atom, vacancy, neighborCellInfo.cross, box) >= -pMax
+                if ComputeVDistance(atom, vacancy, neighborCellInfo.cross, box) > 0 
                     p = ComputeP!(atom, vacancy, neighborCellInfo.cross, box)
                     if p >= pMax      # need to assgin in the parameters  
                         continue
@@ -164,9 +164,9 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
     return (targets, infiniteFlag, nothing)
 end
 
-function Collision_backup!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     N_t = length(atoms_t)
-    grid = simulator.grid
+    grid = simulator.grid   
     tanφList = Vector{Float64}(undef, N_t)
     tanψList = Vector{Float64}(undef, N_t)
     E_tList = Vector{Float64}(undef, N_t)
@@ -225,7 +225,7 @@ function Collision_backup!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simul
     end
 end 
 
-function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+function Collision_!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     N_t = length(atoms_t)
     grid = simulator.grid
     tanφList = Vector{Float64}(undef, N_t)
