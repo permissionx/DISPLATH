@@ -164,6 +164,66 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
     return (targets, infiniteFlag, nothing)
 end
 
+function Collision_backup!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+    N_t = length(atoms_t)
+    grid = simulator.grid
+    tanφList = Vector{Float64}(undef, N_t)
+    tanψList = Vector{Float64}(undef, N_t)
+    E_tList = Vector{Float64}(undef, N_t)
+    x_pList = Vector{Float64}(undef, N_t)
+    x_tList = Vector{Float64}(undef, N_t)
+    Q_locList = Vector{Float64}(undef, N_t)
+    atom_t = atoms_t[1]
+    pL = atom_t.pL - atom_p.emptyPath
+    pPoint = atom_t.pPoint
+    N = GetCell(grid, atom_t.cellIndex).atomicDensity
+    if !simulator.parameters.isNonQnl
+        Q_nl_v = Q_nl(atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type,
+                            pL, N, simulator.constantsByType)  
+        atom_p.energy -= Q_nl_v
+    else
+        Q_nl_v = 0.0
+    end
+    if atom_p.energy < 0.1 && atom_p.energy + Q_nl_v >= 0.1
+        atom_p.energy = 0.11
+    end
+    momentum = Vector{Float64}([0.0,0.0,0.0])
+    for (i, atom_t) in enumerate(atoms_t) 
+        p = atom_t.pValue
+        #N = GetCell(grid, atom_t.cellIndex).atomicDensity 
+        tanφList[i], tanψList[i], E_tList[i], x_pList[i], x_tList[i], Q_locList[i] = CollisionParams(
+            atom_p.energy, atom_p.mass, atom_t.mass, atom_p.type, atom_t.type, p, simulator.constantsByType,
+            simulator.θFunctions[[atom_p.type, atom_t.type]], simulator.τFunctions[[atom_p.type, atom_t.type]])
+        if atom_t.pValue != 0
+            velocityDirectionTmp = -atom_t.pVector / atom_t.pValue * tanψList[i] + atom_p.velocityDirection
+        else
+            velocityDirectionTmp = atom_p.velocityDirection
+        end   
+        SetVelocityDirection!(atom_t, velocityDirectionTmp)
+        momentum += sqrt(2 * atom_t.mass * E_tList[i]) * atom_t.velocityDirection
+    end
+    pMomentum = sqrt(2 * atom_p.mass * atom_p.energy) * atom_p.velocityDirection - momentum
+    pVelocity = pMomentum  / atom_p.mass
+    SetVelocityDirection!(atom_p, pVelocity)
+    pEnergy =  sum(pMomentum .* pMomentum) / 2 / atom_p.mass
+    sumE_t = sum(E_tList)
+    sumQ_loc = sum(Q_locList) 
+    ENeed = atom_p.energy - sumQ_loc # - (N_t - 1) * Q_nl_v
+    λ = ENeed / (pEnergy + sumE_t)  
+    DisplaceAtom!(atom_p, pPoint, simulator)
+    SetEnergy!(atom_p, pEnergy * λ)
+    E_tList *= λ
+    for (i, atom_t) in enumerate(atoms_t)
+        if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.1
+            SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
+            atom_t.pAtomIndex = atom_p.index # for temperory  
+            atom_t.pDirection =atom_p.velocityDirection # temperory 
+        else
+            SetEnergy!(atom_t, 0.0)
+            SetVelocityDirection!(atom_t, SVector{3,Float64}([0.0,0.0,0.0]))
+        end
+    end
+end 
 
 function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     N_t = length(atoms_t)
@@ -283,20 +343,21 @@ function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
             if length(targets) > 0
                 pAtom.lastTargets = [t.index for t in targets]
                 Collision!(pAtom, targets, simulator)
+                for target in targets
+                    if target.energy > 0.0   
+                        #DisplaceAtom!(target, target.coordinate, simulator)
+                        push!(nextPAtoms, target)
+                        target.lastTargets = [pAtom.index]
+                        if target.latticePointIndex != -1
+                            LeaveLatticePoint!(target, simulator)
+                        end    
+                    end
+                end
                 if pAtom.energy > parameters.stopEnergy 
                     push!(nextPAtoms, pAtom)
                 else
                     pAtom.lastTargets = Vector{Int64}()
                     Stop!(pAtom, simulator)
-                end
-                for target in targets
-                    if target.energy > 0.0   
-                        #DisplaceAtom!(target, target.coordinate, simulator)
-                        push!(nextPAtoms, target)
-                        if target.latticePointIndex != -1
-                            LeaveLatticePoint!(target, simulator)
-                        end    
-                    end
                 end
             else      
                 push!(nextPAtoms, pAtom)

@@ -46,11 +46,10 @@ function Irradiation(simulator::Simulator, energy::Float64)
     return length(Vs)
 end
 
-Save!(simulator)  
+Save!(simulator)
 @showprogress for energy in 100.0:100.0:1000.0
     mean_nV = 0.0
     for i in 1:10000
-        Restore!(simulator)
         nV = Irradiation(simulator::Simulator, energy::Float64)
         mean_nV += nV
     end

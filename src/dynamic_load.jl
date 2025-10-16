@@ -310,7 +310,6 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
     E_tList *= λ
     for (i, atom_t) in enumerate(atoms_t)
         if E_tList[i] > GetDTE(atom_t, simulator) && E_tList[i] - GetBDE(atom_t, simulator) > 0.1
-            LeaveLatticePoint_dynamicLoad!(atom_t, simulator)
             SetEnergy!(atom_t, E_tList[i] - GetBDE(atom_t, simulator))
         else
             SetEnergy!(atom_t, 0.0)
@@ -365,8 +364,10 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 Collision_dynamicLoad!(pAtom, targets, simulator)
                 for target in targets
                     if target.energy > 0.0   
-                        DisplaceAtom!(target, target.coordinate, simulator)
+                        LeaveLatticePoint_dynamicLoad!(atom_t, simulator)
+                        #DisplaceAtom!(target, target.coordinate, simulator)
                         push!(nextPAtoms, target)
+                        target.lastTargets = [pAtom.index]
                     end
                 end
                 if pAtom.energy > parameters.stopEnergy 
