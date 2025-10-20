@@ -35,7 +35,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     isNewlyLoaded = false
     lattcieCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
     indexInCell = 0
-    return Atom(index, isAlive, type, coordinate, cellIndex, 
+    return Atom(index, isAlive, type, coordinate[:], cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
                 dte, bde, emptyPath, #numberOfEmptyCells,
                 pValue, pVector, pPoint, pL, pAtomIndex, pDirection, lastTargets, # temperory 
