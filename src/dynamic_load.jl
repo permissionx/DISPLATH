@@ -364,8 +364,8 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 Collision_dynamicLoad!(pAtom, targets, simulator)
                 for target in targets
                     if target.energy > 0.0   
-                        LeaveLatticePoint_dynamicLoad!(atom_t, simulator)
-                        #DisplaceAtom!(target, target.coordinate, simulator)
+                        LeaveLatticePoint_dynamicLoad!(target, simulator)
+                        DisplaceAtom!(target, target.coordinate, simulator)
                         push!(nextPAtoms, target)
                         target.lastTargets = [pAtom.index]
                     end

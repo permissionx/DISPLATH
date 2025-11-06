@@ -15,7 +15,7 @@ function Element(name::String, dte::Float64, bde::Float64)
     elseif name == "C"
         return Element(name, 0.25, 12.0, 6.0, dte, bde, 1.0, 0.44)  # r =  0.67
     elseif name == "N"
-        return Element(name, 0.56, 14.0, 7.0, dte, bde, 1.0, 0.44)  # NAlpha = 1.0
+        return Element(name, 0.56, 14.0, 7.0, dte, bde, 1.5, 0.44)  # NAlpha = 1.0
     elseif name == "O"
         return Element(name, 0.48, 16.0, 8.0, dte, bde, 1.0, 0.44)
     elseif name == "F"
