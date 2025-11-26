@@ -130,3 +130,57 @@ function RandomlyDeviatedVector(incident_direction::AbstractVector, divergence::
     
     return final_vec
 end
+
+function MultilayerDefectStatistics_slow(simulator::Simulator, criteria::Float64)
+    latticePoints = simulator.latticePoints
+    vacancies = Vector{LatticePoint}()
+    for latticePoint in latticePoints
+        if latticePoint.atomIndex == -1
+            push!(vacancies, latticePoint)
+        end
+    end 
+    #group analysis
+    
+end
+
+function ClusteringByCutoffKDTree(coords::Matrix{Float64}, rcut::Float64)
+    N = size(coords, 1)
+    pts = coords'
+    tree = KDTree(pts)
+    visited  = falses(N)
+    clusters = Vector{Vector{Int64}}()
+    for i in 1:N
+        if !visited[i]
+            queue = [i]
+            visited[i] = true
+            current_cluster = Int[i]
+
+            while !isempty(queue)
+                p = pop!(queue)
+                neighbors = inrange(tree, pts[:, p], rcut)
+
+                for j in neighbors
+                    if !visited[j]
+                        visited[j] = true
+                        push!(queue, j)
+                        push!(current_cluster, j)
+                    end
+                end
+            end
+
+            push!(clusters, current_cluster)
+        end
+    end
+
+    return clusters
+end
+
+function IrrdiationInCircle(simulator::Simulator, energy::Float64, radius::Float64, center::Vector{Float64})
+    ionPosition = RandomPointInCircle(radius) + center
+    ion = Atom(simulator.parameters.typeDict[1], ionPosition, simulator.parameters)
+    SetVelocityDirection!(ion, [0.0, 0.0, -1.0])
+    SetEnergy!(ion,energy)
+    push!(simulator, ion)
+    Cascade!(ion, simulator)
+end
+

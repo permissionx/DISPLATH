@@ -71,8 +71,10 @@ function AtomOutFaceDimension(atom::Atom, cell::Cell)
             return d, rangeIndex, t
         end
     end
-    error("Out face not found\n ########Atom#######\n $(atom) \n 
-                                ########cell#######\n $(cell.ranges) \n $(cell.index)\n")
+    error("Out face not found\n 
+           ####Simulator######\n $(simulator.nCascade)\n
+           ########Atom#######\n $(atom) \n 
+           ########cell#######\n $(cell.ranges) \n $(cell.index)\n")
 end
 
 
@@ -345,7 +347,7 @@ function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
                 Collision!(pAtom, targets, simulator)
                 for target in targets
                     if target.energy > 0.0   
-                        #DisplaceAtom!(target, target.coordinate, simulator)
+                        DisplaceAtom!(target, target.coordinate, simulator)
                         push!(nextPAtoms, target)
                         target.lastTargets = [pAtom.index]
                         if target.latticePointIndex != -1
