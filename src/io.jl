@@ -42,13 +42,20 @@ function Dump(simulator::Simulator, fileName::String, step::Int64, type::String=
     end
 end
 
-function ReadDate(fileName::String)
-    xlo = 0.0
-    xhi = 0.0
-    ylo = 0.0
-    yhi = 0.0
-    zlo = 0.0
-    zhi = 0.0
+function ReadDate(fileName::String, replicate::Vector{Int64})
+    if length(replicate) != 3
+        error("Replicate vector must contain 3 entries for x/y/z directions.")
+    end
+    if any(r -> r < 1, replicate)
+        error("Replicate factors must be >= 1.")
+    end
+    xlo = NaN; xhi = NaN
+    ylo = NaN; yhi = NaN
+    zlo = NaN; zhi = NaN
+    vectors = zeros(Float64, 3, 3)
+    hasVector = falses(3)
+    origin = zeros(Float64, 3)
+    hasOrigin = false
     types = Int64[]
     xs = Float64[]
     ys = Float64[]
@@ -57,51 +64,162 @@ function ReadDate(fileName::String)
         lines = readlines(f)
         i = 1
         while i <= length(lines)
-            if !startswith(lines[i], "#")
-                words = split(lines[i])
-                if length(words) == 0
-                    i += 1
-                    continue
-                end
-                if length(words) >= 4 && words[4] == "xhi"
-                    xlo = parse(Float64, words[1])
-                    xhi = parse(Float64, words[2])
-                    i += 1
-                    words = split(lines[i])
-                    ylo = parse(Float64, words[1])
-                    yhi = parse(Float64, words[2])
-                    i += 1
-                    words = split(lines[i])
-                    zlo = parse(Float64, words[1])
-                    zhi = parse(Float64, words[2])
-                end
-                if words[1] == "Atoms"
-                    i += 1
-                    while true
-                        if i > length(lines)
-                            break
-                        end
-                        words = split(lines[i])
-                        if length(words) > 0
-                            #@show lines[i], words
-                            type = parse(Int64, words[2])
-                            x = parse(Float64, words[3])
-                            y = parse(Float64, words[4])
-                            z = parse(Float64, words[5])
-                            push!(types, type)
-                            push!(xs, x)
-                            push!(ys, y)
-                            push!(zs, z)
-                        end
+            line = strip(lines[i])
+            if isempty(line) || startswith(line, "#")
+                i += 1
+                continue
+            end
+            words = split(line)
+            if length(words) >= 4 && words[4] == "xhi"
+                xlo = parse(Float64, words[1])
+                xhi = parse(Float64, words[2])
+            elseif length(words) >= 4 && words[4] == "yhi"
+                ylo = parse(Float64, words[1])
+                yhi = parse(Float64, words[2])
+            elseif length(words) >= 4 && words[4] == "zhi"
+                zlo = parse(Float64, words[1])
+                zhi = parse(Float64, words[2])
+            elseif length(words) >= 4 && words[end] == "avec"
+                vectors[:,1] .= parse.(Float64, words[1:3])
+                hasVector[1] = true
+            elseif length(words) >= 4 && words[end] == "bvec"
+                vectors[:,2] .= parse.(Float64, words[1:3])
+                hasVector[2] = true
+            elseif length(words) >= 4 && words[end] == "cvec"
+                vectors[:,3] .= parse.(Float64, words[1:3])
+                hasVector[3] = true
+            elseif length(words) >= 4 && words[end] == "origin"
+                origin .= parse.(Float64, words[1:3])
+                hasOrigin = true
+            elseif words[1] == "Atoms"
+                i += 1
+                while i <= length(lines)
+                    line = strip(lines[i])
+                    if isempty(line)
                         i += 1
+                        continue
                     end
+                    if startswith(line, "#")
+                        i += 1
+                        continue
+                    end
+                    words = split(line)
+                    atomID = tryparse(Int64, words[1])
+                    if atomID === nothing || length(words) < 5
+                        break
+                    end
+                    type = parse(Int64, words[2])
+                    x = parse(Float64, words[3])
+                    y = parse(Float64, words[4])
+                    z = parse(Float64, words[5])
+                    push!(types, type)
+                    push!(xs, x)
+                    push!(ys, y)
+                    push!(zs, z)
+                    i += 1
                 end
+                break
             end
             i += 1
         end
-
     end
-    return xlo - xlo, xhi - xlo, ylo - ylo, yhi - ylo, zlo - zlo, zhi - zlo, types, xs .- xlo, ys .- ylo, zs .- zlo 
+    if isempty(types)
+        error("No atom coordinates were read from $(fileName).")
+    end
+    hasOrthBounds = all(isfinite, (xlo, xhi, ylo, yhi, zlo, zhi))
+    useVectors = all(hasVector)
+    translationVectors = zeros(Float64, 3, 3)
+    cellOrigin = zeros(Float64, 3)
+    cornerInfoAvailable = false
+    if useVectors
+        translationVectors .= vectors
+        cellOrigin .= hasOrigin ? origin : zeros(Float64, 3)
+        cornerInfoAvailable = hasOrigin
+    elseif hasOrthBounds
+        lengths = [xhi - xlo, yhi - ylo, zhi - zlo]
+        if any(l -> l <= 0.0, lengths)
+            error("Invalid simulation box bounds read from $(fileName).")
+        end
+        translationVectors .= [lengths[1] 0.0 0.0; 0.0 lengths[2] 0.0; 0.0 0.0 lengths[3]]
+        cellOrigin .= [xlo, ylo, zlo]
+        cornerInfoAvailable = true
+    else
+        error("Could not determine simulation box geometry from $(fileName).")
+    end
+    rx, ry, rz = replicate
+    originalCount = length(types)
+    totalAtoms = originalCount * rx * ry * rz
+    replicated_types = Vector{Int64}(undef, totalAtoms)
+    replicated_xs = Vector{Float64}(undef, totalAtoms)
+    replicated_ys = Vector{Float64}(undef, totalAtoms)
+    replicated_zs = Vector{Float64}(undef, totalAtoms)
+    v1 = translationVectors[:,1]; v2 = translationVectors[:,2]; v3 = translationVectors[:,3]
+    idx = 1
+    for ix in 0:rx-1
+        shift_x_ix = ix * v1[1]
+        shift_y_ix = ix * v1[2]
+        shift_z_ix = ix * v1[3]
+        for iy in 0:ry-1
+            shift_x_ixiy = shift_x_ix + iy * v2[1]
+            shift_y_ixiy = shift_y_ix + iy * v2[2]
+            shift_z_ixiy = shift_z_ix + iy * v2[3]
+            for iz in 0:rz-1
+                shift_x = shift_x_ixiy + iz * v3[1]
+                shift_y = shift_y_ixiy + iz * v3[2]
+                shift_z = shift_z_ixiy + iz * v3[3]
+                for j in 1:originalCount
+                    replicated_types[idx] = types[j]
+                    replicated_xs[idx] = xs[j] + shift_x
+                    replicated_ys[idx] = ys[j] + shift_y
+                    replicated_zs[idx] = zs[j] + shift_z
+                    idx += 1
+                end
+            end
+        end
+    end
+    xmin_atoms = minimum(replicated_xs); xmax_atoms = maximum(replicated_xs)
+    ymin_atoms = minimum(replicated_ys); ymax_atoms = maximum(replicated_ys)
+    zmin_atoms = minimum(replicated_zs); zmax_atoms = maximum(replicated_zs)
+    xmin = xmin_atoms; xmax = xmax_atoms
+    ymin = ymin_atoms; ymax = ymax_atoms
+    zmin = zmin_atoms; zmax = zmax_atoms
+    if cornerInfoAvailable
+        total_v1x = v1[1] * rx; total_v1y = v1[2] * rx; total_v1z = v1[3] * rx
+        total_v2x = v2[1] * ry; total_v2y = v2[2] * ry; total_v2z = v2[3] * ry
+        total_v3x = v3[1] * rz; total_v3y = v3[2] * rz; total_v3z = v3[3] * rz
+        corner_xmin = Inf; corner_xmax = -Inf
+        corner_ymin = Inf; corner_ymax = -Inf
+        corner_zmin = Inf; corner_zmax = -Inf
+        for ia in (0, 1)
+            for ib in (0, 1)
+                for ic in (0, 1)
+                    corner_x = cellOrigin[1] + ia * total_v1x + ib * total_v2x + ic * total_v3x
+                    corner_y = cellOrigin[2] + ia * total_v1y + ib * total_v2y + ic * total_v3y
+                    corner_z = cellOrigin[3] + ia * total_v1z + ib * total_v2z + ic * total_v3z
+                    corner_xmin = min(corner_xmin, corner_x)
+                    corner_xmax = max(corner_xmax, corner_x)
+                    corner_ymin = min(corner_ymin, corner_y)
+                    corner_ymax = max(corner_ymax, corner_y)
+                    corner_zmin = min(corner_zmin, corner_z)
+                    corner_zmax = max(corner_zmax, corner_z)
+                end
+            end
+        end
+        xmin = min(xmin, corner_xmin); xmax = max(xmax, corner_xmax)
+        ymin = min(ymin, corner_ymin); ymax = max(ymax, corner_ymax)
+        zmin = min(zmin, corner_zmin); zmax = max(zmax, corner_zmax)
+    end
+    replicated_xs .-= xmin
+    replicated_ys .-= ymin
+    replicated_zs .-= zmin
+    xextent = xmax - xmin
+    yextent = ymax - ymin
+    zextent = zmax - zmin
+    if any(extent -> extent <= 0.0, (xextent, yextent, zextent))
+        error("Invalid bounding box computed from $(fileName).")
+    end
+    idx = 1
+    return 0.0, xextent, 0.0, yextent, 0.0, zextent, replicated_types, replicated_xs, replicated_ys, replicated_zs
 end
 
 
@@ -423,4 +541,3 @@ atexit() do
 end
 
 end
-

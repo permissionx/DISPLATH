@@ -260,65 +260,75 @@ function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::
 end
 
 
-function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    log_section("Initializing Simulator")
-    box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
-    ranges = parameters.latticeRanges 
-    atomNumber = (ranges[1,2] - ranges[1,1]) * (ranges[2,2] - ranges[2,1]) * (ranges[3,2] - ranges[3,1]) * length(parameters.basisTypes)
-    log_info("Number of atoms: $(atomNumber) ($(ranges[1,2] - ranges[1,1]) × $(ranges[2,2] - ranges[2,1]) × $(ranges[3,2] - ranges[3,1]) × $(length(parameters.basisTypes)))")
+function Simulator(box::Box, atoms::Vector{Atom}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    log_section("Initializing Simulator.")
     simulator = Simulator(box, inputGridVectors, parameters)
     if !IS_DYNAMIC_LOAD
-        _initSimulatorAtoms!(simulator, parameters)
+        LoadAtoms!(simulator, atoms)
     end
-    log_success("Simulator initialized")
-    return simulator    
-end 
+    log_success("Simulator initialized.")
+    return simulator 
+end
 
-function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    # this function should be improved by warining is orthogonal and type error when desird for boxsize but in float
-    log_section("Initializing Simulator")
-    box = Box(boxVectors)
-    ranges = parameters.latticeRanges 
-    atomNumber = (ranges[1,2] - ranges[1,1]) * (ranges[2,2] - ranges[2,1]) * (ranges[3,2] - ranges[3,1]) * length(parameters.basisTypes)
-    log_info("Number of atoms: $(atomNumber) ($(ranges[1,2] - ranges[1,1]) × $(ranges[2,2] - ranges[2,1]) × $(ranges[3,2] - ranges[3,1]) × $(length(parameters.basisTypes)))")
-    simulator = Simulator(box, inputGridVectors, parameters)
-    if !IS_DYNAMIC_LOAD
-        _initSimulatorAtoms!(simulator, parameters)
+function LoadAtoms!(simulator::Simulator, atoms::Vector{Atom})
+    for atom in atoms
+        push!(simulator, atom) 
+        latticePoint = LatticePoint(atom)
+        push!(simulator, latticePoint)
     end
-    log_success("Simulator initialized")
-    return simulator    
-end 
-
-
-function _initSimulatorAtoms!(simulator::Simulator, parameters::Parameters)
-    primaryVectors = parameters.primaryVectors
-    latticeRanges = parameters.latticeRanges
-    basis = parameters.basis
-    basisTypes = parameters.basisTypes
-    atomNumber = (latticeRanges[1,2] - latticeRanges[1,1]) * (latticeRanges[2,2] - latticeRanges[2,1]) * (latticeRanges[3,2] - latticeRanges[3,1]) * length(basisTypes)
-    @showprogress desc="Creating atoms ($(atomNumber)): " for x in latticeRanges[1,1]:latticeRanges[1,2]-1
-        for y in latticeRanges[2,1]:latticeRanges[2,2]-1    
-            for z in latticeRanges[3,1]:latticeRanges[3,2]-1
-                for i in 1:length(basisTypes)
-                    reducedCoordinate = Float64[x,y,z] + basis[i, :]
-                    coordinate = primaryVectors' * reducedCoordinate
-                    atom = Atom(basisTypes[i], coordinate, parameters)
-                    push!(simulator, atom)
-                    latticePoint = LatticePoint(atom)
-                    push!(simulator, latticePoint)
-                end
-            end
-        end
-    end
-    log_success("$(simulator.numberOfAtoms) atoms created")
-    InitLatticePointEnvronment(simulator)
     for cell in simulator.grid.cells
         cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume
     end 
     for atom in simulator.atoms
         Pertubation!(atom, simulator)
     end
+    InitLatticePointEnvronment(simulator)
+    log_success("$(simulator.numberOfAtoms) atoms loaded.")
 end
+
+function CreateAtomsByPrimaryVectors(parameters::Parameters)
+    primaryVectors = parameters.primaryVectors
+    latticeRanges = parameters.latticeRanges
+    basis = parameters.basis
+    basisTypes = parameters.basisTypes
+    atomNumber = (latticeRanges[1,2] - latticeRanges[1,1]) * (latticeRanges[2,2] - latticeRanges[2,1]) * (latticeRanges[3,2] - latticeRanges[3,1]) * length(basisTypes)
+    atoms = Vector{Atom}(undef, atomNumber)
+    n = 1
+    @showprogress desc="Creating atoms ($(atomNumber)): " for x in latticeRanges[1,1]:latticeRanges[1,2]-1
+        for y in latticeRanges[2,1]:latticeRanges[2,2]-1    
+            for z in latticeRanges[3,1]:latticeRanges[3,2]-1
+                for i in 1:length(basisTypes)
+                    reducedCoordinate = Float64[x,y,z] + basis[i, :]
+                    coordinate = primaryVectors' * reducedCoordinate
+                    atoms[n] = Atom(basisTypes[i], coordinate, parameters)
+                    n += 1
+                end
+            end
+        end
+    end
+    return atoms
+end
+
+
+function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    box = Box(boxVectors)
+    if !IS_DYNAMIC_LOAD
+        atoms = CreateAtomsByPrimaryVectors(parameters)
+    end
+    simulator = Simulator(box, atoms, inputGridVectors, parameters)
+    return simulator    
+end 
+
+
+function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
+    if !IS_DYNAMIC_LOAD
+        atoms = CreateAtomsByPrimaryVectors(parameters)
+    end
+    simulator = Simulator(box, atoms, inputGridVectors, parameters)
+    return simulator    
+end
+
 
 function Parameters(pMax::Float64, vacancyRecoverDistance::Float64, typeDict::Dict{Int64, Element}; kwargs...)
     primaryVectors = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
@@ -329,29 +339,22 @@ function Parameters(pMax::Float64, vacancyRecoverDistance::Float64, typeDict::Di
     return parameters
 end
 
-function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+function LoadAtomsAndBoxFromDataFile(fileName::String; replicate::Vector{Int64} = [1,1,1])
+    xlo, xhi, ylo, yhi, zlo, zhi, types, xs, ys, zs = ReadDate(fileName, replicate)
+    box = Box([xhi-xlo 0.0 0.0; 0.0 yhi-ylo 0.0; 0.0 0.0 zhi-zlo])
+    atoms = Vector{Atom}(undef, length(types))
+    for (n,(type, x, y, z)) in enumerate(zip(types, xs, ys, zs))
+        atoms[n] = Atom(type, [x, y, z], parameters)
+    end
+    return box, atoms
+end
+
+function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, parameters::Parameters; replicate::Vector{Int64} = [1,1,1])
     if IS_DYNAMIC_LOAD
         error("Simulator from date file is not supported in dynamic load mode.")
-    end
-    log_section("Initializing Simulator")
-    xlo, xhi, ylo, yhi, zlo, zhi, types, xs, ys, zs = ReadDate(fileName)
-    box = Box([xhi-xlo 0.0 0.0; 0.0 yhi-ylo 0.0; 0.0 0.0 zhi-zlo])
-    log_info("Number of atoms: $(length(types))")
-    simulator = Simulator(box, inputGridVectors, parameters)
-    for (type, x, y, z) in zip(types, xs, ys, zs)
-        atom = Atom(type, [x, y, z], parameters)
-        push!(simulator, atom) 
-        latticePoint = LatticePoint(atom)
-        push!(simulator, latticePoint)
-    end
-    InitLatticePointEnvronment(simulator)
-    for cell in simulator.grid.cells
-        cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume
     end 
-    for atom in simulator.atoms
-        Pertubation!(atom, simulator)
-    end
-    log_success("Simulator initialized")
+    box, atoms = LoadAtomsAndBoxFromDataFile(fileName; replicate=replicate)
+    simulator = Simulator(box, atoms, inputGridVectors, parameters)
     return simulator
 end
 
@@ -801,4 +804,3 @@ function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-1
 
     return σ
 end
-
