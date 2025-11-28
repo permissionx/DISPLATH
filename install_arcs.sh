@@ -55,37 +55,6 @@ else
     echo "Julia environment setup already exists in .bashrc"
 fi
 
-# Also add to .bash_profile if it exists
-if [ -f "$HOME/.bash_profile" ]; then
-    if ! grep -q "# ARCS Environment" "$HOME/.bash_profile"; then
-        echo "" >> "$HOME/.bash_profile"
-        echo "# ARCS Environment" >> "$HOME/.bash_profile"
-        echo "export ARCS_REPO=$ARCS_REPO" >> "$HOME/.bash_profile"
-        echo "export ARCS_HOME=/beegfs/science-share/arcs/DISPLATH" >> "$HOME/.bash_profile"
-        echo "ARCS environment variables added to .bash_profile"
-    fi
-    
-    # Add Julia environment setup to .bash_profile if it doesn't already exist
-    if ! grep -q "juliaup initialize" "$HOME/.bash_profile"; then
-        echo "" >> "$HOME/.bash_profile"
-        echo "# >>> juliaup initialize >>>" >> "$HOME/.bash_profile"
-        echo "" >> "$HOME/.bash_profile"
-        echo "# !! Contents within this block are managed by juliaup !!" >> "$HOME/.bash_profile"
-        echo "" >> "$HOME/.bash_profile"
-        echo 'case ":$PATH:" in' >> "$HOME/.bash_profile"
-        echo '    *:/beegfs/science-share/julia/bin:*)' >> "$HOME/.bash_profile"
-        echo '        ;;' >> "$HOME/.bash_profile"
-        echo "" >> "$HOME/.bash_profile"
-        echo '    *)' >> "$HOME/.bash_profile"
-        echo '        export PATH=/beegfs/science-share/julia/bin${PATH:+:${PATH}}' >> "$HOME/.bash_profile"
-        echo '        ;;' >> "$HOME/.bash_profile"
-        echo 'esac' >> "$HOME/.bash_profile"
-        echo "" >> "$HOME/.bash_profile"
-        echo "# <<< juliaup initialize <<<" >> "$HOME/.bash_profile"
-        echo "Julia environment setup added to .bash_profile"
-    fi
-fi
-
 # Set environment variables for current session
 export ARCS_REPO="$ARCS_REPO"
 export ARCS_HOME="/beegfs/science-share/arcs/DISPLATH"
