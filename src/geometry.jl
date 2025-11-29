@@ -261,7 +261,7 @@ end
 
 
 function Simulator(box::Box, atoms::Vector{Atom}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    log_section("Initializing Simulator.")
+    log_section("Initializing Simulator")
     simulator = Simulator(box, inputGridVectors, parameters)
     if !IS_DYNAMIC_LOAD
         LoadAtoms!(simulator, atoms)
@@ -331,6 +331,7 @@ end
 
 
 function Parameters(pMax::Float64, vacancyRecoverDistance::Float64, typeDict::Dict{Int64, Element}; kwargs...)
+    # non lattice info
     primaryVectors = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
     latticeRanges = [0 1; 0 1; 0 1]
     basis = [0.0 0.0 0.0]

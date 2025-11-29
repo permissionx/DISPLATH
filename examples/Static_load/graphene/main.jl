@@ -1,14 +1,20 @@
-home = ENV["ARCS_HOME"]
 const IS_DYNAMIC_LOAD = false
+home = ENV["ARCS_HOME"]
 include(home * "/src/DISPLATH.jl")
 seed = 42; const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
 
 
-# Materials &  box
+# Parameters
+pMax = 1.45
+vacancyRecoverDistance = 1.3
+parameters = Parameters(pMax, vacancyRecoverDistance;
+                        stopEnergy=0.1)
+
+
+# Material
 a = 1.42
 b = 3.35
 primaryVectors = [3.0*a 0.0 0.0; 0.0 3.0^0.5*a 0.0; 0.0 0.0 b]
-periodic = [false, false, false]
 latticeRanges = [0 10; 0 20; 5 6]   
 basis = [0.0 0.0 0.0; 1.0/3.0 0.0 0.0; 1.0/2.0 1.0/2.0 0.0; 5.0/6.0 1.0/2.0 0.0]
 basisTypes = [1, 1, 1, 1]
@@ -16,19 +22,17 @@ typeDict = Dict(
     1 => Element("C", 22.0, 11.0),   # dte, binding energy 
     2 => Element("Ne", 0.1, 0.1)
 )
-# Parameters
-pMax = 1.45
-vacancyRecoverDistance = 1.3
-stopEnergy = 0.1
-parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis, pMax, vacancyRecoverDistance, typeDict;
-                        stopEnergy=stopEnergy)
-# Process
 boxSizes = [10, 20, 10]
 inputGridVectors = [2.1 0.0 0.0; 0.0 a*2.1 0.0; 0.0 0.0 a*2.1]  # never be same as primaryVectors 
-simulator = Simulator(boxSizes, inputGridVectors, parameters)  
-Save!(simulator)  
+material = Material(primaryVectors, latticeRanges, basisTypes, basis, typeDict,
+                    boxSizes, inputGridVectors, parameters)
+
+simulator = Simulator(material, parameters)  
+
+
 
 # Process 
+Save!(simulator)  
 @dump "init.dump" simulator.atoms 
 
 
@@ -43,7 +47,6 @@ function Irradiation(simulator::Simulator, energy::Float64)
     _, Vs = DefectStatics(simulator)
     return length(Vs)
 end
-
 
 
 @showprogress for energy in 100.0:100.0:1000.0

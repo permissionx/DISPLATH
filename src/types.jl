@@ -52,8 +52,11 @@ mutable struct Atom
 
 end
 
-
-
+struct Material
+    box::Box
+    atoms::Vector{Atom}
+    inputGridVectors::Matrix{Float64}
+end
 
 mutable struct LatticePoint
     index::Int64
@@ -221,7 +224,7 @@ function Parameters(
     irrdiationFrequency::Float64 = 0.0,
     nCascadeEveryLoad = 100,
     maxRSS::Int = 20, # unit: GB
-    isAmorphous = false,
+    isAmorphous::Bool = false,
     amorphousLength::Float64 = -100.0,
     debugMode::Bool = false) 
     pMax_squared = pMax * pMax 
