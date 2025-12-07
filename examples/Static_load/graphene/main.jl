@@ -1,44 +1,48 @@
-const IS_DYNAMIC_LOAD = false
 home = ENV["ARCS_HOME"]
+# 注意：IS_DYNAMIC_LOAD 已移至 Parameters.is_dynamic_load，默认为 false（静态加载）
+
+# 导入必要的包
+using StableRNGs, Base.Threads, ProgressMeter  # ProgressMeter 用于 @showprogress 宏
+
 include(home * "/src/DISPLATH.jl")
-seed = 42; const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
+using .DISPLATH  # 使用 DISPLATH 模块，以便访问 Element, Atom, Parameters 等类型
 
-
-# Parameters
-pMax = 1.45
-vacancyRecoverDistance = 1.3
-parameters = Parameters(pMax, vacancyRecoverDistance;
-                        stopEnergy=0.1)
-
-
-# Material
+# Materials &  box
 a = 1.42
 b = 3.35
 primaryVectors = [3.0*a 0.0 0.0; 0.0 3.0^0.5*a 0.0; 0.0 0.0 b]
+
+boxSizes = [10, 20, 10]
+periodic = [true, true, false]
 latticeRanges = [0 10; 0 20; 5 6]   
 basis = [0.0 0.0 0.0; 1.0/3.0 0.0 0.0; 1.0/2.0 1.0/2.0 0.0; 5.0/6.0 1.0/2.0 0.0]
 basisTypes = [1, 1, 1, 1]
+
+inputGridVectors = [2.1 0.0 0.0; 0.0 a*2.1 0.0; 0.0 0.0 a*2.1]  # never be same as primaryVectors 
+
+
 typeDict = Dict(
     1 => Element("C", 22.0, 11.0),   # dte, binding energy 
-    2 => Element("Ne", 0.1, 0.1)
+    2 => Element("Ar", 0.1, 0.1)
 )
-boxSizes = [10, 20, 10]
-inputGridVectors = [2.1 0.0 0.0; 0.0 a*2.1 0.0; 0.0 0.0 a*2.1]  # never be same as primaryVectors 
-material = Material(primaryVectors, latticeRanges, basisTypes, basis, typeDict,
-                    boxSizes, inputGridVectors, parameters)
 
-simulator = Simulator(material, parameters)  
+# Parameters
+pMax = 1.45  # From I2DM cut_radius approximation
+vacancyRecoverDistance = 1.3  # From I2DM capture_radius setting
+seed = 42; const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
+stopEnergy = 0.1
+parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis, pMax, vacancyRecoverDistance, typeDict;
+                        stopEnergy=stopEnergy,periodic=periodic)
 
 
-
-# Process 
-Save!(simulator)  
+# Process
+simulator = Simulator(boxSizes, inputGridVectors, parameters)  
 @dump "init.dump" simulator.atoms 
 
 
 function Irradiation(simulator::Simulator, energy::Float64)
     Restore!(simulator)
-    ionPosition =  RandomInSquare(41.6, 48.19) + [0.1, 0.1, 33.0]
+    ionPosition =  RandomInSquare(41.6, 48.19, simulator) + [0.1, 0.1, 33.0]  # 使用 simulator 中的 RNG
     ion = Atom(2, ionPosition, parameters)
     SetVelocityDirection!(ion, [0.0, 0.0, -1.0])
     SetEnergy!(ion,energy)
@@ -48,16 +52,25 @@ function Irradiation(simulator::Simulator, energy::Float64)
     return length(Vs)
 end
 
-
-@showprogress for energy in 100.0:100.0:1000.0
+en = 1:1:7
+Save!(simulator)
+@showprogress for ene in en
+    energy = 10.0^ene
     mean_nV = 0.0
+    mean_single = 0.0
+    mean_double = 0.0
     for i in 1:10000
-        Restore!(simulator)
         nV = Irradiation(simulator::Simulator, energy::Float64)
         mean_nV += nV
+        if nV <= 1 && nV > 0
+            mean_single += 1
+        elseif nV > 1
+            mean_double += 1
+        end
     end
     mean_nV /= 10000
-    @dump "final.dump" simulator.atoms 
-    @record "nV.csv" "$(energy),$(mean_nV)" "energy,nV"
+    mean_single /= 10000
+    mean_double /= 10000
+    # @dump "final.dump" simulator.atoms 
+    @record "nV.csv" "$(energy),$(mean_nV),$(mean_single),$(mean_double)" "energy,nV,single,double"
 end
-
