@@ -3,14 +3,17 @@ println("开始分子动力学模拟...")
 overall_start = time()
 
 home = ENV["ARCS_HOME"]
-const BAlpha = 1.5
-const BBeta = 0.44
-const IS_DYNAMIC_LOAD = true
+# 注意：IS_DYNAMIC_LOAD 已移至 Parameters.is_dynamic_load
+# BAlpha 和 BBeta 目前未在代码中使用，如需要可移至 Element 或 Parameters
+
+# 导入必要的包（用于 THREAD_RNG）
+using StableRNGs, Base.Threads
 
 # 测量初始化时间
 println("正在初始化...")
 init_start = time()
 include(home * "/src/DISPLATH.jl")
+using .DISPLATH  # 使用 DISPLATH 模块
 init_time = time() - init_start
 println("初始化时间: $(round(init_time, digits=2)) 秒")
 
@@ -43,6 +46,8 @@ typeDict = Dict(
     2 => Element("B", 0.1, 0.1)     # B for ion bombardment    
 )
 seed = 43
+# 注意：THREAD_RNG 将在后续重构中移至 Simulator 或 WorkBuffers
+# 临时保留全局定义以保持兼容性
 const THREAD_RNG = [StableRNG(seed + t) for t in 1:Threads.nthreads()]
 
 temperature = 300.0
@@ -54,6 +59,7 @@ parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis,
                         pMax, vacancyRecoverDistance, typeDict; 
                         temperature=temperature, DebyeTemperature=DebyeTemperature, 
                         isDumpInCascade=isDumpInCascade, stopEnergy=stopEnergy, 
+                        is_dynamic_load=true,  # 启用动态加载模式
                         nCascadeEveryLoad=nCascadeEveryLoad, isAmorphous=false, amorphousLength=5.0, maxRSS=42)
 
 # Run
@@ -74,7 +80,7 @@ cascade_times = Float64[]
 
 for i in 1:NI
     # 进度报告
-    if i % 4000 == 0 || i <= 10
+    if i % 40 == 0 || i <= 10
         elapsed = time() - loop_start
         rate = i / elapsed
         remaining = (NI - i) / rate
@@ -83,11 +89,11 @@ for i in 1:NI
     end
     
     offset = [0.0, 0.0, latticeRanges[3,2]*a-2]
-    rp = RandomInSquare(boxSizes[1] * a, boxSizes[2] * a)
+    rp = RandomInSquare(boxSizes[1] * a, boxSizes[2] * a, simulator)  # 使用 simulator 中的 RNG
     ionPosition = Vector{Float64}(rp) + offset
     ion = Atom(2, ionPosition, parameters)
     v = [cos(phi)*sin(theta), sin(phi)*sin(theta), -cos(theta)]
-    v = RandomlyDeviatedVector(v, 0.5/180.0*π)
+    v = RandomlyDeviatedVector(v, 0.5/180.0*π, simulator)  # 使用 simulator 中的 RNG
     SetVelocityDirection!(ion, v)
     SetEnergy!(ion,energy)
     push!(simulator, ion)

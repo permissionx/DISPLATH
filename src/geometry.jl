@@ -3,6 +3,15 @@ using StaticArrays
 
 # 定义Box构造函数：根据输入向量创建模拟盒子
 function Box(Vectors::Matrix{Float64})
+    # 输入验证
+    if size(Vectors) != (3, 3)
+        throw(GeometryError("Box construction", "Vectors must be a 3×3 matrix, got $(size(Vectors))"))
+    end
+    det_vectors = det(Vectors)
+    if det_vectors <= 0.0
+        throw(GeometryError("Box construction", "Vectors determinant must be positive (volume > 0), got $(det_vectors)"))
+    end
+    
     # 记录盒子创建信息，显示盒子的三维尺寸（四舍五入到2位小数）
     log_info("Box created: $(round(Vectors[1,1]; digits=2)) × $(round(Vectors[2,2]; digits=2)) × $(round(Vectors[3,3]; digits=2)) Å")
     # 返回Box结构体：包含原始向量、逆矩阵转置（倒易空间向量）、正交标志设为true
@@ -19,6 +28,20 @@ end
 
 # 原子构造函数：根据类型、坐标和参数创建原子对象
 function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
+    # 输入验证
+    if type <= 0
+        throw(InvalidParameterError("type", type, "Atom type must be a positive integer"))
+    end
+    if !haskey(parameters.typeDict, type)
+        throw(InvalidParameterError("type", type, "Atom type not found in typeDict"))
+    end
+    if length(coordinate) != 3
+        throw(GeometryError("Atom construction", "Coordinate must be a 3-element vector, got length $(length(coordinate))"))
+    end
+    if any(!isfinite, coordinate)
+        throw(GeometryError("Atom construction", "Coordinate contains non-finite values: $(coordinate)"))
+    end
+    
     # 初始化原子基本属性
     index = 0                         # 原子索引，初始为0，后续会分配唯一值
     isAlive = true                    # 原子存活状态，初始为true
@@ -74,7 +97,7 @@ function TypeToProperties(type::Int64, typeDict::Dict{Int64, Element})
         return element.radius, element.mass, element.Z, element.dte, element.bde, element.alpha, element.beta 
     else
         # 如果类型不存在，抛出错误
-        error("Unknown atom type: $type")
+        throw(InvalidParameterError("type", type, "Atom type not found in typeDict"))
     end 
 end 
 
@@ -125,10 +148,10 @@ function SetCellNeighborInfo!(cell::Cell, grid::Grid)
 end
 
 # 根据盒子和输入向量创建网格系统
-function CreateGrid(box::Box, inputVectors::Matrix{Float64})
+function CreateGrid(box::Box, inputVectors::Matrix{Float64}, parameters::Parameters)
     # 检查盒子是否为正交系统，非正交系统暂不支持
     if !box.isOrthogonal
-        error("The box is not orthogonal, please use the orthogonal box.")
+        throw(GeometryError("CreateGrid", "The box is not orthogonal, please use the orthogonal box."))
     end
     
     # 初始化网格尺寸和向量数组
@@ -148,7 +171,7 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
     log_info("Cell size: $(round(vectors[1,1]; digits=2)) × $(round(vectors[2,2]; digits=2)) × $(round(vectors[3,3]; digits=2)) Å")
     
     # 根据动态加载标志选择不同的网格存储方式
-    if ! IS_DYNAMIC_LOAD
+    if !parameters.is_dynamic_load
         # 静态加载：使用三维数组存储网格单元
         cells = Array{Cell, 3}(undef, sizes[1], sizes[2], sizes[3])
         # 显示进度条创建所有网格单元
@@ -185,7 +208,12 @@ end
 
 # 静态加载模式下获取网格单元（三维数组访问）
 function _GetCellDense(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
-    return grid.cells[cellIndex...]  # 使用元组展开访问三维数组
+    x, y, z = cellIndex
+    # 边界检查
+    if x < 1 || x > grid.sizes[1] || y < 1 || y > grid.sizes[2] || z < 1 || z > grid.sizes[3]
+        throw(GeometryError("GetCell", "Cell index $cellIndex is out of bounds. Grid size: $(grid.sizes)"))
+    end
+    return grid.cells[x, y, z]  # 使用索引访问三维数组
 end
 
 # 创建单个网格单元
@@ -217,9 +245,16 @@ function _GetCellDict!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
 end 
 
 # 统一的网格单元获取接口，根据加载模式选择实现
+# 注意：此函数需要根据 grid.cells 的实际类型自动判断
 function GetCell(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
-    if !IS_DYNAMIC_LOAD
-        return _GetCellDense(grid, cellIndex)  # 静态加载：数组访问
+    # 基本输入验证
+    x, y, z = cellIndex
+    if x < 1 || y < 1 || z < 1
+        throw(GeometryError("GetCell", "Cell index components must be positive, got $cellIndex"))
+    end
+    
+    if isa(grid.cells, Array)
+        return _GetCellDense(grid, cellIndex)  # 静态加载：数组访问（内部有边界检查）
     else
         return _GetCellDict!(grid, cellIndex)  # 动态加载：字典访问
     end
@@ -357,10 +392,22 @@ end
 #   parameters::Parameters - 模拟参数集合
 # =====================================================================
 function Simulator(box::Box, atoms::Vector{Atom}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    # 输入验证
+    if size(inputGridVectors) != (3, 3)
+        throw(InvalidParameterError("inputGridVectors", size(inputGridVectors), "Must be a 3×3 matrix"))
+    end
+    det_grid = det(inputGridVectors)
+    if det_grid <= 0.0
+        throw(InvalidParameterError("inputGridVectors", det_grid, "Determinant must be positive (volume > 0)"))
+    end
+    if !parameters.is_dynamic_load && isempty(atoms)
+        throw(InvalidParameterError("atoms", length(atoms), "Atoms vector cannot be empty in static load mode"))
+    end
+    
     log_section("Initializing Simulator")  # 记录模拟器初始化开始
     # 调用内部构造函数创建模拟器实例，此时原子和晶格点尚未加载
     simulator = Simulator(box, inputGridVectors, parameters)
-    if !IS_DYNAMIC_LOAD  # 如果不是动态加载模式
+    if !parameters.is_dynamic_load  # 如果不是动态加载模式
         LoadAtoms!(simulator, atoms)  # 加载原子和晶格点到模拟器中
     end
     log_success("Simulator initialized.")  # 记录模拟器初始化成功
@@ -440,7 +487,7 @@ end
 function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
     box = Box(boxVectors)  # 直接通过盒子向量创建模拟盒子
     # 如果不是动态加载模式，则创建原子向量；否则，在动态加载模式下，原子将在需要时加载
-    if !IS_DYNAMIC_LOAD
+    if !parameters.is_dynamic_load
         atoms = CreateAtomsByPrimaryVectors(parameters)
     else
         atoms = Vector{Atom}()  # 动态加载模式下，初始原子向量为空
@@ -459,9 +506,17 @@ end
 #   parameters::Parameters - 模拟参数集合
 # =====================================================================
 function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    # 输入验证
+    if length(boxSizes) != 3
+        throw(InvalidParameterError("boxSizes", length(boxSizes), "Must be a 3-element vector"))
+    end
+    if any(s -> s <= 0, boxSizes)
+        throw(InvalidParameterError("boxSizes", boxSizes, "All sizes must be positive"))
+    end
+    
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)  # 根据原胞矢量和盒子尺寸创建模拟盒子
     # 如果不是动态加载模式，则创建原子向量；否则，在动态加载模式下，原子将在需要时加载
-    if !IS_DYNAMIC_LOAD
+    if !parameters.is_dynamic_load
         atoms = CreateAtomsByPrimaryVectors(parameters)
     else
         atoms = Vector{Atom}()  # 动态加载模式下，初始原子向量为空
@@ -516,8 +571,8 @@ end
 # 注意：动态加载模式下不支持从文件加载
 # =====================================================================
 function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, parameters::Parameters; replicate::Vector{Int64} = [1,1,1])
-    if IS_DYNAMIC_LOAD  # 检查是否处于动态加载模式
-        error("Simulator from date file is not supported in dynamic load mode.")  # 动态加载模式下不支持从文件加载
+    if parameters.is_dynamic_load  # 检查是否处于动态加载模式
+        throw(SimulationError("Simulator construction", "Simulator from date file is not supported in dynamic load mode."))
     end 
     # 从数据文件加载原子和盒子
     box, atoms = LoadAtomsAndBoxFromDataFile(fileName; replicate=replicate)
@@ -573,7 +628,7 @@ end
 function push!(cell::Cell, atom::Atom, simulator::Simulator)
     atom.cellIndex = cell.index  # 设置原子的网格单元索引
     push!(cell.atoms, atom)  # 将原子添加到网格单元的原子列表中
-    if !IS_DYNAMIC_LOAD  # 仅在静态加载模式下更新原子密度
+    if !simulator.parameters.is_dynamic_load  # 仅在静态加载模式下更新原子密度
         cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume  # 重新计算网格单元的原子数密度
     end
 end 
@@ -613,7 +668,7 @@ function delete!(cell::Cell, atom::Atom, simulator::Simulator)
     #@show atom.index, atom.cellIndex, simulator.nCascade, simulator.nCollisionEvent, atom.coordinate  # 调试输出（注释状态）
     deleteat!(cell.atoms, findfirst(a -> a.index == atom.index, cell.atoms))  # 从网格单元原子列表中删除该原子
     atom.cellIndex = (-1, -1, -1)  # 将原子的网格单元索引设置为无效值
-    if !IS_DYNAMIC_LOAD  # 仅在静态加载模式下更新原子密度
+    if !simulator.parameters.is_dynamic_load  # 仅在静态加载模式下更新原子密度
         cell.atomicDensity = length(cell.atoms) / simulator.grid.cellVolume  # 重新计算网格单元的原子数密度
     end
 end
@@ -836,9 +891,19 @@ end
 
 # 恢复模拟器到存储的状态（主入口函数）
 function Restore!(simulator::Simulator)
-    if ! IS_DYNAMIC_LOAD  # 如果是静态加载模式
+    # 防御性检查
+    if isnothing(simulator.grid)
+        throw(SimulationError("Restore!", "Simulator grid is not initialized"))
+    end
+    
+    # 静态加载模式需要先保存，动态加载模式不需要
+    if !simulator.parameters.is_dynamic_load
+        if !simulator.isStore
+            throw(SimulationError("Restore!", "Simulator must be saved before restore in static load mode. Call Save!(simulator) first."))
+        end
         Restore_staticLoad!(simulator)  # 调用静态加载恢复函数
     else  # 如果是动态加载模式
+        # 动态加载模式下，Restore! 只是清空当前状态，不需要先保存
         Restore_dynamicLoad!(simulator)  # 调用动态加载恢复函数
     end
 end
@@ -881,12 +946,27 @@ end
 
 # 保存模拟器的当前状态（用于后续恢复）
 function Save!(simulator::Simulator)
+    # 防御性检查
+    if isnothing(simulator.grid)
+        throw(SimulationError("Save!", "Simulator grid is not initialized"))
+    end
+    if isempty(simulator.atoms)
+        throw(SimulationError("Save!", "Cannot save simulator with no atoms"))
+    end
+    
     # 检查所有原子是否都在晶格位置上
+    invalid_atoms = Vector{Int64}()
     for atom in simulator.atoms
         if atom.latticePointIndex == -1  # 如果原子不在晶格上
-            error("Atom $(atom.index) is not on lattice when stored.")  # 抛出错误
+            push!(invalid_atoms, atom.index)
         end
     end
+    
+    if !isempty(invalid_atoms)
+        throw(SimulationError("Save!", "Atoms not on lattice when stored: $(invalid_atoms[1:min(10, length(invalid_atoms))])" * 
+            (length(invalid_atoms) > 10 ? " ... (total: $(length(invalid_atoms)))" : "")))
+    end
+    
     simulator.isStore = true  # 设置存储标志为true
     simulator.numberOfAtomsWhenStored = simulator.numberOfAtoms  # 记录存储时的原子数量
 end 
@@ -952,20 +1032,25 @@ function GetEnvironmentIndex(latticePoint::LatticePoint, simulator::Simulator)
 end 
 
 # 生成高斯分布的随机位移（用于热振动）
-function GaussianDeltaX(sigma::Float64)
-    return randn(THREAD_RNG[Threads.threadid()]) * sigma  # 使用线程安全的RNG生成高斯随机数
+function GaussianDeltaX(sigma::Float64, simulator::Union{Simulator, Nothing}=nothing)
+    rng = if isnothing(simulator)
+        Main.THREAD_RNG[Threads.threadid()]  # 向后兼容：如果没有 simulator，使用全局的
+    else
+        get_thread_rng(simulator)  # 使用 simulator 中的 RNG
+    end
+    return randn(rng) * sigma  # 使用线程安全的RNG生成高斯随机数
 end
 
 # 对原子位置施加微扰（热振动或非晶化）
 function Pertubation!(atom::Atom, simulator::Simulator)
     if simulator.parameters.isAmorphous  # 如果是非晶材料
-        rng = THREAD_RNG[Threads.threadid()]  # 获取线程安全的随机数生成器
+        rng = get_thread_rng(simulator)  # 获取线程安全的随机数生成器
         # 在网格单元内随机分布原子位置
         atom.coordinate .= GetCell(simulator.grid, atom.cellIndex).ranges[:,1] .+ [rand(rng) * simulator.grid.vectors[d, d] for d in 1:3]
     else  # 如果是晶体材料
         ah = simulator.parameters.amorphousHeight  # 获取非晶区域高度阈值
         if atom.coordinate[3] > ah  # 如果原子在非晶区域以上
-            rng = THREAD_RNG[Threads.threadid()]  # 获取线程安全的随机数生成器
+            rng = get_thread_rng(simulator)  # 获取线程安全的随机数生成器
             cell = GetCell(simulator.grid, atom.cellIndex)  # 获取原子所在网格单元
             # 在x和y方向随机分布，z方向在非晶区域内随机分布
             atom.coordinate[1] = cell.ranges[1,1] + rand(rng) * simulator.grid.vectors[1, 1]
@@ -978,7 +1063,7 @@ function Pertubation!(atom::Atom, simulator::Simulator)
             if simulator.parameters.temperature > 0.0  # 如果温度大于0
                 # 对所有三个方向施加热振动
                 for d in 1:3
-                    atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
+                    atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type], simulator)
                 end
             end
         end

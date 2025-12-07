@@ -119,18 +119,31 @@ function Cell(
 end
 
 # 宏定义，根据动态加载标志决定网格单元的存储类型
-macro cell_storage_type()
-    if IS_DYNAMIC_LOAD
-        return :(Dict{Tuple{Int64, Int64, Int64}, Cell})  # 动态加载使用字典存储，支持稀疏网格
-        #return :(SparseVector{Cell})  # 注释：备选的稀疏向量存储方式
+# 注意：此宏需要在有 Parameters 对象的环境中调用，或使用全局配置
+# 为了兼容性，我们提供一个函数版本，接受 is_dynamic_load 参数
+function get_cell_storage_type(is_dynamic_load::Bool)
+    if is_dynamic_load
+        return Dict{Tuple{Int64, Int64, Int64}, Cell}  # 动态加载使用字典存储，支持稀疏网格
     else
-        return :(Array{Cell, 3})      # 静态加载使用三维数组存储，支持密集网格
+        return Array{Cell, 3}  # 静态加载使用三维数组存储，支持密集网格
+    end
+end
+
+# 为了向后兼容，保留宏定义，但需要传入 parameters
+macro cell_storage_type(parameters)
+    return quote
+        if $(parameters).is_dynamic_load
+            Dict{Tuple{Int64, Int64, Int64}, Cell}
+        else
+            Array{Cell, 3}
+        end
     end
 end
 
 # 定义网格(Grid)结构体，管理整个模拟空间的离散化网格系统
+# 注意：cells 字段使用 Union 类型以支持静态（Array）和动态（Dict）两种存储方式
 mutable struct Grid
-    cells::@cell_storage_type()       # 网格单元集合，类型由宏决定（字典或三维数组）
+    cells::Union{Array{Cell, 3}, Dict{Tuple{Int64, Int64, Int64}, Cell}}  # 网格单元集合，根据 is_dynamic_load 选择存储类型
     vectors::Matrix{Float64}          # 3x3矩阵，单个网格单元的基向量(单位：Å)
     sizes::Vector{Int64}              # 3维向量，网格在各维度的大小（单元数量）
     cellVolume::Float64               # 单个网格单元的体积(单位：Å³)
@@ -224,12 +237,16 @@ mutable struct Parameters
     irrdiationFrequency::Float64      # 辐照频率(单位：Hz)，用于KMC模拟中的辐照事件
     
     # 动态加载参数
+    is_dynamic_load::Bool             # 布尔标志，为true时启用动态加载模式（按需加载原子）
     nCascadeEveryLoad::Int64          # 整数，每进行多少次碰撞级联后清理晶格原子
     maxRSS::Int64                     # 整数，最大内存使用量(单位：kB)，用于内存管理
     
     # 非晶材料参数
     isAmorphous::Bool                 # 布尔标志，为true时模拟非晶材料
     amorphousHeight::Float64          # 浮点数，非晶区域的高度位置(单位：Å)
+    
+    # 随机数生成器参数
+    random_seed::Int64                # 随机数生成器种子，用于可重现的随机数序列
     
     # 调试模式
     debugMode::Bool                   # 布尔标志，为true时启用调试输出和额外检查
@@ -264,21 +281,96 @@ function Parameters(
     temperature::Float64 = 0.0,                   # 模拟温度(单位：K)，0K表示不考虑热振动
     perfectEnvIndex::Int64 = 0,                   # 整数，完美晶格环境的索引值，用于KMC环境识别
     irrdiationFrequency::Float64 = 0.0,           # 辐照频率(单位：Hz)，KMC模拟中辐照事件的发生频率
+    is_dynamic_load::Bool = false,                 # 布尔标志，为true时启用动态加载模式（按需加载原子，节省内存）
     nCascadeEveryLoad = 100,                      # 整数，动态加载中每N次碰撞级联后执行内存清理
     maxRSS::Int = 20,                             # 整数，最大内存使用量(单位：GB)，用于动态内存管理
     isAmorphous = false,                          # 布尔标志，为true时模拟非晶材料结构
     amorphousLength::Float64 = -100.0,            # 浮点数，非晶区域长度(单位：Å)，从顶部开始计算
+    random_seed::Int64 = 42,                      # 随机数生成器种子，用于可重现的随机数序列
     debugMode::Bool = false)                      # 布尔标志，为true时启用调试模式和额外检查
+    
+    # ========== 输入验证 ==========
+    # 注意：异常类型在 logging.jl 中定义，通过 DISPLATH 模块导出
+    # 由于 types.jl 在 DISPLATH 模块内部被 include，可以直接使用异常类型
+    
+    # 验证原胞基向量
+    if size(primaryVectors) != (3, 3)
+        throw(InvalidParameterError("primaryVectors", size(primaryVectors), "Must be a 3×3 matrix"))
+    end
+    det_primary = det(primaryVectors)
+    if det_primary <= 0.0
+        throw(InvalidParameterError("primaryVectors", det_primary, "Determinant must be positive (volume > 0)"))
+    end
+    
+    # 验证晶格范围
+    if size(latticeRanges) != (3, 2)
+        throw(InvalidParameterError("latticeRanges", size(latticeRanges), "Must be a 3×2 matrix [min max]×3"))
+    end
+    for d in 1:3
+        if latticeRanges[d, 1] >= latticeRanges[d, 2]
+            throw(InvalidParameterError("latticeRanges[$d,:]", latticeRanges[d,:], "min must be < max"))
+        end
+    end
+    
+    # 验证基原子
+    if length(basisTypes) != size(basis, 1)
+        throw(InvalidParameterError("basisTypes", length(basisTypes), "Length must match number of basis atoms"))
+    end
+    if size(basis, 2) != 3
+        throw(InvalidParameterError("basis", size(basis), "Must be N×3 matrix"))
+    end
+    
+    # 验证碰撞参数
+    if pMax <= 0.0
+        throw(InvalidParameterError("pMax", pMax, "Must be positive"))
+    end
+    if vacancyRecoverDistance < 0.0
+        throw(InvalidParameterError("vacancyRecoverDistance", vacancyRecoverDistance, "Must be non-negative"))
+    end
+    
+    # 验证能量参数
+    if stopEnergy <= 0.0
+        throw(InvalidParameterError("stopEnergy", stopEnergy, "Must be positive"))
+    end
+    if temperature < 0.0
+        throw(InvalidParameterError("temperature", temperature, "Must be non-negative"))
+    end
+    if DebyeTemperature < 0.0
+        throw(InvalidParameterError("DebyeTemperature", DebyeTemperature, "Must be non-negative"))
+    end
+    
+    # 验证类型字典
+    if isempty(typeDict)
+        throw(InvalidParameterError("typeDict", typeDict, "Cannot be empty"))
+    end
+    for (type_id, element) in typeDict
+        if type_id <= 0
+            throw(InvalidParameterError("typeDict keys", type_id, "Type IDs must be positive integers"))
+        end
+    end
+    
+    # 验证动态加载参数
+    if nCascadeEveryLoad <= 0
+        throw(InvalidParameterError("nCascadeEveryLoad", nCascadeEveryLoad, "Must be positive"))
+    end
+    if maxRSS <= 0
+        throw(InvalidParameterError("maxRSS", maxRSS, "Must be positive"))
+    end
+    
+    # 验证 DTE 模式
+    if DTEMode == 2 && isempty(DTEFile)
+        throw(InvalidParameterError("DTEFile", DTEFile, "Required when DTEMode == 2"))
+    end
+    
+    # 验证必要的目录和文件存在性
+    if !isdir(θτRepository)
+        throw(InvalidParameterError("θτRepository", θτRepository, "Directory does not exist"))
+    end
     
     # 参数预处理和计算 - 自动计算派生参数
     pMax_squared = pMax * pMax                    # 计算pMax的平方值，用于距离比较优化计算效率
     temperature_kb = temperature * 8.61733362E-5  # 将温度从K转换为eV：kB = 8.61733362×10⁻⁵ eV/K
     primaryVectors_INV = inv(primaryVectors)      # 计算原胞基向量的逆矩阵，用于分数坐标转换
-    
-    # 输入验证 - 检查必要的目录和文件存在性
-    if !isdir(θτRepository)
-        error("θτRepository $(θτRepository) does not exist.")  # θτ数据目录不存在时抛出错误
-    end
     
     # 几何属性计算 - 判断原胞基向量是否正交以优化计算
     isPrimaryVectorOrthogonal = (primaryVectors[1,2] == 0.0 && primaryVectors[1,3] == 0.0 && 
@@ -301,8 +393,8 @@ function Parameters(
                       #soapParameters,  # 注释掉的SOAP参数
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousHeight, 
-                      debugMode)
+                      is_dynamic_load, nCascadeEveryLoad, maxRSS, isAmorphous, amorphousHeight, 
+                      random_seed, debugMode)
 end 
 
 # 碰撞参数缓冲区结构体，用于临时存储碰撞计算中的中间变量，避免重复内存分配
@@ -329,9 +421,10 @@ mutable struct WorkBuffers
     candidateTargets::Vector{Atom}              # 候选目标原子向量，存储当前搜索到的可能碰撞目标
     collisionParames::CollisionParamsBuffers    # 碰撞参数缓冲区，用于碰撞动力学计算
     threadCandidates::Vector{Vector{Atom}}      # 线程专用候选原子向量，每个线程一个，避免数据竞争
+    threadRNG::Vector{StableRNGs.StableRNG}    # 线程本地随机数生成器，每个线程一个，确保线程安全
     
-    # 构造函数，根据最大线程数初始化缓冲区
-    function WorkBuffers(max_threads::Int64=Threads.nthreads())
+    # 构造函数，根据最大线程数和随机种子初始化缓冲区
+    function WorkBuffers(max_threads::Int64=Threads.nthreads(), seed::Int64=42)
         # 为每个线程预分配3维坐标向量，避免动态内存分配
         coordinates = [Vector{Float64}(undef, 3) for _ in 1:max_threads]
         
@@ -348,9 +441,13 @@ mutable struct WorkBuffers
             sizehint!(tc, 50)  # 每个线程预分配50个原子的容量
         end
         
+        # 为每个线程创建独立的稳定随机数生成器，确保线程安全
+        # 注意：StableRNG 在 DISPLATH 模块中导入
+        threadRNG = [StableRNGs.StableRNG(seed + t) for t in 1:max_threads]
+        
         # 返回初始化的WorkBuffers实例
         return new(coordinates, candidateTargets, 
-                  collisionParams, threadCandidates)
+                  collisionParams, threadCandidates, threadRNG)
     end
 end
 
@@ -422,7 +519,7 @@ end
 # Simulator结构体的构造函数，初始化模拟器的主要组件和状态
 function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Parameters)
     # 初始化空间网格系统
-    grid = CreateGrid(box, inputGridVectors)  # 根据盒子和输入网格向量创建空间分区网格
+    grid = CreateGrid(box, inputGridVectors, parameters)  # 根据盒子和输入网格向量创建空间分区网格
     
     # 初始化类型相关物理常数
     constantsByType = InitConstantsByType(parameters.typeDict, parameters)  # 计算原子类型相关的各种常数
@@ -455,7 +552,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     
     # 初始化调试相关字段
     debugAtoms = Atom[]                  # 空调试原子数组
-    workBuffers = WorkBuffers()          # 创建工作缓冲区实例
+    workBuffers = WorkBuffers(Threads.nthreads(), parameters.random_seed)  # 创建工作缓冲区实例，传入随机种子
     
     # 计算系统的均匀原子数密度：原胞内原子数除以原胞体积
     uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])

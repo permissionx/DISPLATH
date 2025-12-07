@@ -529,7 +529,8 @@ function OutputAtoms(atoms::Vector{Atom}, simulator::Simulator, fileName::String
 end
 
 module Output
-using Main: Simulator
+# Simulator 定义在父模块 DISPLATH 中，使用相对导入
+using ..DISPLATH: Simulator
 export @dump, @record
 
 FLUSH_BYTES = 4_096

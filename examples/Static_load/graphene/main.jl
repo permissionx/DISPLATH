@@ -1,6 +1,11 @@
 home = ENV["ARCS_HOME"]
-const IS_DYNAMIC_LOAD = false
+# 注意：IS_DYNAMIC_LOAD 已移至 Parameters.is_dynamic_load，默认为 false（静态加载）
+
+# 导入必要的包
+using StableRNGs, Base.Threads, ProgressMeter  # ProgressMeter 用于 @showprogress 宏
+
 include(home * "/src/DISPLATH.jl")
+using .DISPLATH  # 使用 DISPLATH 模块，以便访问 Element, Atom, Parameters 等类型
 
 # Materials &  box
 a = 1.42
@@ -32,12 +37,12 @@ parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis, pMax, 
 
 # Process
 simulator = Simulator(boxSizes, inputGridVectors, parameters)  
-@dump "init.dump" simulator.atoms 
+# @dump "init.dump" simulator.atoms 
 
 
 function Irradiation(simulator::Simulator, energy::Float64)
     Restore!(simulator)
-    ionPosition =  RandomInSquare(41.6, 48.19) + [0.1, 0.1, 33.0]
+    ionPosition =  RandomInSquare(41.6, 48.19, simulator) + [0.1, 0.1, 33.0]  # 使用 simulator 中的 RNG
     ion = Atom(2, ionPosition, parameters)
     SetVelocityDirection!(ion, [0.0, 0.0, -1.0])
     SetEnergy!(ion,energy)
@@ -66,6 +71,6 @@ Save!(simulator)
     mean_nV /= 10000
     mean_single /= 10000
     mean_double /= 10000
-    @dump "final.dump" simulator.atoms 
+    # @dump "final.dump" simulator.atoms 
     @record "nV.csv" "$(energy),$(mean_nV),$(mean_single),$(mean_double)" "energy,nV,single,double"
 end

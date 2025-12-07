@@ -10,9 +10,17 @@ using Printf
 # 返回值：
 #   (targets, isAlive, vacancy) - 目标原子向量、原子是否存活标志、可能遇到的空位
 function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
+    # 防御性检查
+    if !atom.isAlive
+        throw(SimulationError("ShotTarget", "Cannot find target for dead atom (index: $(atom.index))"))
+    end
+    if any(x -> x < 1, atom.cellIndex)
+        throw(GeometryError("ShotTarget", "Invalid cell index $(atom.cellIndex) for atom $(atom.index)"))
+    end
+    
     grid = simulator.grid  # 获取模拟器的网格系统
     periodic = simulator.parameters.periodic  # 获取各维度的周期性边界条件设置
-    cell = GetCell(grid, atom.cellIndex)  # 获取原子当前所在的网格单元
+    cell = GetCell(grid, atom.cellIndex)  # 获取原子当前所在的网格单元（内部有边界检查）
     atom.emptyPath = 0.0  # 初始化自由飞行路径长度为0
     
     # 无限循环，直到找到目标或确定原子飞出系统
@@ -469,7 +477,19 @@ end
 #   atom_p::Atom - 入射原子
 #   simulator::Simulator - 模拟器对象
 function Cascade!(atom_p::Atom, simulator::Simulator)
-    if !IS_DYNAMIC_LOAD
+    # 防御性检查
+    if !atom_p.isAlive
+        throw(SimulationError("Cascade!", "Cannot start cascade for dead atom (index: $(atom_p.index))"))
+    end
+    if atom_p.energy <= 0.0
+        throw(SimulationError("Cascade!", "Atom energy must be positive, got $(atom_p.energy) eV for atom $(atom_p.index)"))
+    end
+    if length(atom_p.coordinate) != 3
+        throw(GeometryError("Cascade!", "Atom coordinate must be 3D, got length $(length(atom_p.coordinate))"))
+    end
+    
+    # 根据加载模式选择实现
+    if !simulator.parameters.is_dynamic_load
         Cascade_staticLoad!(atom_p, simulator)  # 静态加载模式
     else
         Cascade_dynamicLoad!(atom_p, simulator)  # 动态加载模式
