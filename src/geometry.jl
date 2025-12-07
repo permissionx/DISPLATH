@@ -633,19 +633,19 @@ function push!(cell::Cell, atom::Atom, simulator::Simulator)
     end
 end 
 
-# 从模拟器中删除原子，处理晶格点关联和状态更新
-function delete!(simulator::Simulator, atom::Atom)
+# 从模拟器中删除原子，处理晶格点关联和状态更新（静态加载版本）
+function delete_staticLoad!(simulator::Simulator, atom::Atom)
     originalCell = GetCell(simulator.grid, atom.cellIndex)  # 获取原子当前所在的网格单元
     deleteat!(originalCell.atoms, findfirst(a -> a.index == atom.index, originalCell.atoms))  # 从网格单元原子列表中删除该原子
     simulator.numberOfAtoms -= 1  # 减少模拟器中的原子总数计数
     atom.isAlive = false  # 将原子标记为非活动状态
     if atom.latticePointIndex != -1  # 如果原子占据晶格点位置
-        LeaveLatticePoint!(atom, simulator)  # 处理原子离开晶格点的相关操作
+        LeaveLatticePoint_staticLoad!(atom, simulator)  # 处理原子离开晶格点的相关操作
     end
 end
 
-# 处理原子离开晶格点的过程，创建空位并更新相关数据结构
-function LeaveLatticePoint!(atom::Atom, simulator::Simulator; isUpdateEnv::Bool = true)
+# 处理原子离开晶格点的过程，创建空位并更新相关数据结构（静态加载版本）
+function LeaveLatticePoint_staticLoad!(atom::Atom, simulator::Simulator; isUpdateEnv::Bool = true)
     AddToStore!(atom, simulator)  # 将原子添加到存储中（用于后续恢复）
     latticePoint = simulator.latticePoints[atom.latticePointIndex]  # 获取原子对应的晶格点
     latticePoint.atomIndex = -1  # 将晶格点标记为空位（无原子占据）
@@ -829,8 +829,8 @@ function GetNeighborVacancy(atom::Atom, simulator::Simulator)
     return nearestVacancyIndex  # 返回最近空位的索引（若无合适空位则返回-1）
 end
 
-# 停止原子运动并将其恢复到晶格位置
-function Stop!(atom::Atom, simulator::Simulator)
+# 停止原子运动并将其恢复到晶格位置（静态加载版本）
+function Stop_staticLoad!(atom::Atom, simulator::Simulator)
     SetEnergy!(atom, 0.0)  # 将原子动能设置为0，停止其运动
     SetVelocityDirection!(atom, SVector{3,Float64}([0.0, 0.0, 0.0]))  # 将原子速度方向设置为零向量
     Recover!(atom, simulator)  # 尝试将原子恢复到最近的晶格空位
@@ -889,7 +889,35 @@ function DeleteFromStore!(atom::Atom, simulator::Simulator)
     end
 end 
 
-# 恢复模拟器到存储的状态（主入口函数）
+"""
+    Restore!(simulator::Simulator)
+
+恢复模拟器到之前保存的状态。
+
+在静态加载模式下，需要先调用 `Save!` 保存状态。此函数会：
+- 移除存储后添加的离子
+- 清空空位列表
+- 将所有位移的原子恢复到原始晶格位置
+
+在动态加载模式下，此函数会清空当前原子和空位列表，重置计数器。
+
+# 参数
+- `simulator::Simulator`: 要恢复的模拟器对象
+
+# 抛出异常
+- `SimulationError`: 如果网格未初始化（静态模式还需要先保存）
+
+# 示例
+```julia
+# 静态加载模式
+Save!(simulator)
+# ... 执行模拟 ...
+Restore!(simulator)  # 恢复到保存时的状态
+
+# 动态加载模式
+Restore!(simulator)  # 直接清空当前状态
+```
+"""
 function Restore!(simulator::Simulator)
     # 防御性检查
     if isnothing(simulator.grid)
@@ -944,7 +972,34 @@ function Restore_staticLoad!(simulator::Simulator)
     empty!(simulator.displacedAtoms)  # 清空位移原子列表
 end
 
-# 保存模拟器的当前状态（用于后续恢复）
+"""
+    Save!(simulator::Simulator)
+
+保存模拟器的当前状态，用于后续恢复。
+
+在静态加载模式下，此函数会检查所有原子是否都在晶格位置上，并记录当前原子数量。
+保存后的模拟器可以通过 `Restore!` 恢复到保存时的状态。
+
+# 参数
+- `simulator::Simulator`: 要保存的模拟器对象
+
+# 抛出异常
+- `SimulationError`: 如果网格未初始化或原子不在晶格位置上
+
+# 示例
+```julia
+# 保存初始状态
+Save!(simulator)
+
+# 执行多次辐照
+for i in 1:100
+    Irradiation(simulator, 1000.0, ...)
+end
+
+# 恢复到初始状态
+Restore!(simulator)
+```
+"""
 function Save!(simulator::Simulator)
     # 防御性检查
     if isnothing(simulator.grid)
@@ -1098,4 +1153,66 @@ function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-1
     σ  = sqrt(σ2) * 1e10         # 从米转换为埃（Å）
 
     return σ  # 返回均方根位移
+end
+
+# =====================================================================
+# 统一接口函数
+# =====================================================================
+
+"""
+    LeaveLatticePoint!(atom::Atom, simulator::Simulator; isUpdateEnv::Bool=true)
+
+处理原子离开晶格点的过程的统一接口。
+
+根据 `simulator.parameters.is_dynamic_load` 自动选择静态或动态加载实现。
+
+# 参数
+- `atom::Atom`: 要离开晶格点的原子
+- `simulator::Simulator`: 模拟器对象
+- `isUpdateEnv::Bool=true`: 是否更新环境（用于KMC模拟）
+"""
+function LeaveLatticePoint!(atom::Atom, simulator::Simulator; isUpdateEnv::Bool=true)
+    if simulator.parameters.is_dynamic_load
+        LeaveLatticePoint_dynamicLoad!(atom, simulator; isUpdateEnv=isUpdateEnv)
+    else
+        LeaveLatticePoint_staticLoad!(atom, simulator; isUpdateEnv=isUpdateEnv)
+    end
+end
+
+"""
+    Stop!(atom::Atom, simulator::Simulator)
+
+停止原子运动并将其恢复到晶格位置的统一接口。
+
+根据 `simulator.parameters.is_dynamic_load` 自动选择静态或动态加载实现。
+
+# 参数
+- `atom::Atom`: 要停止的原子
+- `simulator::Simulator`: 模拟器对象
+"""
+function Stop!(atom::Atom, simulator::Simulator)
+    if simulator.parameters.is_dynamic_load
+        Stop_dynamicLoad!(atom, simulator)
+    else
+        Stop_staticLoad!(atom, simulator)
+    end
+end
+
+"""
+    delete!(simulator::Simulator, atom::Atom)
+
+从模拟器中删除原子的统一接口。
+
+根据 `simulator.parameters.is_dynamic_load` 自动选择静态或动态加载实现。
+
+# 参数
+- `simulator::Simulator`: 模拟器对象
+- `atom::Atom`: 要删除的原子
+"""
+function Base.delete!(simulator::Simulator, atom::Atom)
+    if simulator.parameters.is_dynamic_load
+        delete_dynamicLoad!(simulator, atom)
+    else
+        delete_staticLoad!(simulator, atom)
+    end
 end

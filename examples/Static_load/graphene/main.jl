@@ -37,7 +37,7 @@ parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis, pMax, 
 
 # Process
 simulator = Simulator(boxSizes, inputGridVectors, parameters)  
-# @dump "init.dump" simulator.atoms 
+@dump "init.dump" simulator.atoms 
 
 
 function Irradiation(simulator::Simulator, energy::Float64)

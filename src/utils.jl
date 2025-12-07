@@ -11,8 +11,39 @@ function get_thread_rng(simulator::Simulator)
     end
 end
 
-#主要缺陷统计函数
-#静态模式缺陷识别逻辑：空位：原始晶格位置没有原子或标记为空位类型   间隙原子：存活但不在任何晶格点上的原子   入射离子：存储后添加的原子，如果不在晶格点上也视为间隙原子
+"""
+    DefectStatics(simulator::Simulator)
+
+统计模拟系统中的缺陷（空位和间隙原子）。
+
+返回一个元组 `(interstitials, vacancies)`，其中：
+- `interstitials::Vector{Atom}`: 间隙原子列表
+- `vacancies::Vector{LatticePoint}`: 空位列表（晶格点对象）
+
+# 参数
+- `simulator::Simulator`: 模拟器对象（静态加载模式需要先调用 `Save!`）
+
+# 返回值
+返回 `(interstitials, vacancies)` 元组。
+
+# 缺陷识别逻辑
+- **空位**: 原始晶格位置没有原子或标记为空位类型
+- **间隙原子**: 存活但不在任何晶格点上的原子
+- **入射离子**: 存储后添加的原子，如果不在晶格点上也视为间隙原子
+
+# 抛出异常
+- `SimulationError`: 如果模拟器未保存（静态加载模式）
+
+# 示例
+```julia
+# 静态加载模式需要先保存
+Save!(simulator)
+Cascade!(ion, simulator)
+interstitials, vacancies = DefectStatics(simulator)
+println("空位数量: ", length(vacancies))
+println("间隙原子数量: ", length(interstitials))
+```
+"""
 function DefectStatics(simulator::Simulator)
     # 静态加载模式的缺陷统计
     if !simulator.parameters.is_dynamic_load

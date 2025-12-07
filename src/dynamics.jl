@@ -2,14 +2,14 @@
 using .BCA
 using Printf
 
-# 寻找目标原子函数：在模拟器中为入射原子寻找碰撞目标
+# 寻找目标原子函数：在模拟器中为入射原子寻找碰撞目标（静态加载版本）
 # 参数：
 #   atom::Atom - 入射原子
 #   filterIndexes::Vector{Int64} - 需要过滤的原子索引（避免重复碰撞）
 #   simulator::Simulator - 模拟器对象
 # 返回值：
 #   (targets, isAlive, vacancy) - 目标原子向量、原子是否存活标志、可能遇到的空位
-function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
+function ShotTarget_staticLoad(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
     # 防御性检查
     if !atom.isAlive
         throw(SimulationError("ShotTarget", "Cannot find target for dead atom (index: $(atom.index))"))
@@ -361,12 +361,12 @@ function Collision_!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     end
 end 
 
-# 碰撞处理函数：处理入射原子与多个目标原子之间的碰撞动力学
+# 碰撞处理函数：处理入射原子与多个目标原子之间的碰撞动力学（静态加载版本）
 # 输入参数：
 #   atom_p::Atom - 入射原子（初级碰撞原子）
 #   atoms_t::Vector{Atom} - 目标原子向量（可能同时与多个原子碰撞）
 #   simulator::Simulator - 模拟器对象，包含所有模拟状态和参数
-function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+function Collision_staticLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
     N_t = length(atoms_t)  # 目标原子数量
     grid = simulator.grid  # 模拟网格对象
     
@@ -475,7 +475,38 @@ end
 # 碰撞级联主函数：根据加载模式选择相应的级联模拟方法
 # 输入参数：
 #   atom_p::Atom - 入射原子
-#   simulator::Simulator - 模拟器对象
+"""
+    Cascade!(atom_p::Atom, simulator::Simulator)
+
+执行碰撞级联模拟，模拟入射原子在材料中的能量沉积和缺陷产生过程。
+
+这是 DISPLATH 的核心函数，实现了二元碰撞近似(BCA)算法。函数会：
+1. 寻找碰撞目标原子
+2. 计算碰撞参数和能量转移
+3. 更新原子位置和能量
+4. 处理位移和空位形成
+5. 递归处理所有被激发的原子
+
+# 参数
+- `atom_p::Atom`: 入射原子（必须存活且能量为正）
+- `simulator::Simulator`: 模拟器对象
+
+# 抛出异常
+- `SimulationError`: 如果原子已死亡或能量无效
+- `GeometryError`: 如果原子坐标维度无效
+
+# 示例
+```julia
+# 创建入射离子
+ion = Atom(2, [0.0, 0.0, 50.0], parameters)
+SetEnergy!(ion, 1000.0)
+SetVelocityDirection!(ion, [0.0, 0.0, -1.0])
+push!(simulator, ion)
+
+# 执行碰撞级联
+Cascade!(ion, simulator)
+```
+"""
 function Cascade!(atom_p::Atom, simulator::Simulator)
     # 防御性检查
     if !atom_p.isAlive
@@ -508,7 +539,7 @@ function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
     simulator.nCollisionEvent = 0  # 重置碰撞事件计数器
     simulator.nCascade += 1        # 增加级联计数器
     
-    DumpInCascade(simulator)  # 输出初始状态（如果启用）
+        DumpInCascade(simulator)  # 输出初始状态（如果启用）
     
     # 主循环：持续进行直到没有活动原子
     while true
@@ -542,7 +573,7 @@ function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
             # 检查原子是否存活（是否飞出边界等）
             if !isAlive
                 empty!(pAtom.lastTargets)  # 清空碰撞记录
-                delete!(simulator, pAtom)  # 从模拟器中删除原子
+                Base.delete!(simulator, pAtom)  # 从模拟器中删除原子
                 push!(deleteIndexes, na)   # 标记删除
                 continue
             end
@@ -604,14 +635,81 @@ function Cascade_staticLoad!(atom_p::Atom, simulator::Simulator)
     end
 end
 
-# 级联过程中输出原子状态函数
+# 级联过程中输出原子状态函数（静态加载版本）
 # 输入参数：
 #   simulator::Simulator - 模拟器对象
-function DumpInCascade(simulator::Simulator)
+function DumpInCascade_staticLoad(simulator::Simulator)
     if simulator.parameters.isDumpInCascade  # 检查是否启用级联输出
         # 使用@dump宏输出原子状态到文件
         # 文件名格式：Cascade_{级联编号}.dump
         # 输出属性：速度分量(vx,vy,vz)和能量(e)
         @dump "Cascade_$(simulator.nCascade).dump" simulator.atoms ["vx", "vy", "vz", "e"]
+    end
+end
+
+# =====================================================================
+# 统一接口函数
+# =====================================================================
+
+"""
+    ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
+
+在模拟器中为入射原子寻找碰撞目标的统一接口。
+
+根据 `simulator.parameters.is_dynamic_load` 自动选择静态或动态加载实现。
+
+# 参数
+- `atom::Atom`: 入射原子
+- `filterIndexes::Vector{Int64}`: 需要过滤的原子索引（避免重复碰撞）
+- `simulator::Simulator`: 模拟器对象
+
+# 返回值
+- 静态加载模式：`(targets, isAlive, vacancy)` - 目标原子向量、原子是否存活标志、可能遇到的空位
+- 动态加载模式：`(targets, isAlive)` - 目标原子向量、原子是否存活标志
+"""
+function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
+    if simulator.parameters.is_dynamic_load
+        targets, isAlive = ShotTarget_dynamicLoad(atom, filterIndexes, simulator)
+        return targets, isAlive, nothing
+    else
+        return ShotTarget_staticLoad(atom, filterIndexes, simulator)
+    end
+end
+
+"""
+    Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+
+处理入射原子与多个目标原子之间的碰撞动力学的统一接口。
+
+根据 `simulator.parameters.is_dynamic_load` 自动选择静态或动态加载实现。
+
+# 参数
+- `atom_p::Atom`: 入射原子（初级碰撞原子）
+- `atoms_t::Vector{Atom}`: 目标原子向量（可能同时与多个原子碰撞）
+- `simulator::Simulator`: 模拟器对象
+"""
+function Collision!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::Simulator)
+    if simulator.parameters.is_dynamic_load
+        Collision_dynamicLoad!(atom_p, atoms_t, simulator)
+    else
+        Collision_staticLoad!(atom_p, atoms_t, simulator)
+    end
+end
+
+"""
+    DumpInCascade(simulator::Simulator)
+
+在级联过程中输出原子状态的统一接口。
+
+根据 `simulator.parameters.is_dynamic_load` 自动选择静态或动态加载实现。
+
+# 参数
+- `simulator::Simulator`: 模拟器对象
+"""
+function DumpInCascade(simulator::Simulator)
+    if simulator.parameters.is_dynamic_load
+        DumpInCascade_dynamicLoad(simulator)
+    else
+        DumpInCascade_staticLoad(simulator)
     end
 end

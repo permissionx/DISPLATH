@@ -1,14 +1,67 @@
 # 导入必要的Julia包
 #using PyCall  # 注释掉的Python调用接口，可能用于未来扩展
 
-# 定义模拟盒子(Box)结构体，用于表示模拟系统的空间边界
+"""
+    Box
+
+表示模拟系统的空间边界和周期性条件。
+
+# 字段
+- `vectors::Matrix{Float64}`: 3x3矩阵，盒子的基向量(单位：Å)，定义模拟空间的三个方向
+- `reciprocalVectors::Matrix{Float64}`: 3x3矩阵，倒易空间基向量(单位：Å⁻¹)，用于周期性边界条件计算
+- `isOrthogonal::Bool`: 布尔标志，指示盒子是否为正交坐标系（基向量相互垂直）
+
+# 构造函数
+```julia
+Box(vectors::Matrix{Float64})
+```
+
+# 示例
+```julia
+# 创建一个正交盒子（10×10×10 Å）
+vectors = [10.0 0.0 0.0; 0.0 10.0 0.0; 0.0 0.0 10.0]
+box = Box(vectors)
+```
+"""
 mutable struct Box
     vectors::Matrix{Float64}          # 3x3矩阵，表示盒子的基向量(单位：Å)
     reciprocalVectors::Matrix{Float64} # 3x3矩阵，表示倒易空间基向量(单位：Å⁻¹)
     isOrthogonal::Bool                # 布尔标志，指示盒子是否为正交坐标系
 end
 
-# 定义原子(Atom)结构体，表示模拟系统中的单个原子
+"""
+    Atom
+
+表示模拟系统中的单个原子。
+
+# 字段
+- `index::Int64`: 原子的唯一标识符，在整个模拟过程中保持不变
+- `isAlive::Bool`: 布尔标志，指示原子是否处于活动状态（是否参与模拟）
+- `type::Int64`: 原子类型标识符，对应typeDict中的键值
+- `coordinate::Vector{Float64}`: 3维向量，原子的当前位置坐标(单位：Å)
+- `cellIndex::Tuple{Int64, Int64, Int64}`: 三元组，表示原子所在网格单元的索引(x,y,z)
+- `radius::Float64`: 原子的有效半径(单位：Å)，用于碰撞检测
+- `mass::Float64`: 原子质量(单位：原子质量单位u)
+- `velocityDirection::SVector{3,Float64}`: 3维静态向量，速度方向单位向量(无量纲)
+- `energy::Float64`: 原子的当前动能(单位：eV)
+- `Z::Float64`: 原子序数，表示核电荷数
+- `dte::Float64`: 位移阈值能量(Displacement Threshold Energy)，单位：eV
+- `bde::Float64`: 结合能(Binding Energy)，单位：eV
+- `emptyPath::Float64`: 自由飞行路径长度，在碰撞前穿越的距离(单位：Å)
+
+# 构造函数
+```julia
+Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
+```
+
+# 示例
+```julia
+# 创建一个碳原子在原点
+atom = Atom(1, [0.0, 0.0, 0.0], parameters)
+SetEnergy!(atom, 100.0)  # 设置动能为 100 eV
+SetVelocityDirection!(atom, [0.0, 0.0, -1.0])  # 设置速度方向向下
+```
+"""
 mutable struct Atom
     index::Int64                      # 原子的唯一标识符，在整个模拟过程中保持不变
     isAlive::Bool                     # 布尔标志，指示原子是否处于活动状态（是否参与模拟）
@@ -52,8 +105,31 @@ mutable struct Atom
     indexInCell::Int64                # 原子在所在网格单元中的局部索引
 end
 
-# 定义材料(Material)结构体，用于表示完整的材料系统，包含几何结构和原子信息
-# 新增：该结构体提供了对模拟系统的高层抽象，便于封装和传递材料数据
+"""
+    Material
+
+表示完整的材料系统，包含几何结构、原子信息和空间网格定义。
+
+该结构体提供了对模拟系统的高层抽象，便于封装和传递材料数据。
+
+# 字段
+- `box::Box`: 模拟盒子对象，定义材料的空间边界和周期性条件
+- `atoms::Vector{Atom}`: 原子向量，存储材料中的所有原子（静态加载模式）
+- `inputGridVectors::Matrix{Float64}`: 3x3矩阵，输入网格向量，用于定义空间离散化网格(单位：Å)
+
+# 构造函数
+```julia
+Material(boxSizes::Vector{Float64}, inputGridVectors::Matrix{Float64}, atoms::Vector{Atom})
+```
+
+# 示例
+```julia
+# 创建材料系统
+boxSizes = [100.0, 100.0, 50.0]  # 100×100×50 Å
+gridVectors = [5.0 0.0 0.0; 0.0 5.0 0.0; 0.0 0.0 5.0]  # 5×5×5 Å 网格单元
+material = Material(boxSizes, gridVectors, atoms)
+```
+"""
 struct Material
     box::Box                          # 模拟盒子对象，定义材料的空间边界和周期性条件
     atoms::Vector{Atom}               # 原子向量，存储材料中的所有原子
@@ -78,7 +154,48 @@ struct NeighborCellInfo
                                       # 例如：(0,0,1)表示在z方向正向穿越边界
 end
 
-# 定义网格单元(Cell)结构体，表示空间离散化后的计算单元
+"""
+    Cell
+
+表示空间离散化后的计算单元，用于空间分区和邻居搜索优化。
+
+仅适用于正交盒子系统。
+
+# 字段
+
+## 基本字段
+- `index::Tuple{Int64, Int64, Int64}`: 三元组，网格单元在网格中的索引(x,y,z)
+- `atoms::Vector{Atom}`: 原子向量，存储位于该单元内的所有活动原子
+- `latticePoints::Vector{LatticePoint}`: 晶格点向量，存储位于该单元内的所有晶格点
+- `ranges::Matrix{Float64}`: 3x2矩阵，存储单元的空间边界范围[min, max]×3(单位：Å)
+- `neighborCellsInfo::Array{NeighborCellInfo, 3}`: 3x3x3数组，存储所有邻近单元的信息（包括周期性边界）
+- `isExplored::Bool`: 布尔标志，指示该单元在当前碰撞搜索中是否已被探索
+- `atomicDensity::Float64`: 原子数密度，该单元内的平均原子密度(单位：原子/Å³)
+
+## 动态加载系统字段
+- `latticeAtoms::Vector{Atom}`: 原子向量，存储该单元内新加载的晶格原子（动态加载模式）
+- `isLoaded::Bool`: 布尔标志，指示该单元的晶格原子是否已加载到内存
+- `vacancies::Vector{Atom}`: 原子向量，存储该单元内的空位缺陷（静态和动态加载都使用）
+- `isSavedLatticeRange::Bool`: 布尔标志，指示晶格范围是否已计算并保存
+- `latticeRanges::Matrix{Int64}`: 3x2矩阵，存储该单元对应的晶格索引范围
+- `isPushedNeighbor::Bool`: 布尔标志，指示邻近单元信息是否已初始化
+
+# 构造函数
+```julia
+Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity)
+```
+
+# 示例
+```julia
+# 创建网格单元
+index = (1, 1, 1)
+atoms = Vector{Atom}()
+latticePoints = Vector{LatticePoint}()
+ranges = [0.0 5.0; 0.0 5.0; 0.0 5.0]  # 5×5×5 Å 范围
+neighborInfo = Array{NeighborCellInfo, 3}(undef, 3, 3, 3)
+cell = Cell(index, atoms, latticePoints, ranges, neighborInfo, false, 0.0)
+```
+"""
 mutable struct Cell
     # 仅适用于正交盒子系统
     index::Tuple{Int64, Int64, Int64}  # 三元组，网格单元在网格中的索引(x,y,z)
@@ -140,8 +257,31 @@ macro cell_storage_type(parameters)
     end
 end
 
-# 定义网格(Grid)结构体，管理整个模拟空间的离散化网格系统
-# 注意：cells 字段使用 Union 类型以支持静态（Array）和动态（Dict）两种存储方式
+"""
+    Grid
+
+管理整个模拟空间的离散化网格系统，用于空间分区和邻居搜索优化。
+
+# 字段
+- `cells::Union{Array{Cell, 3}, Dict{Tuple{Int64, Int64, Int64}, Cell}}`: 网格单元集合
+  - 静态加载模式：使用 `Array{Cell, 3}` 三维数组存储所有单元
+  - 动态加载模式：使用 `Dict{Tuple{Int64, Int64, Int64}, Cell}` 字典存储已加载的单元
+- `vectors::Matrix{Float64}`: 3x3矩阵，单个网格单元的基向量(单位：Å)
+- `sizes::Vector{Int64}`: 3维向量，网格在各维度的大小（单元数量）
+- `cellVolume::Float64`: 单个网格单元的体积(单位：Å³)
+
+# 注意
+- `cells` 字段使用 `Union` 类型以支持静态（Array）和动态（Dict）两种存储方式
+- 存储类型由 `Parameters.is_dynamic_load` 决定
+- 动态加载模式可以显著减少内存使用，适用于大规模模拟
+
+# 示例
+```julia
+# 网格通常由 Simulator 初始化时自动创建
+# 静态加载：cells 为 Array{Cell, 3}
+# 动态加载：cells 为 Dict{Tuple{Int64, Int64, Int64}, Cell}
+```
+"""
 mutable struct Grid
     cells::Union{Array{Cell, 3}, Dict{Tuple{Int64, Int64, Int64}, Cell}}  # 网格单元集合，根据 is_dynamic_load 选择存储类型
     vectors::Matrix{Float64}          # 3x3矩阵，单个网格单元的基向量(单位：Å)
@@ -176,7 +316,42 @@ struct Element
     beta::Float64                     # 电子阻止本领的β参数（无量纲）
 end
 
-# 定义模拟参数(Parameters)结构体，存储模拟的各种控制参数和设置
+"""
+    Parameters
+
+存储模拟的各种控制参数和设置。
+
+这是 DISPLATH 的核心配置结构体，包含晶体结构定义、碰撞参数、能量参数、温度参数等所有模拟设置。
+
+# 主要字段
+- `primaryVectors::Matrix{Float64}`: 3×3矩阵，原胞基向量(单位：Å)
+- `latticeRanges::Matrix{Int64}`: 3×2矩阵，晶格索引范围[min,max]×3
+- `basisTypes::Vector{Int64}`: 原胞内各原子的类型标识符
+- `basis::Matrix{Float64}`: N×3矩阵，原胞内原子的分数坐标
+- `typeDict::Dict{Int64, Element}`: 原子类型定义字典
+- `pMax::Float64`: 最大碰撞参数(单位：Å)
+- `stopEnergy::Float64`: 停止能量阈值(单位：eV)
+- `temperature::Float64`: 模拟温度(单位：K)
+- `is_dynamic_load::Bool`: 是否启用动态加载模式
+
+# 构造函数
+```julia
+Parameters(primaryVectors, latticeRanges, basisTypes, basis, pMax, 
+           vacancyRecoverDistance, typeDict; kwargs...)
+```
+
+# 示例
+```julia
+# 创建参数对象
+primaryVectors = [5.431 0.0 0.0; 0.0 5.431 0.0; 0.0 0.0 5.431]
+latticeRanges = [0 10; 0 10; 0 10]
+basisTypes = [1, 1]
+basis = [0.0 0.0 0.0; 0.5 0.5 0.5]
+typeDict = Dict(1 => Element("Si", 20.0, 10.0))
+parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis,
+                        1.8, 1.3, typeDict; stopEnergy=0.1, temperature=300.0)
+```
+"""
 mutable struct Parameters
     # 必需参数 - 晶体结构定义
     primaryVectors::Matrix{Float64}   # 3x3矩阵，原胞基向量(单位：Å)
@@ -397,7 +572,32 @@ function Parameters(
                       random_seed, debugMode)
 end 
 
-# 碰撞参数缓冲区结构体，用于临时存储碰撞计算中的中间变量，避免重复内存分配
+"""
+    CollisionParamsBuffers
+
+用于临时存储碰撞计算中的中间变量，避免重复内存分配。
+
+该结构体在碰撞级联模拟中用于批量处理多个目标原子的碰撞参数，提高计算效率。
+
+# 字段
+- `tanφList::Vector{Float64}`: 存储多个目标原子的tanφ值，φ为入射原子散射角
+- `tanψList::Vector{Float64}`: 存储多个目标原子的tanψ值，ψ为目标原子散射角
+- `E_tList::Vector{Float64}`: 存储多个目标原子的能量转移值(单位：eV)
+- `x_pList::Vector{Float64}`: 存储多个目标原子的入射原子位移参数(单位：Å)
+- `x_tList::Vector{Float64}`: 存储多个目标原子的目标原子位移参数(单位：Å)
+- `Q_locList::Vector{Float64}`: 存储多个目标原子的局域能量损失(单位：eV)
+
+# 构造函数
+```julia
+CollisionParamsBuffers()
+```
+
+# 使用
+```julia
+buffers = CollisionParamsBuffers()
+EnsureCollisionCapacity!(buffers, 10)  # 确保有足够容量存储10个目标的参数
+```
+"""
 mutable struct CollisionParamsBuffers
     tanφList::Vector{Float64}        # 存储多个目标原子的tanφ值，φ为入射原子散射角
     tanψList::Vector{Float64}        # 存储多个目标原子的tanψ值，ψ为目标原子散射角  

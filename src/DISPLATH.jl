@@ -62,10 +62,15 @@ export Cascade!, Restore!, Save!
 export DefectStatics, CountVacancies
 export GetCell, WhichCell, ComputeDistance
 export CreateGrid, CreateBoxByPrimaryVectors
+export Irradiation  # 通用辐照函数
+
+# 统一接口函数（自动选择静态/动态加载实现）
+export ShotTarget, Collision!, DumpInCascade, Dump
+export LeaveLatticePoint!, Stop!
 
 # 原子操作
 export SetEnergy!, SetVelocityDirection!
-export DisplaceAtom!, SetOnLatticePoint!, LeaveLatticePoint!
+export DisplaceAtom!, SetOnLatticePoint!
 
 # 材料与模拟器创建
 export Material, Simulator
