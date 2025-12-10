@@ -1,11 +1,55 @@
-#主要缺陷统计函数
-#静态模式缺陷识别逻辑：空位：原始晶格位置没有原子或标记为空位类型   间隙原子：存活但不在任何晶格点上的原子   入射离子：存储后添加的原子，如果不在晶格点上也视为间隙原子
+# 辅助函数：获取当前线程的随机数生成器
+# 优先使用 simulator.workBuffers.threadRNG，如果不可用则回退到 Main.THREAD_RNG（向后兼容）
+function get_thread_rng(simulator::Simulator)
+    tid = Threads.threadid()
+    # if hasfield(typeof(simulator.workBuffers), :threadRNG) && 
+    #    length(simulator.workBuffers.threadRNG) >= tid
+    #     return simulator.workBuffers.threadRNG[tid]
+    # else
+        # 向后兼容：如果 WorkBuffers 中没有 threadRNG，使用全局的
+    return Main.THREAD_RNG[tid]
+    # end
+end
+
+"""
+    DefectStatics(simulator::Simulator)
+
+统计模拟系统中的缺陷（空位和间隙原子）。
+
+返回一个元组 `(interstitials, vacancies)`，其中：
+- `interstitials::Vector{Atom}`: 间隙原子列表
+- `vacancies::Vector{LatticePoint}`: 空位列表（晶格点对象）
+
+# 参数
+- `simulator::Simulator`: 模拟器对象（静态加载模式需要先调用 `Save!`）
+
+# 返回值
+返回 `(interstitials, vacancies)` 元组。
+
+# 缺陷识别逻辑
+- **空位**: 原始晶格位置没有原子或标记为空位类型
+- **间隙原子**: 存活但不在任何晶格点上的原子
+- **入射离子**: 存储后添加的原子，如果不在晶格点上也视为间隙原子
+
+# 抛出异常
+- `SimulationError`: 如果模拟器未保存（静态加载模式）
+
+# 示例
+```julia
+# 静态加载模式需要先保存
+Save!(simulator)
+Cascade!(ion, simulator)
+interstitials, vacancies = DefectStatics(simulator)
+println("空位数量: ", length(vacancies))
+println("间隙原子数量: ", length(interstitials))
+```
+"""
 function DefectStatics(simulator::Simulator)
     # 静态加载模式的缺陷统计
-    if !IS_DYNAMIC_LOAD
+    if !simulator.parameters.is_dynamic_load
         # 检查模拟器是否已保存状态
         if !simulator.isStore
-            error("simulator must be stored when counting defects")
+            throw(SimulationError("DefectStatics", "Simulator must be stored when counting defects. Call Save!(simulator) first."))
         end
         
         # 获取晶格点和原子引用
@@ -72,8 +116,12 @@ function ExtractVacancyLattices(simulator::Simulator)  #提取空位晶格点
 end
 
 #随机位置生成函数
-function RandomPointInCircle(radius::Float64=3.0)#圆内随机点，均匀分布技巧：sqrt(rand()) 确保点在圆内均匀分布，而非聚集在中心
-    rng = THREAD_RNG[Threads.threadid()]  # 获取线程安全的随机数生成器
+function RandomPointInCircle(radius::Float64=3.0, simulator::Union{Simulator, Nothing}=nothing)#圆内随机点，均匀分布技巧：sqrt(rand()) 确保点在圆内均匀分布，而非聚集在中心
+    rng = if isnothing(simulator)
+        Main.THREAD_RNG[Threads.threadid()]  # 向后兼容：如果没有 simulator，使用全局的
+    else
+        get_thread_rng(simulator)  # 使用 simulator 中的 RNG
+    end
     θ = 2π * rand(rng)                    # 生成随机角度 [0, 2π]
     r = sqrt(rand(rng)) * radius          # 生成随机半径，使用sqrt确保均匀分布
     # 转换为笛卡尔坐标
@@ -82,18 +130,26 @@ function RandomPointInCircle(radius::Float64=3.0)#圆内随机点，均匀分布
     return [x, y, 0.0]  # 返回二维点（z=0）
 end
 
-function RandomInSquare(a::Float64, b::Float64)#矩形内随机点，应用场景：矩形区域内的均匀采样
-    rng = THREAD_RNG[Threads.threadid()]  # 线程安全随机数
+function RandomInSquare(a::Float64, b::Float64, simulator::Union{Simulator, Nothing}=nothing)#矩形内随机点，应用场景：矩形区域内的均匀采样
+    rng = if isnothing(simulator)
+        Main.THREAD_RNG[Threads.threadid()]  # 向后兼容：如果没有 simulator，使用全局的
+    else
+        get_thread_rng(simulator)  # 使用 simulator 中的 RNG
+    end
     x = rand(rng) * a  # x坐标在 [0, a] 均匀分布
     y = rand(rng) * b  # y坐标在 [0, b] 均匀分布
     return [x, y, 0.0]  # 返回二维点
 end
 
-function RandomInAnUnitGrapheneCell(a::Float64) #石墨烯原胞内随机点，石墨烯晶格：基于六角晶格的原胞尺寸计算
+function RandomInAnUnitGrapheneCell(a::Float64, simulator::Union{Simulator, Nothing}=nothing) #石墨烯原胞内随机点，石墨烯晶格：基于六角晶格的原胞尺寸计算
     # 计算石墨烯原胞尺寸
     X = a * 3          # x方向长度：3倍碳碳键长
     Y = sqrt(3) * a    # y方向长度：√3倍碳碳键长
-    rng = THREAD_RNG[Threads.threadid()]  # 线程安全随机数
+    rng = if isnothing(simulator)
+        Main.THREAD_RNG[Threads.threadid()]  # 向后兼容：如果没有 simulator，使用全局的
+    else
+        get_thread_rng(simulator)  # 使用 simulator 中的 RNG
+    end
     x = rand(rng) * X  # x坐标在 [0, X] 均匀分布
     y = rand(rng) * Y  # y坐标在 [0, Y] 均匀分布
     return [x, y, 0.0] # 二维石墨烯平面
@@ -101,8 +157,12 @@ end
 
 
 #随机向量生成函数
-function RandomVectorInUnitSphere(θrange::Float64) #单位球内随机向量，θ范围限制：θrange 参数限制向量的最大偏离角度
-    rng = THREAD_RNG[Threads.threadid()]
+function RandomVectorInUnitSphere(θrange::Float64, simulator::Union{Simulator, Nothing}=nothing) #单位球内随机向量，θ范围限制：θrange 参数限制向量的最大偏离角度
+    rng = if isnothing(simulator)
+        Main.THREAD_RNG[Threads.threadid()]  # 向后兼容：如果没有 simulator，使用全局的
+    else
+        get_thread_rng(simulator)  # 使用 simulator 中的 RNG
+    end
     # 球坐标生成
     θ = θrange * rand(rng)  # 极角，限制在 [0, θrange] 范围内
     φ = 2π * rand(rng)      # 方位角，完整 [0, 2π] 范围
@@ -155,8 +215,12 @@ end
 在局部坐标系构造偏离向量
 计算到目标方向的旋转矩阵
 应用旋转得到最终向量=#
-function RandomlyDeviatedVector(incident_direction::AbstractVector, divergence::Float64)#随机偏离向量
-    rng = THREAD_RNG[Threads.threadid()]
+function RandomlyDeviatedVector(incident_direction::AbstractVector, divergence::Float64, simulator::Union{Simulator, Nothing}=nothing)#随机偏离向量
+    rng = if isnothing(simulator)
+        Main.THREAD_RNG[Threads.threadid()]  # 向后兼容：如果没有 simulator，使用全局的
+    else
+        get_thread_rng(simulator)  # 使用 simulator 中的 RNG
+    end
     # 生成随机偏离角度（高斯分布）
     θ = abs(rand(rng, Normal(0.0, divergence)))  # 极角偏离，取绝对值确保非负
     φ = 2π * rand(rng)                           # 随机方位角
@@ -261,7 +325,7 @@ end
 #   4. 启动碰撞级联模拟
 function IrrdiationInCircle(simulator::Simulator, energy::Float64, radius::Float64, center::Vector{Float64})
     # 在指定圆形区域内随机生成入射离子位置
-    ionPosition = RandomPointInCircle(radius) + center
+    ionPosition = RandomPointInCircle(radius, simulator) + center  # 使用 simulator 中的 RNG
     
     # 创建入射离子（使用类型字典中的第一种原子类型）
     ion = Atom(simulator.parameters.typeDict[1], ionPosition, simulator.parameters)

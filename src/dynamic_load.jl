@@ -538,7 +538,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
     simulator.nCascade += 1
 
     # 转储初始状态
-    DumpInCascade_dynamicLoad(simulator)
+    DumpInCascade(simulator)
 
     # 主碰撞循环：持续直到没有活跃原子
     while true
@@ -553,13 +553,13 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         # 为每个活跃原子寻找碰撞目标
         for (na, pAtom) in enumerate(pAtoms)
             # 寻找碰撞目标，过滤掉当前活跃原子和已处理的目标
-            targets, isAlive = ShotTarget_dynamicLoad(pAtom, [pAtomsIndex; pAtom.lastTargets; othersTargetIndexes], simulator)
+            targets, isAlive, _ = ShotTarget(pAtom, [pAtomsIndex; pAtom.lastTargets; othersTargetIndexes], simulator)
 
             # 检查原子是否存活（未飞出边界）
             if !isAlive
                 # 原子飞出边界，清理其目标记录并从系统中删除
                 empty!(pAtom.lastTargets)
-                delete_dynamicLoad!(simulator, pAtom)
+                Base.delete!(simulator, pAtom)
                 push!(deleteIndexes, na)  # 标记待删除
                 continue
             end
@@ -585,13 +585,13 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 pAtom.lastTargets = [t.index for t in targets]
 
                 # 执行碰撞计算，更新所有原子的能量和动量
-                Collision_dynamicLoad!(pAtom, targets, simulator)
+                Collision!(pAtom, targets, simulator)
 
                 # 处理获得能量的目标原子
                 for target in targets
                     if target.energy > 0.0
                         # 目标原子获得足够能量，离开晶格位置成为反冲原子
-                        LeaveLatticePoint_dynamicLoad!(target, simulator)
+                        LeaveLatticePoint!(target, simulator)
                         # 位移目标原子到新位置
                         DisplaceAtom!(target, target.coordinate, simulator)
                         # 将反冲原子加入下一时间步的活跃原子列表
@@ -608,7 +608,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 else
                     # 能量低于停止能量，停止运动并清理目标记录
                     pAtom.lastTargets = Vector{Int64}()
-                    Stop_dynamicLoad!(pAtom, simulator)
+                    Stop!(pAtom, simulator)
                 end
             else
                 # 没有找到碰撞目标，原子继续自由飞行
@@ -617,7 +617,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         end
 
         # 转储当前时间步的原子状态
-        DumpInCascade_dynamicLoad(simulator)
+        DumpInCascade(simulator)
 
         # 检查是否还有活跃原子继续级联
         if length(nextPAtoms) > 0
@@ -770,7 +770,7 @@ function Stop_dynamicLoad!(atom::Atom, simulator::Simulator)
         # 检查原子类型是否与空位类型匹配（通过类型偏移量判断）
         if atom.type == nearestVacancy.type - length(keys(simulator.parameters.typeDict))
             # 类型匹配：删除原子和空位（原子填入空位）
-            delete_dynamicLoad!(simulator, atom)
+            Base.delete!(simulator, atom)
             delete_dynamicLoad!(simulator, nearestVacancy, isDeleteVacancy=true)
         else
             # 类型不匹配：将原子移动到空位位置

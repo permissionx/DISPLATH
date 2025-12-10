@@ -28,9 +28,10 @@ module BCA
 using LinearAlgebra
 using QuadGK
 using Base.MathConstants
-using Main: ConstantsByType
+# ConstantsByType 定义在父模块 DISPLATH 中，使用相对导入
+using ..DISPLATH: ConstantsByType
 
-export CollisionParams, Q_nl
+export CollisionParams, Q_nl, ConstantsByType  # 重新导出以便子模块使用
 
 const qe_squared = Float64(14.399764) # square of element charge, unit: eV*angstrom
 
@@ -241,7 +242,8 @@ end
 
 
 module QLoss
-using Main: ConstantsByType
+# ConstantsByType 从父模块 BCA 导入（BCA 已重新导出）
+using ..BCA: ConstantsByType
 # 
 # constants for different types:
 function S_e(energy_p::Float64, type_p::Int64, type_t::Int64, constantsByType::ConstantsByType)

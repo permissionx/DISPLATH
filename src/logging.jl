@@ -1,5 +1,11 @@
 #日志记录工具代码
 # ===== Professional Logging Utilities =====
+"""
+Logging - 专业日志记录模块
+
+提供带时间戳和颜色格式的日志功能，包括信息、成功、警告、错误和调试级别。
+"""
+module Logging
 using Dates  # 模块导入：导入Julia标准库中的Dates模块，提供时间日期处理功能，用于时间戳生成
 
 # ANSI color codes
@@ -113,5 +119,60 @@ function log_separator()  # 函数定义：分隔线函数，无参数：不需�
     println(DIM, "─" ^ 60, RESET)  # 分隔线生成：使用暗淡样式的水平线重复60次，"─" ^ 60将Unicode水平线字符重复60次，字符串重复：^操作符在Julia中用于字符串重复
 end
 
-# Export the logging functions
-export log_info, log_success, log_warning, log_error, log_debug, log_section, log_separator  # 导出语句：使这些函数在模块被导入时可用，模块设计：清晰的API边界，只导出必要的函数
+# ========== 错误处理框架 ==========
+
+"""
+    DISPLATHError <: Exception
+
+DISPLATH 模块的基础异常类型，所有自定义异常都继承自此类。
+"""
+abstract type DISPLATHError <: Exception end
+
+"""
+    InvalidParameterError <: DISPLATHError
+
+参数验证错误，当输入参数不符合要求时抛出。
+"""
+struct InvalidParameterError <: DISPLATHError
+    parameter::String
+    value::Any
+    reason::String
+end
+
+function Base.showerror(io::IO, e::InvalidParameterError)
+    print(io, "InvalidParameterError: Parameter '$(e.parameter)' = $(e.value) is invalid. Reason: $(e.reason)")
+end
+
+"""
+    SimulationError <: DISPLATHError
+
+模拟运行时错误，当模拟过程中出现不可恢复的问题时抛出。
+"""
+struct SimulationError <: DISPLATHError
+    stage::String  # 错误发生的阶段（如 "Cascade", "DefectStatistics"）
+    details::String
+end
+
+function Base.showerror(io::IO, e::SimulationError)
+    print(io, "SimulationError in $(e.stage): $(e.details)")
+end
+
+"""
+    GeometryError <: DISPLATHError
+
+几何计算错误，当几何操作失败时抛出（如无效坐标、越界等）。
+"""
+struct GeometryError <: DISPLATHError
+    operation::String
+    details::String
+end
+
+function Base.showerror(io::IO, e::GeometryError)
+    print(io, "GeometryError in $(e.operation): $(e.details)")
+end
+
+# Export the logging functions and exceptions
+export log_info, log_success, log_warning, log_error, log_debug, log_section, log_separator
+export DISPLATHError, InvalidParameterError, SimulationError, GeometryError
+
+end # module Logging

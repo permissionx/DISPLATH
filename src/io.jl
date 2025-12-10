@@ -1,5 +1,5 @@
-#将模拟器状态输出为LAMMPS格式
-function Dump(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)# ... 原子数据输出实现
+#将模拟器状态输出为LAMMPS格式（静态加载版本）
+function Dump_staticLoad(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)# ... 原子数据输出实现
     if !simulator.parameters.isOrthogonal
         error("The box is not orthogonal, please use the orthogonal box.")
     end
@@ -529,7 +529,8 @@ function OutputAtoms(atoms::Vector{Atom}, simulator::Simulator, fileName::String
 end
 
 module Output
-using Main: Simulator
+# Simulator 定义在父模块 DISPLATH 中，使用相对导入
+using ..DISPLATH: Simulator
 export @dump, @record
 
 FLUSH_BYTES = 4_096
@@ -668,5 +669,31 @@ atexit() do
     end
 end
 
+end
+
+# =====================================================================
+# 统一接口函数
+# =====================================================================
+
+"""
+    Dump(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)
+
+将模拟器状态输出为LAMMPS格式的统一接口。
+
+根据 `simulator.parameters.is_dynamic_load` 自动选择静态或动态加载实现。
+
+# 参数
+- `simulator::Simulator`: 模拟器对象
+- `fileName::String`: 输出文件名
+- `step::Int64`: 时间步
+- `type::String="a"`: 文件打开模式（"a"=追加，"w"=写入）
+- `isDebug::Bool=false`: 是否输出调试信息
+"""
+function Dump(simulator::Simulator, fileName::String, step::Int64, type::String="a", isDebug::Bool=false)
+    if simulator.parameters.is_dynamic_load
+        Dump_dynamicLoad(simulator, fileName, step, type, isDebug)
+    else
+        Dump_staticLoad(simulator, fileName, step, type, isDebug)
+    end
 end
 
