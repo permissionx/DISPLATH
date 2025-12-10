@@ -2,13 +2,13 @@
 # 优先使用 simulator.workBuffers.threadRNG，如果不可用则回退到 Main.THREAD_RNG（向后兼容）
 function get_thread_rng(simulator::Simulator)
     tid = Threads.threadid()
-    if hasfield(typeof(simulator.workBuffers), :threadRNG) && 
-       length(simulator.workBuffers.threadRNG) >= tid
-        return simulator.workBuffers.threadRNG[tid]
-    else
+    # if hasfield(typeof(simulator.workBuffers), :threadRNG) && 
+    #    length(simulator.workBuffers.threadRNG) >= tid
+    #     return simulator.workBuffers.threadRNG[tid]
+    # else
         # 向后兼容：如果 WorkBuffers 中没有 threadRNG，使用全局的
-        return Main.THREAD_RNG[tid]
-    end
+    return Main.THREAD_RNG[tid]
+    # end
 end
 
 """

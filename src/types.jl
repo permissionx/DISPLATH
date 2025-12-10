@@ -459,7 +459,7 @@ function Parameters(
     is_dynamic_load::Bool = false,                 # 布尔标志，为true时启用动态加载模式（按需加载原子，节省内存）
     nCascadeEveryLoad = 100,                      # 整数，动态加载中每N次碰撞级联后执行内存清理
     maxRSS::Int = 20,                             # 整数，最大内存使用量(单位：GB)，用于动态内存管理
-    isAmorphous = false,                          # 布尔标志，为true时模拟非晶材料结构
+    isAmorphous::Bool = false,                    # 布尔标志，为true时模拟非晶材料结构
     amorphousLength::Float64 = -100.0,            # 浮点数，非晶区域长度(单位：Å)，从顶部开始计算
     random_seed::Int64 = 42,                      # 随机数生成器种子，用于可重现的随机数序列
     debugMode::Bool = false)                      # 布尔标志，为true时启用调试模式和额外检查
@@ -468,74 +468,74 @@ function Parameters(
     # 注意：异常类型在 logging.jl 中定义，通过 DISPLATH 模块导出
     # 由于 types.jl 在 DISPLATH 模块内部被 include，可以直接使用异常类型
     
-    # 验证原胞基向量
-    if size(primaryVectors) != (3, 3)
-        throw(InvalidParameterError("primaryVectors", size(primaryVectors), "Must be a 3×3 matrix"))
-    end
-    det_primary = det(primaryVectors)
-    if det_primary <= 0.0
-        throw(InvalidParameterError("primaryVectors", det_primary, "Determinant must be positive (volume > 0)"))
-    end
+    # # 验证原胞基向量
+    # if size(primaryVectors) != (3, 3)
+    #     throw(InvalidParameterError("primaryVectors", size(primaryVectors), "Must be a 3×3 matrix"))
+    # end
+    # det_primary = det(primaryVectors)
+    # if det_primary <= 0.0
+    #     throw(InvalidParameterError("primaryVectors", det_primary, "Determinant must be positive (volume > 0)"))
+    # end
     
-    # 验证晶格范围
-    if size(latticeRanges) != (3, 2)
-        throw(InvalidParameterError("latticeRanges", size(latticeRanges), "Must be a 3×2 matrix [min max]×3"))
-    end
-    for d in 1:3
-        if latticeRanges[d, 1] >= latticeRanges[d, 2]
-            throw(InvalidParameterError("latticeRanges[$d,:]", latticeRanges[d,:], "min must be < max"))
-        end
-    end
+    # # 验证晶格范围
+    # if size(latticeRanges) != (3, 2)
+    #     throw(InvalidParameterError("latticeRanges", size(latticeRanges), "Must be a 3×2 matrix [min max]×3"))
+    # end
+    # for d in 1:3
+    #     if latticeRanges[d, 1] >= latticeRanges[d, 2]
+    #         throw(InvalidParameterError("latticeRanges[$d,:]", latticeRanges[d,:], "min must be < max"))
+    #     end
+    # end
     
-    # 验证基原子
-    if length(basisTypes) != size(basis, 1)
-        throw(InvalidParameterError("basisTypes", length(basisTypes), "Length must match number of basis atoms"))
-    end
-    if size(basis, 2) != 3
-        throw(InvalidParameterError("basis", size(basis), "Must be N×3 matrix"))
-    end
+    # # 验证基原子
+    # if length(basisTypes) != size(basis, 1)
+    #     throw(InvalidParameterError("basisTypes", length(basisTypes), "Length must match number of basis atoms"))
+    # end
+    # if size(basis, 2) != 3
+    #     throw(InvalidParameterError("basis", size(basis), "Must be N×3 matrix"))
+    # end
     
-    # 验证碰撞参数
-    if pMax <= 0.0
-        throw(InvalidParameterError("pMax", pMax, "Must be positive"))
-    end
-    if vacancyRecoverDistance < 0.0
-        throw(InvalidParameterError("vacancyRecoverDistance", vacancyRecoverDistance, "Must be non-negative"))
-    end
+    # # 验证碰撞参数
+    # if pMax <= 0.0
+    #     throw(InvalidParameterError("pMax", pMax, "Must be positive"))
+    # end
+    # if vacancyRecoverDistance < 0.0
+    #     throw(InvalidParameterError("vacancyRecoverDistance", vacancyRecoverDistance, "Must be non-negative"))
+    # end
     
-    # 验证能量参数
-    if stopEnergy <= 0.0
-        throw(InvalidParameterError("stopEnergy", stopEnergy, "Must be positive"))
-    end
-    if temperature < 0.0
-        throw(InvalidParameterError("temperature", temperature, "Must be non-negative"))
-    end
-    if DebyeTemperature < 0.0
-        throw(InvalidParameterError("DebyeTemperature", DebyeTemperature, "Must be non-negative"))
-    end
+    # # 验证能量参数
+    # if stopEnergy <= 0.0
+    #     throw(InvalidParameterError("stopEnergy", stopEnergy, "Must be positive"))
+    # end
+    # if temperature < 0.0
+    #     throw(InvalidParameterError("temperature", temperature, "Must be non-negative"))
+    # end
+    # if DebyeTemperature < 0.0
+    #     throw(InvalidParameterError("DebyeTemperature", DebyeTemperature, "Must be non-negative"))
+    # end
     
-    # 验证类型字典
-    if isempty(typeDict)
-        throw(InvalidParameterError("typeDict", typeDict, "Cannot be empty"))
-    end
-    for (type_id, element) in typeDict
-        if type_id <= 0
-            throw(InvalidParameterError("typeDict keys", type_id, "Type IDs must be positive integers"))
-        end
-    end
+    # # 验证类型字典
+    # if isempty(typeDict)
+    #     throw(InvalidParameterError("typeDict", typeDict, "Cannot be empty"))
+    # end
+    # for (type_id, element) in typeDict
+    #     if type_id <= 0
+    #         throw(InvalidParameterError("typeDict keys", type_id, "Type IDs must be positive integers"))
+    #     end
+    # end
     
-    # 验证动态加载参数
-    if nCascadeEveryLoad <= 0
-        throw(InvalidParameterError("nCascadeEveryLoad", nCascadeEveryLoad, "Must be positive"))
-    end
-    if maxRSS <= 0
-        throw(InvalidParameterError("maxRSS", maxRSS, "Must be positive"))
-    end
+    # # 验证动态加载参数
+    # if nCascadeEveryLoad <= 0
+    #     throw(InvalidParameterError("nCascadeEveryLoad", nCascadeEveryLoad, "Must be positive"))
+    # end
+    # if maxRSS <= 0
+    #     throw(InvalidParameterError("maxRSS", maxRSS, "Must be positive"))
+    # end
     
-    # 验证 DTE 模式
-    if DTEMode == 2 && isempty(DTEFile)
-        throw(InvalidParameterError("DTEFile", DTEFile, "Required when DTEMode == 2"))
-    end
+    # # 验证 DTE 模式
+    # if DTEMode == 2 && isempty(DTEFile)
+    #     throw(InvalidParameterError("DTEFile", DTEFile, "Required when DTEMode == 2"))
+    # end
     
     # 验证必要的目录和文件存在性
     if !isdir(θτRepository)

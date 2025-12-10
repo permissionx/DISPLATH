@@ -3,14 +3,14 @@ using StaticArrays
 
 # 定义Box构造函数：根据输入向量创建模拟盒子
 function Box(Vectors::Matrix{Float64})
-    # 输入验证
-    if size(Vectors) != (3, 3)
-        throw(GeometryError("Box construction", "Vectors must be a 3×3 matrix, got $(size(Vectors))"))
-    end
-    det_vectors = det(Vectors)
-    if det_vectors <= 0.0
-        throw(GeometryError("Box construction", "Vectors determinant must be positive (volume > 0), got $(det_vectors)"))
-    end
+    # # 输入验证
+    # if size(Vectors) != (3, 3)
+    #     throw(GeometryError("Box construction", "Vectors must be a 3×3 matrix, got $(size(Vectors))"))
+    # end
+    # det_vectors = det(Vectors)
+    # if det_vectors <= 0.0
+    #     throw(GeometryError("Box construction", "Vectors determinant must be positive (volume > 0), got $(det_vectors)"))
+    # end
     
     # 记录盒子创建信息，显示盒子的三维尺寸（四舍五入到2位小数）
     log_info("Box created: $(round(Vectors[1,1]; digits=2)) × $(round(Vectors[2,2]; digits=2)) × $(round(Vectors[3,3]; digits=2)) Å")
@@ -28,19 +28,19 @@ end
 
 # 原子构造函数：根据类型、坐标和参数创建原子对象
 function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
-    # 输入验证
-    if type <= 0
-        throw(InvalidParameterError("type", type, "Atom type must be a positive integer"))
-    end
-    if !haskey(parameters.typeDict, type)
-        throw(InvalidParameterError("type", type, "Atom type not found in typeDict"))
-    end
-    if length(coordinate) != 3
-        throw(GeometryError("Atom construction", "Coordinate must be a 3-element vector, got length $(length(coordinate))"))
-    end
-    if any(!isfinite, coordinate)
-        throw(GeometryError("Atom construction", "Coordinate contains non-finite values: $(coordinate)"))
-    end
+    # # 输入验证
+    # if type <= 0
+    #     throw(InvalidParameterError("type", type, "Atom type must be a positive integer"))
+    # end
+    # if !haskey(parameters.typeDict, type)
+    #     throw(InvalidParameterError("type", type, "Atom type not found in typeDict"))
+    # end
+    # if length(coordinate) != 3
+    #     throw(GeometryError("Atom construction", "Coordinate must be a 3-element vector, got length $(length(coordinate))"))
+    # end
+    # if any(!isfinite, coordinate)
+    #     throw(GeometryError("Atom construction", "Coordinate contains non-finite values: $(coordinate)"))
+    # end
     
     # 初始化原子基本属性
     index = 0                         # 原子索引，初始为0，后续会分配唯一值
@@ -208,12 +208,13 @@ end
 
 # 静态加载模式下获取网格单元（三维数组访问）
 function _GetCellDense(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
-    x, y, z = cellIndex
-    # 边界检查
-    if x < 1 || x > grid.sizes[1] || y < 1 || y > grid.sizes[2] || z < 1 || z > grid.sizes[3]
-        throw(GeometryError("GetCell", "Cell index $cellIndex is out of bounds. Grid size: $(grid.sizes)"))
-    end
-    return grid.cells[x, y, z]  # 使用索引访问三维数组
+    # x, y, z = cellIndex
+    # # 边界检查
+    # if x < 1 || x > grid.sizes[1] || y < 1 || y > grid.sizes[2] || z < 1 || z > grid.sizes[3]
+    #     throw(GeometryError("GetCell", "Cell index $cellIndex is out of bounds. Grid size: $(grid.sizes)"))
+    # end
+    # return grid.cells[x, y, z]  # 使用索引访问三维数组
+    return grid.cells[cellIndex...]
 end
 
 # 创建单个网格单元
@@ -392,17 +393,17 @@ end
 #   parameters::Parameters - 模拟参数集合
 # =====================================================================
 function Simulator(box::Box, atoms::Vector{Atom}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    # 输入验证
-    if size(inputGridVectors) != (3, 3)
-        throw(InvalidParameterError("inputGridVectors", size(inputGridVectors), "Must be a 3×3 matrix"))
-    end
-    det_grid = det(inputGridVectors)
-    if det_grid <= 0.0
-        throw(InvalidParameterError("inputGridVectors", det_grid, "Determinant must be positive (volume > 0)"))
-    end
-    if !parameters.is_dynamic_load && isempty(atoms)
-        throw(InvalidParameterError("atoms", length(atoms), "Atoms vector cannot be empty in static load mode"))
-    end
+    # # 输入验证
+    # if size(inputGridVectors) != (3, 3)
+    #     throw(InvalidParameterError("inputGridVectors", size(inputGridVectors), "Must be a 3×3 matrix"))
+    # end
+    # det_grid = det(inputGridVectors)
+    # if det_grid <= 0.0
+    #     throw(InvalidParameterError("inputGridVectors", det_grid, "Determinant must be positive (volume > 0)"))
+    # end
+    # if !parameters.is_dynamic_load && isempty(atoms)
+    #     throw(InvalidParameterError("atoms", length(atoms), "Atoms vector cannot be empty in static load mode"))
+    # end
     
     log_section("Initializing Simulator")  # 记录模拟器初始化开始
     # 调用内部构造函数创建模拟器实例，此时原子和晶格点尚未加载
@@ -506,13 +507,13 @@ end
 #   parameters::Parameters - 模拟参数集合
 # =====================================================================
 function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    # 输入验证
-    if length(boxSizes) != 3
-        throw(InvalidParameterError("boxSizes", length(boxSizes), "Must be a 3-element vector"))
-    end
-    if any(s -> s <= 0, boxSizes)
-        throw(InvalidParameterError("boxSizes", boxSizes, "All sizes must be positive"))
-    end
+    # # 输入验证
+    # if length(boxSizes) != 3
+    #     throw(InvalidParameterError("boxSizes", length(boxSizes), "Must be a 3-element vector"))
+    # end
+    # if any(s -> s <= 0, boxSizes)
+    #     throw(InvalidParameterError("boxSizes", boxSizes, "All sizes must be positive"))
+    # end
     
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)  # 根据原胞矢量和盒子尺寸创建模拟盒子
     # 如果不是动态加载模式，则创建原子向量；否则，在动态加载模式下，原子将在需要时加载
@@ -919,10 +920,10 @@ Restore!(simulator)  # 直接清空当前状态
 ```
 """
 function Restore!(simulator::Simulator)
-    # 防御性检查
-    if isnothing(simulator.grid)
-        throw(SimulationError("Restore!", "Simulator grid is not initialized"))
-    end
+    # # 防御性检查
+    # if isnothing(simulator.grid)
+    #     throw(SimulationError("Restore!", "Simulator grid is not initialized"))
+    # end
     
     # 静态加载模式需要先保存，动态加载模式不需要
     if !simulator.parameters.is_dynamic_load
@@ -1001,13 +1002,13 @@ Restore!(simulator)
 ```
 """
 function Save!(simulator::Simulator)
-    # 防御性检查
-    if isnothing(simulator.grid)
-        throw(SimulationError("Save!", "Simulator grid is not initialized"))
-    end
-    if isempty(simulator.atoms)
-        throw(SimulationError("Save!", "Cannot save simulator with no atoms"))
-    end
+    # # 防御性检查
+    # if isnothing(simulator.grid)
+    #     throw(SimulationError("Save!", "Simulator grid is not initialized"))
+    # end
+    # if isempty(simulator.atoms)
+    #     throw(SimulationError("Save!", "Cannot save simulator with no atoms"))
+    # end
     
     # 检查所有原子是否都在晶格位置上
     invalid_atoms = Vector{Int64}()

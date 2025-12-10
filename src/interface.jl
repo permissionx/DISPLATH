@@ -18,16 +18,16 @@ function Material(
     boxSizes::Vector{Int64}, 
     inputGridVectors::Matrix{Float64},
     parameters::Parameters)
-    # 输入验证
-    if length(boxSizes) != 3
-        throw(InvalidParameterError("boxSizes", length(boxSizes), "Must be a 3-element vector"))
-    end
-    if any(s -> s <= 0, boxSizes)
-        throw(InvalidParameterError("boxSizes", boxSizes, "All sizes must be positive"))
-    end
-    if size(inputGridVectors) != (3, 3)
-        throw(InvalidParameterError("inputGridVectors", size(inputGridVectors), "Must be a 3×3 matrix"))
-    end
+    # # 输入验证
+    # if length(boxSizes) != 3
+    #     throw(InvalidParameterError("boxSizes", length(boxSizes), "Must be a 3-element vector"))
+    # end
+    # if any(s -> s <= 0, boxSizes)
+    #     throw(InvalidParameterError("boxSizes", boxSizes, "All sizes must be positive"))
+    # end
+    # if size(inputGridVectors) != (3, 3)
+    #     throw(InvalidParameterError("inputGridVectors", size(inputGridVectors), "Must be a 3×3 matrix"))
+    # end
     
     atoms = _PassingLatticeParamtersAndCreateAtoms(primaryVectors, latticeRanges, basisTypes, basis, typeDict, parameters)
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
