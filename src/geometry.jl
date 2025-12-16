@@ -97,6 +97,10 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
     vectors = Matrix{Float64}(undef, 3, 3)
     for d in 1:3
         sizes[d] = Int64(floor(box.vectors[d,d] / inputVectors[d,d]))
+        if sizes[d] < 3
+            error("The box size in dimension $d is too small,  use a larger box! (At least 3 cells in each dimension)")
+            exit()
+        end
         vectors[d,d] = box.vectors[d,d] / sizes[d]
     end
     log_info("Cell grid: $(sizes[1]) × $(sizes[2]) × $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells")
@@ -314,6 +318,8 @@ function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64
     box = Box(boxVectors)
     if !IS_DYNAMIC_LOAD
         atoms = CreateAtomsByPrimaryVectors(parameters)
+    else
+        atoms = Atom[]
     end
     simulator = Simulator(box, atoms, inputGridVectors, parameters)
     return simulator    
@@ -324,6 +330,8 @@ function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, p
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
     if !IS_DYNAMIC_LOAD
         atoms = CreateAtomsByPrimaryVectors(parameters)
+    else 
+        atoms = Atom[]
     end
     simulator = Simulator(box, atoms, inputGridVectors, parameters)
     return simulator    
@@ -339,6 +347,7 @@ function Parameters(pMax::Float64, vacancyRecoverDistance::Float64, typeDict::Di
     parameters = Parameters(primaryVectors, latticeRanges, basisTypes, basis, pMax, vacancyRecoverDistance, typeDict; kwargs...)
     return parameters
 end
+
 
 function LoadAtomsAndBoxFromDataFile(fileName::String; replicate::Vector{Int64} = [1,1,1])
     xlo, xhi, ylo, yhi, zlo, zhi, types, xs, ys, zs = ReadDate(fileName, replicate)

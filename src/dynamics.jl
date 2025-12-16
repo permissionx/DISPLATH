@@ -88,6 +88,15 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
     minVacancyPL = Float64(Inf)
     nearestVacancy::Union{Atom, Nothing} = nothing
     for neighborCellInfo in cell.neighborCellsInfo
+        index = neighborCellInfo.index
+        neighborCell = GetCell(grid, index)
+        if neighborCell.isExplored
+            continue
+        end
+        neighborCell.isExplored = true
+        push!(simulator.exploredCells, neighborCell)
+        infiniteFlag = false
+
         cross = neighborCellInfo.cross
         nonPeriodicFlag = false 
         for d in 1:3
@@ -99,14 +108,7 @@ function GetTargetsFromNeighbor(atom::Atom, cell::Cell, filterIndexes::Vector{In
         if nonPeriodicFlag
             continue 
         end 
-        index = neighborCellInfo.index
-        neighborCell = GetCell(grid, index)
-        if neighborCell.isExplored
-            continue
-        end
-        neighborCell.isExplored = true
-        push!(simulator.exploredCells, neighborCell)
-        infiniteFlag = false
+
         for neighborAtom in neighborCell.atoms
             if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes    
                 continue

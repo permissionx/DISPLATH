@@ -26,34 +26,22 @@ boxSizes = [10, 20, 10]
 inputGridVectors = [2.1 0.0 0.0; 0.0 a*2.1 0.0; 0.0 0.0 a*2.1]  # never be same as primaryVectors 
 material = Material(primaryVectors, latticeRanges, basisTypes, basis, typeDict,
                     boxSizes, inputGridVectors, parameters)
-
-simulator = Simulator(material, parameters)  
-
-
-
 # Process 
+simulator = Simulator(material, parameters)  
 Save!(simulator)  
 @dump "init.dump" simulator.atoms 
 
 
-function Irradiation(simulator::Simulator, energy::Float64)
-    Restore!(simulator)
-    ionPosition =  RandomInSquare(41.6, 48.19) + [0.1, 0.1, 33.0]
-    ion = Atom(2, ionPosition, parameters)
-    SetVelocityDirection!(ion, [0.0, 0.0, -1.0])
-    SetEnergy!(ion,energy)
-    push!(simulator, ion)
-    Cascade!(ion, simulator)
-    _, Vs = DefectStatics(simulator)
-    return length(Vs)
-end
 
 
 @showprogress for energy in 100.0:100.0:1000.0
     mean_nV = 0.0
     for i in 1:10000
         Restore!(simulator)
-        nV = Irradiation(simulator::Simulator, energy::Float64)
+        ionPosition =  RandomInSquare(41.6, 48.19) + [0.1, 0.1, 33.0]
+        Irradiation!(simulator, energy, ionPosition, [0.0,0.0,-1.0], 2, parameters)
+        _, Vs = DefectStatics(simulator)
+        nV = length(Vs)
         mean_nV += nV
     end
     mean_nV /= 10000

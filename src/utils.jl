@@ -184,3 +184,13 @@ function IrrdiationInCircle(simulator::Simulator, energy::Float64, radius::Float
     Cascade!(ion, simulator)
 end
 
+function Irradiation!(simulator::Simulator,  energy::Float64, ionPosition::Vector{Float64}, direction::Vector{Float64}, ionType::Int64, parameters::Parameters,)
+    ion = Atom(ionType, ionPosition, parameters)
+    SetVelocityDirection!(ion, direction)
+    SetEnergy!(ion, energy)
+    push!(simulator, ion)
+    Cascade!(ion, simulator)
+end
+
+
+
