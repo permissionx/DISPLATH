@@ -94,7 +94,7 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
         error("The box is not orthogonal, please use the orthogonal box.")
     end
     sizes = Vector{Int64}(undef, 3)
-    vectors = Matrix{Float64}(undef, 3, 3)
+    vectors = zeros(Float64, 3, 3)
     for d in 1:3
         sizes[d] = Int64(floor(box.vectors[d,d] / inputVectors[d,d]))
         if sizes[d] < 3
@@ -103,6 +103,10 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
         end
         vectors[d,d] = box.vectors[d,d] / sizes[d]
     end
+    return CreateGrid(box, sizes, vectors)
+end
+
+function CreateGrid(box::Box, sizes::Vector{Int64}, vectors::Matrix{Float64})
     log_info("Cell grid: $(sizes[1]) × $(sizes[2]) × $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells")
     log_info("Cell size: $(round(vectors[1,1]; digits=2)) × $(round(vectors[2,2]; digits=2)) × $(round(vectors[3,3]; digits=2)) Å")
     if ! IS_DYNAMIC_LOAD
@@ -128,6 +132,9 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
     log_separator()
     return grid
 end
+
+
+    
 
 
 function _GetCellDense(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
@@ -266,12 +273,33 @@ end
 
 function Simulator(box::Box, atoms::Vector{Atom}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
     log_section("Initializing Simulator")
-    simulator = Simulator(box, inputGridVectors, parameters)
+    simulator = _Simulator(box, inputGridVectors, parameters)
     if !IS_DYNAMIC_LOAD
         LoadAtoms!(simulator, atoms)
     end
     log_success("Simulator initialized.")
     return simulator 
+end
+
+function _Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    grid = CreateGrid(box, inputGridVectors)
+    simulator =  __Simulator(box, grid, parameters)
+    if IS_DYNAMIC_LOAD
+        if !parameters.isOrthogonal
+            error("Box and cell must be orthonoal in dynamic load mode.")
+        end
+        primaryCellNumbersInGridCell = Vector{Int64}(undef, 3)
+        for d in 1:3
+            n = inputGridVectors[d, d] / parameters.primaryVectors[d, d]
+            N = Int64(floor(n))
+            if n != N
+                error("The inputGridVectors must be a multiple of the primaryVectors in dynamic load mode.")
+            end
+            primaryCellNumbersInGridCell[d] = N
+        end
+        InitCellStd!(simulator::Simulator, primaryCellNumbersInGridCell::Vector{Int64})
+    end
+    return simulator
 end
 
 function LoadAtoms!(simulator::Simulator, atoms::Vector{Atom})
@@ -315,6 +343,7 @@ end
 
 
 function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    @warn "Using boxVectors to create simulator will be deprecated. Use Material() instead."
     box = Box(boxVectors)
     if !IS_DYNAMIC_LOAD
         atoms = CreateAtomsByPrimaryVectors(parameters)
@@ -327,6 +356,7 @@ end
 
 
 function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    @warn "Using boxSizes to create simulator will be deprecated. Use Material() instead."
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
     if !IS_DYNAMIC_LOAD
         atoms = CreateAtomsByPrimaryVectors(parameters)
@@ -360,6 +390,7 @@ function LoadAtomsAndBoxFromDataFile(fileName::String; replicate::Vector{Int64} 
 end
 
 function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, parameters::Parameters; replicate::Vector{Int64} = [1,1,1])
+    @warn "Using filename to create simulator will be deprecated. Use Material() instead."
     if IS_DYNAMIC_LOAD
         error("Simulator from date file is not supported in dynamic load mode.")
     end 

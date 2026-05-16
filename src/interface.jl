@@ -50,6 +50,7 @@ function Material(fileName::String, typeDict::Dict{Int64, Element}, inputGridVec
     return material
 end
 
+
 function Simulator(material::Material, parameters::Parameters)
     simulator = Simulator(material.box, material.atoms, material.inputGridVectors, parameters)
     return simulator

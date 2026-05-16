@@ -79,19 +79,19 @@ mutable struct Cell
     # only for orthogonal box
     index::Tuple{Int64, Int64, Int64}
     atoms::Vector{Atom}
-    latticePoints::Vector{LatticePoint}  
     ranges::Matrix{Float64}
     neighborCellsInfo::Array{NeighborCellInfo, 3}
     isExplored::Bool
     atomicDensity::Float64
     # for dynamic load
     latticeAtoms::Vector{Atom}
-    isLoaded::Bool
     vacancies::Vector{Atom}  # also for static load 
     isSavedLatticeRange::Bool
     latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
 end
+
+
 
 
 function Cell(
@@ -111,6 +111,15 @@ function Cell(
     isPushedNeighbor = false
     return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
                     latticeAtoms, isLoaded, vacancies, isSavedLatticeRange, latticeRanges, isPushedNeighbor)     
+end
+
+mutable struct CellStd
+    atoms::Vector{Atom}
+end
+
+function CellStd()
+    atoms = Vector{Atom}()
+    return CellStd(atoms)
 end
 
 
@@ -159,19 +168,19 @@ end
 
 mutable struct Parameters
     primaryVectors::Matrix{Float64}
-    primaryVectors_INV::Matrix{Float64} # not a input 
+    primaryVectors_INV::Matrix{Float64} # not a input, automatic
     latticeRanges::Matrix{Int64}
     basisTypes::Vector{Int64}
     basis::Matrix{Float64}
     θτRepository::String
     pMax::Float64
-    pMax_squared::Float64 # automatic
+    pMax_squared::Float64 # not a input, automatic
     vacancyRecoverDistance_squared::Float64
     typeDict::Dict{Int64, Element}
     #optional 
     periodic::Vector{Bool}
     isOrthogonal::Bool
-    isPrimaryVectorOrthogonal::Bool  # not a input 
+    isPrimaryVectorOrthogonal::Bool  # not a input, automatic
     EPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     pPowerRange::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}
     stopEnergy::Float64
@@ -239,7 +248,7 @@ function Parameters(
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     maxRSS *= 1048576  # unit: kB
     amorphousHeight = latticeRanges[3,2] * primaryVectors[3,3] - amorphousLength
-    return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
+    return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis, 
                       θτRepository, pMax, pMax_squared, vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
                       EPowerRange, pPowerRange, stopEnergy, isNonQnl, DebyeTemperature, isDumpInCascade, 
@@ -335,6 +344,7 @@ mutable struct Simulator
     numberOfVacancies::Int64
     maxVacancyID::Int64
     minLatticeAtomID::Int64
+    cellsStd::Vector{CellStd}
     # for debug
     debugAtoms::Vector{Atom}
     parameters::Parameters
@@ -343,8 +353,9 @@ end
 
 
 
-function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    grid = CreateGrid(box, inputGridVectors)
+
+
+function __Simulator(box::Box, grid::CellGrid, parameters::Parameters)
     constantsByType = InitConstantsByType(parameters.typeDict, parameters)
     θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
     #soap = InitSoap(parameters)
@@ -362,6 +373,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     numberOfVacancies = 0
     maxVacancyID = 1E6
     minLatticeAtomID = 0
+    cellsStd = Vector{CellStd}()
     debugAtoms = Atom[]
     workBuffers = WorkBuffers()
     uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])
@@ -378,6 +390,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
                      vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
+                     cellsStd,
                      debugAtoms,
                      parameters,
                      workBuffers)  
