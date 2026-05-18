@@ -287,16 +287,17 @@ function _Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Par
         if !parameters.isOrthogonal
             error("Box and cell must be orthonoal in dynamic load mode.")
         end
-        primaryCellNumbersInGridCell = Vector{Int64}(undef, 3)
+        primaryCellNumbersInCell = Vector{Int64}(undef, 3)
         for d in 1:3
             n = inputGridVectors[d, d] / parameters.primaryVectors[d, d]
             N = Int64(floor(n))
             if n != N
                 error("The inputGridVectors must be a multiple of the primaryVectors in dynamic load mode.")
             end
-            primaryCellNumbersInGridCell[d] = N
+            primaryCellNumbersInCell[d] = N
         end
-        InitCellStd!(simulator::Simulator, primaryCellNumbersInGridCell::Vector{Int64})
+        parameters.primaryCellNumbersInCell = (primaryCellNumbersInCell[1], primaryCellNumbersInCell[2], primaryCellNumbersInCell[3])
+        InitCellStd!(simulator::Simulator, primaryCellNumbersInCell::Vector{Int64})
     end
     return simulator
 end

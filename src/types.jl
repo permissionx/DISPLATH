@@ -195,6 +195,7 @@ mutable struct Parameters
     isAmorphous::Bool
     amorphousHeight::Float64
     debugMode::Bool
+    primaryCellNumbersInCell::Tuple{Int64, Int64, Int64}
 end
 
 
@@ -242,6 +243,7 @@ function Parameters(
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     maxRSS *= 1048576  # unit: kB
     amorphousHeight = latticeRanges[3,2] * primaryVectors[3,3] - amorphousLength
+    primaryCellNumbersInCell = (-1, -1, -1)
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis, 
                       θτRepository, pMax, pMax_squared, vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
@@ -251,7 +253,7 @@ function Parameters(
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
                       nCascadeEveryLoad, maxRSS, isAmorphous, amorphousHeight, 
-                      debugMode)
+                      debugMode, primaryCellNumbersInCell)
 end 
 
 mutable struct CollisionParamsBuffers
