@@ -33,7 +33,6 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     finalLatticePointEnvIndexs = Vector{Int64}()
     eventIndex = -1
     isNewlyLoaded = false
-    lattcieCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
     indexInCell = 0
     return Atom(index, isAlive, type, coordinate[:], cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
@@ -41,7 +40,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
                 pValue, pVector, pPoint, pL, pAtomIndex, pDirection, lastTargets, # temperory 
                 latticePointIndex,
                 frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, 
-                isNewlyLoaded, lattcieCoordinate, indexInCell)
+                isNewlyLoaded, indexInCell)
 end
 
 

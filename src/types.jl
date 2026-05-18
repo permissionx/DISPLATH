@@ -47,9 +47,7 @@ mutable struct Atom
 
     # for dynamic load 
     isNewlyLoaded::Bool
-    latticeCoordinate::SVector{3,Float64}
     indexInCell::Int64
-
 end
 
 struct Material
@@ -79,14 +77,13 @@ mutable struct Cell
     # only for orthogonal box
     index::Tuple{Int64, Int64, Int64}
     atoms::Vector{Atom}
+    latticePoints::Vector{LatticePoint}
     ranges::Matrix{Float64}
     neighborCellsInfo::Array{NeighborCellInfo, 3}
     isExplored::Bool
     atomicDensity::Float64
     # for dynamic load
-    latticeAtoms::Vector{Atom}
     vacancies::Vector{Atom}  # also for static load 
-    isSavedLatticeRange::Bool
     latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
 end
@@ -102,15 +99,12 @@ function Cell(
     #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo},
     neighborCellsInfo::Array{NeighborCellInfo, 3},
     isExplored::Bool,
-    atomicDensity::Float64)           
-    latticeAtoms = Vector{Atom}()
-    isLoaded = false
+    atomicDensity::Float64)         
     vacancies = Vector{Atom}()
-    isSavedLatticeRange = false
     latticeRanges = Matrix{Int64}(undef, 3, 2)
     isPushedNeighbor = false
     return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
-                    latticeAtoms, isLoaded, vacancies, isSavedLatticeRange, latticeRanges, isPushedNeighbor)     
+                    vacancies, latticeRanges, isPushedNeighbor)     
 end
 
 mutable struct CellStd
@@ -294,6 +288,21 @@ mutable struct WorkBuffers
     end
 end
 
+
+mutable struct LatticeTargetsBuffer
+    count::Int64
+    atoms::Vector{Atom}
+    function LatticeTargetsBuffer()
+        atoms = Vector{Atom}()
+        for _ in 1:1000
+            atom = Atom(1, [-1.0, -1.0, -1.0], parameters)
+            atom.isNewlyLoaded = true
+            push!(atoms, atom)
+        end
+        return new(1, atoms)
+    end
+end
+
 function EnsureCollisionCapacity!(buffers::CollisionParamsBuffers, n::Int)
     if length(buffers.tanφList) < n
         resize!(buffers.tanφList, n)
@@ -345,6 +354,7 @@ mutable struct Simulator
     maxVacancyID::Int64
     minLatticeAtomID::Int64
     cellsStd::Vector{CellStd}
+    latticeTargetsBuffer::LatticeTargetsBuffer
     # for debug
     debugAtoms::Vector{Atom}
     parameters::Parameters
@@ -353,9 +363,7 @@ end
 
 
 
-
-
-function __Simulator(box::Box, grid::CellGrid, parameters::Parameters)
+function __Simulator(box::Box, grid::Grid, parameters::Parameters)
     constantsByType = InitConstantsByType(parameters.typeDict, parameters)
     θFunctions, τFunctions = InitθτFunctions(parameters, constantsByType)
     #soap = InitSoap(parameters)
@@ -376,6 +384,7 @@ function __Simulator(box::Box, grid::CellGrid, parameters::Parameters)
     cellsStd = Vector{CellStd}()
     debugAtoms = Atom[]
     workBuffers = WorkBuffers()
+    latticeTargetsBuffer = LatticeTargetsBuffer()
     uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
@@ -390,7 +399,7 @@ function __Simulator(box::Box, grid::CellGrid, parameters::Parameters)
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
                      vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
-                     cellsStd,
+                     cellsStd, latticeTargetsBuffer,
                      debugAtoms,
                      parameters,
                      workBuffers)  
