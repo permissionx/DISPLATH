@@ -33,7 +33,7 @@ end
 
 function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
     cellsStd = simulator.cellsStd
-    vacancyIDs = [v.cellIndex for v in cell.vacancies]
+    vacancyIDs = [v.indexInCell for v in cell.vacancies]
     nLatticeAtoms = 0
     latticeRanges = simulator.parameters.latticeRanges
     index = cell.index
