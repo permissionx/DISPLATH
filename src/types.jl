@@ -233,12 +233,12 @@ function Parameters(
     if !isdir(θτRepository)
         error("θτRepository $(θτRepository) does not exist.")
     end
-    isPrimaryVectorOrthogonal = (primaryVectors[1,2] == 0.0 && primaryVectors[1,3] == 0.0 && 
-                    primaryVectors[2,1] == 0.0 && primaryVectors[2,3] == 0.0 && 
-                    primaryVectors[3,1] == 0.0 && primaryVectors[3,2] == 0.0)
+    isPrimaryVectorOrthogonal = true #(primaryVectors[1,2] == 0.0 && primaryVectors[1,3] == 0.0 && 
+                    #primaryVectors[2,1] == 0.0 && primaryVectors[2,3] == 0.0 && 
+                    #primaryVectors[3,1] == 0.0 && primaryVectors[3,2] == 0.0)
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     maxRSS *= 1048576  # unit: kB
-    amorphousHeight = latticeRanges[3,2] * primaryVectors[3,3] - amorphousLength
+    amorphousHeight =  Inf # latticeRanges[3,2] * primaryVectors[3,3] - amorphousLength
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax, pMax_squared, vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
