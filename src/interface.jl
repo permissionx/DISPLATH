@@ -70,6 +70,11 @@ function _PassingLatticeParamtersAndCreateAtoms(
     parameters.basisTypes = basisTypes
     parameters.basis = basis
     parameters.typeDict = typeDict
+    parameters.amorphousHeight = latticeRanges[3,2] * primaryVectors[3,3] - parameters.amorphousLength
+    parameters.isPrimaryVectorOrthogonal = (primaryVectors[1,2] == 0.0 && primaryVectors[1,3] == 0.0 && 
+                    primaryVectors[2,1] == 0.0 && primaryVectors[2,3] == 0.0 && 
+                    primaryVectors[3,1] == 0.0 && primaryVectors[3,2] == 0.0)
+    parameters.primaryVectors_INV = inv(primaryVectors)
     if !IS_DYNAMIC_LOAD
         atoms = CreateAtomsByPrimaryVectors(parameters)
     else

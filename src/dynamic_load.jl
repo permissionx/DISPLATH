@@ -44,15 +44,17 @@ function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
         end
     end
     for i in 1:length(cellsStd[1].atoms)
+        atom = cellsStd[1].atoms[i]
         if isEmpty || i in vacancyIDs
-            cellsStd[1].atoms[i].isAlive = false
+            atom.isAlive = false
         else
             nLatticeAtoms += 1
             for d in 1:3
-                cellsStd[1].atoms[i].coordinate[d] = cellsStd[2].atoms[i].coordinate[d] + cell.ranges[d,1]
+                atom.coordinate[d] = cellsStd[2].atoms[i].coordinate[d] + cell.ranges[d,1]
             end
-            cellsStd[1].atoms[i].isAlive = true
-            Pertubation!(cellsStd[1].atoms[i], simulator)
+            atom.isAlive = true
+            atom.cellIndex = cell.index
+            Pertubation!(atom, simulator)
         end
     end
     cell.atomicDensity = (length(cell.atoms) + nLatticeAtoms) / simulator.grid.cellVolume
@@ -151,7 +153,6 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
             end
         end
     end
-
     candidateTargets = simulator.workBuffers.candidateTargets
     empty!(candidateTargets)
     for tc in threadCandidates
@@ -164,13 +165,13 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
         push!(simulator.exploredCells, cell)
     end
 
+
     if isempty(candidateTargets)
         return (targets, infiniteFlag)
     end
     _, minIdx = findmin(t -> t.pL, candidateTargets)
     nearestTarget = candidateTargets[minIdx]   
     push!(targets, nearestTarget)
-
 
     for candidateTarget in candidateTargets
         if candidateTarget.index == nearestTarget.index
@@ -305,7 +306,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         nextPAtoms = Vector{Atom}()
         for (pAtom, targets) in zip(pAtoms, targetsList)
             if length(targets) > 0
-                pAtom.lastTargets = [t.index for t in targets]
+                pAtom.lastTargets = [t.index for t in targets] 
                 Collision_dynamicLoad!(pAtom, targets, simulator)
                 for target in targets
                     if target.energy > 0.0   
@@ -419,10 +420,12 @@ function CopyAtom(atom::Atom, simulator::Simulator)
     end
     newAtom = Atom(atom.type, coord, simulator.parameters)
     newAtom.cellIndex = atom.cellIndex
-    newAtom.pL = atom.pL
-    newAtom.pPoint = SVector{3, Float64}(atom.pPoint[1], atom.pPoint[2], atom.pPoint[3])
-    newAtom.pVector = SVector{3, Float64}(atom.pVector[1], atom.pVector[2], atom.pVector[3])
-    newAtom.pValue = atom.pValue
+    #newAtom.pL = atom.pL
+    #newAtom.pPoint = SVector{3, Float64}(atom.pPoint[1], atom.pPoint[2], atom.pPoint[3])
+    #newAtom.pVector = SVector{3, Float64}(atom.pVector[1], atom.pVector[2], atom.pVector[3])
+    #newAtom.pValue = atom.pValue
+    newAtom.energy = atom.energy
+    newAtom.velocityDirection = SVector{3, Float64}(atom.velocityDirection[1], atom.velocityDirection[2], atom.velocityDirection[3])
     return newAtom
 end
 
@@ -453,6 +456,7 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, filter
             SetCellNeighborInfo!(cell, grid)
             cell.isPushedNeighbor = true
         end
+
         targets, isInfinity = GetTargetsFromNeighbor_dynamicLoad(atom, cell, filterIndexes, filterLatticeIndexes, simulator)
         if length(targets) > 0
             for cell in simulator.exploredCells
