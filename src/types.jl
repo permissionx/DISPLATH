@@ -190,6 +190,7 @@ mutable struct Parameters
     nCascadeEveryLoad::Int64
     maxRSS::Int64
     isAmorphous::Bool
+    amorphousLength::Float64
     amorphousHeight::Float64
     debugMode::Bool
 end
@@ -233,12 +234,12 @@ function Parameters(
     if !isdir(θτRepository)
         error("θτRepository $(θτRepository) does not exist.")
     end
-    isPrimaryVectorOrthogonal = true #(primaryVectors[1,2] == 0.0 && primaryVectors[1,3] == 0.0 && 
-                    #primaryVectors[2,1] == 0.0 && primaryVectors[2,3] == 0.0 && 
-                    #primaryVectors[3,1] == 0.0 && primaryVectors[3,2] == 0.0)
+    isPrimaryVectorOrthogonal = (primaryVectors[1,2] == 0.0 && primaryVectors[1,3] == 0.0 && 
+                    primaryVectors[2,1] == 0.0 && primaryVectors[2,3] == 0.0 && 
+                    primaryVectors[3,1] == 0.0 && primaryVectors[3,2] == 0.0)
     vacancyRecoverDistance_squared = vacancyRecoverDistance * vacancyRecoverDistance
     maxRSS *= 1048576  # unit: kB
-    amorphousHeight =  Inf # latticeRanges[3,2] * primaryVectors[3,3] - amorphousLength
+    amorphousHeight =  latticeRanges[3,2] * primaryVectors[3,3] - amorphousLength
     return Parameters(primaryVectors, primaryVectors_INV, latticeRanges, basisTypes, basis,
                       θτRepository, pMax, pMax_squared, vacancyRecoverDistance_squared, typeDict,
                       periodic, isOrthogonal, isPrimaryVectorOrthogonal,
@@ -247,7 +248,7 @@ function Parameters(
                       #soapParameters, 
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousHeight, 
+                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousLength, amorphousHeight, 
                       debugMode)
 end 
 
