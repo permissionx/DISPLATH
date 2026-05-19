@@ -381,6 +381,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
             end
         end
         DumpInCascade_dynamicLoad(simulator)
+        exit()
         if length(nextPAtoms) > 0
             pAtoms = nextPAtoms
             sort!(pAtoms, by = a -> a.energy, rev = true)
