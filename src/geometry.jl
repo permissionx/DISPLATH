@@ -94,7 +94,7 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
         error("The box is not orthogonal, please use the orthogonal box.")
     end
     sizes = Vector{Int64}(undef, 3)
-    vectors = Matrix{Float64}(undef, 3, 3)
+    vectors = zeros(Float64, 3, 3)
     for d in 1:3
         sizes[d] = Int64(floor(box.vectors[d,d] / inputVectors[d,d]))
         if sizes[d] < 3
@@ -315,6 +315,7 @@ end
 
 
 function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    @warn "will be deprecated"
     box = Box(boxVectors)
     if !IS_DYNAMIC_LOAD
         atoms = CreateAtomsByPrimaryVectors(parameters)
@@ -327,6 +328,7 @@ end
 
 
 function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    @warn "will be deprecated"
     box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
     if !IS_DYNAMIC_LOAD
         atoms = CreateAtomsByPrimaryVectors(parameters)
@@ -360,6 +362,7 @@ function LoadAtomsAndBoxFromDataFile(fileName::String; replicate::Vector{Int64} 
 end
 
 function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, parameters::Parameters; replicate::Vector{Int64} = [1,1,1])
+    @warn "will be deprecated"
     if IS_DYNAMIC_LOAD
         error("Simulator from date file is not supported in dynamic load mode.")
     end 
