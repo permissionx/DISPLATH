@@ -113,6 +113,12 @@ function Cell(
                     latticeAtoms, isLoaded, vacancies, isSavedLatticeRange, latticeRanges, isPushedNeighbor)     
 end
 
+struct CellStd
+    atoms::Vector{Atom}
+    function CellStd()
+        return new(Vector{Atom}())
+    end
+end
 
 macro cell_storage_type()
     if IS_DYNAMIC_LOAD
@@ -336,6 +342,7 @@ mutable struct Simulator
     numberOfVacancies::Int64
     maxVacancyID::Int64
     minLatticeAtomID::Int64
+    cellStd::CellStd
     # for debug
     debugAtoms::Vector{Atom}
     parameters::Parameters
@@ -366,6 +373,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     debugAtoms = Atom[]
     workBuffers = WorkBuffers()
     uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])
+    cellStd = CellStd()
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
                      0, 0, 
@@ -378,7 +386,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      #soap, 
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
-                     vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
+                     vacancies, numberOfVacancies, maxVacancyID, minLatticeAtomID, cellStd,
                      debugAtoms,
                      parameters,
                      workBuffers)  
