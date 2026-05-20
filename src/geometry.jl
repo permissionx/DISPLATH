@@ -147,14 +147,43 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
     cell = Cell(cellIndex, Vector{Atom}(), Vector{LatticePoint}(), 
                             ranges, 
                             Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
+    
     return cell
 end
 
+function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64})
+    ranges = Matrix{Float64}(undef, 3, 2)
+    ranges[1,1] = (x-1) * vectors[1,1]
+    ranges[1,2] = x * vectors[1,1]
+    ranges[2,1] = (y-1) * vectors[2,2]
+    ranges[2,2] = y * vectors[2,2]
+    ranges[3,1] = (z-1) * vectors[3,3]
+    ranges[3,2] = z * vectors[3,3]  
+    cell.cellIndex = cellIndex
+    cell.ranges = ranges
+    cell.isPushedNeighbor = false
+end
+
+
 
 function _GetCellDict!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
-    return get!(grid.cells, cellIndex) do
-        CreateCell(cellIndex, grid.vectors)
+    dks = simulator.deprecatedCellKeys
+    cells = grid.cells
+    if haskey(cells, cellIndex)
+        if cellIndex in dks
+            delete!(dks, cellIndex)
+        end
+    else
+        if isempty(dks)
+            cell = CreateCell(cellIndex, grid.vectors)
+            cells[cellIndex] = cell
+        else
+            dk = pop!(dks)
+            cells[cellIndex] = pop!(cells, dk)
+            UpdateCell!(cells[cellIndex])
+        end
     end
+    return cells[cellIndex]
 end 
 
 
@@ -265,9 +294,20 @@ end
 
 
 function Simulator(box::Box, atoms::Vector{Atom}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    # this is the last entrace for simulator initilization 
     log_section("Initializing Simulator")
-    simulator = Simulator(box, inputGridVectors, parameters)
-    if !IS_DYNAMIC_LOAD
+    simulator = Simulator(box, inputGridVectors, parameters) # object creation
+    if IS_DYNAMIC_LOAD
+        PN = Vector{Int64}(undef, 3)
+        for d in 1:3 
+            num = inputGridVectors[d,d] / parameters.primaryVectors[d, d]
+            if !round(num) ≈ num
+                error("InputGridVector must be integer multiple of primaryVector!")
+            end
+            PN[d] = Int64(round(inputGridVectors[d,d] / parameters.primaryVectors[d, d]))
+        end
+        InitCellStd!(simulator, PN)
+    else
         LoadAtoms!(simulator, atoms)
     end
     log_success("Simulator initialized.")

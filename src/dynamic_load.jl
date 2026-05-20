@@ -1,134 +1,69 @@
 using StaticArrays
 
-function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
+function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
     parameters = simulator.parameters
-    primaryVectors = parameters.primaryVectors
-    latticeRanges = parameters.latticeRanges
     basisTypes = parameters.basisTypes
     basis = parameters.basis
-    if !cell.isSavedLatticeRange
-        # Optimized calculation for orthogonal case
-        #a1, a2, a3 = primaryVectors[1,1], primaryVectors[2,2], primaryVectors[3,3]
-        for d in 1:3
-            cell.latticeRanges[d,1] = max(floor(Int, cell.ranges[d,1] / primaryVectors[d,d]), latticeRanges[d,1])    
-            cell.latticeRanges[d,2] = min(floor(Int, cell.ranges[d,2] / primaryVectors[d,d]), latticeRanges[d,2])
-        end
-        cell.isSavedLatticeRange = true
-    end
-    #coordinate = Vector{Float64}(undef, 3)
-    coordinate = simulator.workBuffers.coordinates[Threads.threadid()]
+    primaryVectors = parameters.primaryVectors
+    cellsStd = simulator.cellsStd
     indexInCell = 0
-    for x in cell.latticeRanges[1,1]:cell.latticeRanges[1,2]
-        for y in cell.latticeRanges[2,1]:cell.latticeRanges[2,2]
-            for z in cell.latticeRanges[3,1]:cell.latticeRanges[3,2]
+    cellStd = simulator.cellStd
+    for X in 0:nP[1]-1
+        for Y in 0:nP[2]-1
+            for Z in 0:nP[3]-1
                 for i in 1:length(basisTypes)
                     indexInCell += 1
-                    if !simulator.parameters.isAmorphous && any(v -> v.indexInCell == indexInCell, cell.vacancies)
-                        continue
-                    end
-                    coordinate[1] = primaryVectors[1,1] * (x + basis[i, 1])
-                    coordinate[2] = primaryVectors[2,2] * (y + basis[i, 2])
-                    coordinate[3] = primaryVectors[3,3] * (z + basis[i, 3])
-                    if x == cell.latticeRanges[1,1] || x == cell.latticeRanges[1,2] || y == cell.latticeRanges[2,1] || y == cell.latticeRanges[2,2] || z == cell.latticeRanges[3,1] || z == cell.latticeRanges[3,2]
-                        if (coordinate[1] < cell.ranges[1,1] || coordinate[1] >= cell.ranges[1,2] ||
-                            coordinate[2] < cell.ranges[2,1] || coordinate[2] >= cell.ranges[2,2] ||
-                            coordinate[3] < cell.ranges[3,1] || coordinate[3] >= cell.ranges[3,2])
-                            continue
-                        end
-                    end      
-                    atom = Atom(basisTypes[i], copy(coordinate), parameters)
-                    atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
-                    atom.cellIndex = cell.index
+                    x = (X + basis[i,1]) * primaryVectors[1,1]
+                    y = (Y + basis[i,2]) * primaryVectors[2,2]
+                    z = (Z + basis[i,3]) * primaryVectors[3,3]
+                    atom = Atom(basisTypes[i], [x, y, z], parameters)
                     atom.index = 0 
-                    atom.isNewlyLoaded = true
                     atom.indexInCell = indexInCell
-                    Pertubation!(atom, simulator)  
-                    push!(cell.latticeAtoms, atom)
-                    #if simulator.parameters.debugMode == true
-                    #    push!(simulator.debugAtoms, atom)
-                    #end
+                    push!(cellStd.atoms, atprimaryVectorsom)
                 end
             end
         end
-    end
-    if simulator.parameters.isAmorphous
-        resize!(cell.latticeAtoms, length(cell.latticeAtoms) - length(cell.vacancies))
     end
 end
 
 
-function ComputeLatticeAtoms_General!(cell::Cell, simulator::Simulator)  # this is wrong!!
-    parameters = simulator.parameters
-    primaryVectors = parameters.primaryVectors
-    latticeRanges = parameters.latticeRanges
-    basisTypes = parameters.basisTypes
-    basis = parameters.basis
-    if !cell.isSavedLatticeRange
-        # Original calculation for non-orthogonal case
-        primaryVectors_INV = parameters.primaryVectors_INV
-        vertexMatrix = Matrix{Float64}(undef, 8, 3)
-        vertexMatrix[1,:] = [ranges[1,1], ranges[2,1], ranges[3,1]]  
-        vertexMatrix[2,:] = [ranges[1,1], ranges[2,1], ranges[3,2]]  
-        vertexMatrix[3,:] = [ranges[1,2], ranges[2,1], ranges[3,1]]  
-        vertexMatrix[4,:] = [ranges[1,2], ranges[2,1], ranges[3,2]]  
-        vertexMatrix[5,:] = [ranges[1,1], ranges[2,2], ranges[3,1]]  
-        vertexMatrix[6,:] = [ranges[1,1], ranges[2,2], ranges[3,2]]  
-        vertexMatrix[7,:] = [ranges[1,2], ranges[2,2], ranges[3,1]]  
-        vertexMatrix[8,:] = [ranges[1,2], ranges[2,2], ranges[3,2]]  
-        nfrac = vertexMatrix * primaryVectors_INV
-        nmin = [floor(Int, minimum(nfrac[:, 1]) - 1), 
-                floor(Int, minimum(nfrac[:, 2]) - 1), 
-                floor(Int, minimum(nfrac[:, 3]) - 1)]
-        nmax = [ceil(Int, maximum(nfrac[:, 1]) + 1),
-                ceil(Int, maximum(nfrac[:, 2]) + 1),
-                ceil(Int, maximum(nfrac[:, 3]) + 1)]
-        for d in 1:3
-            cell.latticeRanges[d,1] = max(nmin[d],latticeRanges[d,1])
-            cell.latticeRanges[d,2] = min(nmax[d],latticeRanges[d,2])
+function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
+    cellsStd = simulator.cellsStd
+    vacancyIDs = [v.indexInCell for v in cell.vacancies]
+    nLatticeAtoms = 0
+    latticeRanges = simulator.parameters.latticeRanges
+    index = cell.index
+    isEmpty = false
+    for d in 1:3
+        if index[d] < latticeRanges[d,1] / simulator.parameters.primaryCellNumbersInCell[d] || index[d] > latticeRanges[d,2] / simulator.parameters.primaryCellNumbersInCell[d]
+            isEmpty = true
         end
-        cell.isSavedLatticeRange = true
-    else
-        n1, n2, n3 = cell.latticeRanges
     end
-    # Get cell ranges for coordinate filtering
-    ranges = cell.ranges
-    x_min, x_max = ranges[1, 1], ranges[1, 2]
-    y_min, y_max = ranges[2, 1], ranges[2, 2] 
-    z_min, z_max = ranges[3, 1], ranges[3, 2]
-    # Original generation for non-orthogonal case
-    for x in n1, y in n2, z in n3, i in 1:length(basisTypes)
-        coordinate = primaryVectors' * (Float64[x, y, z] + basis[i, :])
-        
-        # Check if atom is within cell boundaries
-        if (coordinate[1] >= x_min && coordinate[1] <= x_max &&
-            coordinate[2] >= y_min && coordinate[2] <= y_max &&
-            coordinate[3] >= z_min && coordinate[3] <= z_max)
-            for vacancy in cell.vacancies
-                if ComputeDistance_squared(coordinate, vacancy.coordinate, (Int8(0), Int8(0), Int8(0)), simulator.box) < 1E-10
-                    continue
-                end
+    for i in 1:length(cellsStd[1].atoms)
+        atom = cellsStd[1].atoms[i]
+        if isEmpty || i in vacancyIDs
+            atom.isAlive = false
+        else
+            nLatticeAtoms += 1
+            for d in 1:3
+                atom.coordinate[d] = cellsStd[2].atoms[i].coordinate[d] + cell.ranges[d,1]
             end
-            atom = Atom(basisTypes[i], coordinate, parameters)
-            atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
+            atom.isAlive = true
             atom.cellIndex = cell.index
-            atom.index = 0  # temporary value
-            atom.isNewlyLoaded = true
             Pertubation!(atom, simulator)
-            push!(cell.latticeAtoms, atom)
         end
     end
+    cell.atomicDensity = (length(cell.atoms) + nLatticeAtoms) / simulator.grid.cellVolume
 end
+
 
 function LoadCellAtoms!(cell::Cell, simulator::Simulator)
-    if !cell.isLoaded
         if simulator.parameters.isPrimaryVectorOrthogonal
             ComputeLatticeAtoms_Orthogonal!(cell, simulator)
         else
-            ComputeLatticeAtoms_General!(cell, simulator) # not working correctly
+            error("Lattice must be orthogonal!")
         end
         cell.atomicDensity = length(cell.latticeAtoms) / simulator.grid.cellVolume
-        cell.isLoaded = true
-    end
 end
 
 function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexes::Vector{Int64}, simulator::Simulator)
@@ -138,8 +73,6 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
     pMax = simulator.parameters.pMax
     nthreads = Threads.nthreads()
     neighborCellsInfo = cell.neighborCellsInfo
-    AlreadyLoadedFlags = [true for _ in 1:27]
-    infiniteFlag_tls = [true for _ in 1:27]
     threadCandidates = simulator.workBuffers.threadCandidates
     for tc in threadCandidates
         empty!(tc)
@@ -167,15 +100,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
         buf = threadCandidates[Threads.threadid()]
         index = neighborCellInfo.index
         neighborCell = GetCell(grid, index)
-        if neighborCell.isExplored
-            continue
-        end
-        if !neighborCell.isLoaded
-            AlreadyLoadedFlags[n] = false
-        end
         LoadCellAtoms!(neighborCell, simulator)
-        neighborCell.isExplored = true
-        infiniteFlag_tls[n] = false
         na = length(neighborCell.atoms) 
         for n in 1:na+ length(neighborCell.latticeAtoms)
         #for neighborAtom in [neighborCell.atoms; neighborCell.latticeAtoms]
@@ -202,21 +127,10 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
     for tc in threadCandidates
         append!(candidateTargets, tc)
     end
-    infiniteFlag = reduce(&, infiniteFlag_tls)
-    for (neighborCellInfo, flag) in zip(neighborCellsInfo, AlreadyLoadedFlags)
-        idx = neighborCellInfo.index
-        cell = GetCell(simulator.grid, idx)
-        push!(simulator.exploredCells, cell)
-        if flag == false
-            for atom in cell.latticeAtoms
-                simulator.minLatticeAtomID -= 1
-                atom.index = simulator.minLatticeAtomID
-            end
-        end
-    end
+
 
     if isempty(candidateTargets)
-        return (targets, infiniteFlag)
+        return targets
     end
     _, minIdx = findmin(t -> t.pL, candidateTargets)
     nearestTarget = candidateTargets[minIdx]   
@@ -231,7 +145,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
             push!(targets, candidateTarget)
         end
     end    
-    return (targets, infiniteFlag)
+    return targets
 end
 
 function SimultaneousCriteria(candidateTarget::Atom, nearestTarget::Atom, simulator::Simulator)
@@ -397,8 +311,9 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
     end
 end
 
+
+
 function CleanUpLatticeAtoms(simulator::Simulator)
-    empty!(simulator.exploredCells)
     empty!(simulator.grid.cells)
     GC.gc()
     for atom in simulator.atoms
@@ -424,14 +339,6 @@ function delete_dynamicLoad!(simulator::Simulator, atom::Atom; isDeleteVacancy::
         simulator.numberOfAtoms -= 1
     else
         deleteat!(cell.vacancies, findfirst(v -> v.index == atom.index, cell.vacancies))
-        if cell.isLoaded
-            atom.type -= length(keys(simulator.parameters.typeDict))
-            latom = CopyAtom(atom, simulator)
-            simulator.minLatticeAtomID -= 1
-            latom.index = simulator.minLatticeAtomID
-            push!(cell.latticeAtoms, latom)
-            latom.isNewlyLoaded = true
-        end 
         simulator.numberOfVacancies -= 1
     end
     atom.isAlive = false 
@@ -529,12 +436,8 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
             SetCellNeighborInfo!(cell, grid)
             cell.isPushedNeighbor = true
         end
-        targets, isInfinity = GetTargetsFromNeighbor_dynamicLoad(atom, cell, filterIndexes, simulator)
+        targets = GetTargetsFromNeighbor_dynamicLoad(atom, cell, filterIndexes, simulator)
         if length(targets) > 0
-            for cell in simulator.exploredCells
-                cell.isExplored = false
-            end
-            empty!(simulator.exploredCells)
             return targets, true
         else
             dimension, direction, t = AtomOutFaceDimension(atom, cell)
@@ -547,12 +450,8 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
             if crossFlag[dimension] != 0 && periodic[dimension]
                 atom.coordinate[dimension] -= crossFlag[dimension] * simulator.box.vectors[dimension, dimension]
             end
-            if (neighborInfo.cross[dimension] != 0 && !periodic[dimension]) || isInfinity
-                for cell in simulator.exploredCells
-                    cell.isExplored = false
-                end
+            if (neighborInfo.cross[dimension] != 0 && !periodic[dimension]) || t >= simulator.parameters.infiniteLength
                 atom.emptyPath = 0.0
-                empty!(simulator.exploredCells)
                 return Vector{Atom}(), false # means find nothing  
             end 
             index = neighborInfo.index
@@ -629,16 +528,6 @@ function Restore_dynamicLoad!(simulator::Simulator)
         if atom.isAlive
             cellIndex = atom.cellIndex
             cell = GetCell(simulator.grid, cellIndex)
-            if cell.isLoaded && atom.type > length(keys(simulator.parameters.typeDict)) 
-                latticeAtom = Atom(atom.type-length(keys(simulator.parameters.typeDict)), atom.coordinate, parameters)
-                latticeAtom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])  
-                Pertubation!(latticeAtom, simulator)
-                latticeAtom.cellIndex = cell.index
-                simulator.minLatticeAtomID -= 1
-                latticeAtom.index = simulator.minLatticeAtomID
-                latticeAtom.isNewlyLoaded = true
-                push!(cell.latticeAtoms, latticeAtom)
-            end
             empty!(cell.atoms)
         end
     end

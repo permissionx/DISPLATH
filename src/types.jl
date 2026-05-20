@@ -86,9 +86,7 @@ mutable struct Cell
     atomicDensity::Float64
     # for dynamic load
     latticeAtoms::Vector{Atom}
-    isLoaded::Bool
     vacancies::Vector{Atom}  # also for static load 
-    isSavedLatticeRange::Bool
     latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
 end
@@ -104,13 +102,11 @@ function Cell(
     isExplored::Bool,
     atomicDensity::Float64)           
     latticeAtoms = Vector{Atom}()
-    isLoaded = false
     vacancies = Vector{Atom}()
-    isSavedLatticeRange = false
     latticeRanges = Matrix{Int64}(undef, 3, 2)
     isPushedNeighbor = false
     return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
-                    latticeAtoms, isLoaded, vacancies, isSavedLatticeRange, latticeRanges, isPushedNeighbor)     
+                    latticeAtoms, vacancies, latticeRanges, isPushedNeighbor)     
 end
 
 struct CellStd
@@ -198,6 +194,7 @@ mutable struct Parameters
     isAmorphous::Bool
     amorphousLength::Float64
     amorphousHeight::Float64
+    infiniteLength::Float64
     debugMode::Bool
 end
 
@@ -233,7 +230,9 @@ function Parameters(
     maxRSS::Int = 20, # unit: GB
     isAmorphous::Bool = false,
     amorphousLength::Float64 = -100.0,
+    infiniteLength::Float64 = 1000.0,
     debugMode::Bool = false) 
+
     pMax_squared = pMax * pMax 
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
@@ -254,7 +253,7 @@ function Parameters(
                       #soapParameters, 
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousLength, amorphousHeight, 
+                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousLength, amorphousHeight, infiniteLength,
                       debugMode)
 end 
 
@@ -342,6 +341,7 @@ mutable struct Simulator
     numberOfVacancies::Int64
     maxVacancyID::Int64
     minLatticeAtomID::Int64
+    deprecatedCellKeys::Set{Tuple{Int64, Int64, Int64}}
     cellStd::CellStd
     # for debug
     debugAtoms::Vector{Atom}
@@ -374,6 +374,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     workBuffers = WorkBuffers()
     uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])
     cellStd = CellStd()
+    deprecatedCellKeys = Set{Tuple{Int64, Int64, Int64}}()
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
                      0, 0, 
