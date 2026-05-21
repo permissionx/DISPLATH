@@ -24,47 +24,10 @@ function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
             end
         end
     end
+    simulator.cellLatticeAtomNumber = indexInCell
 end
 
 
-function ComputeLatticeAtoms_Orthogonal!(cell::Cell, simulator::Simulator)
-    cellsStd = simulator.cellsStd
-    vacancyIDs = [v.indexInCell for v in cell.vacancies]
-    nLatticeAtoms = 0
-    latticeRanges = simulator.parameters.latticeRanges
-    index = cell.index
-    isEmpty = false
-    for d in 1:3
-        if index[d] < latticeRanges[d,1] / simulator.parameters.primaryCellNumbersInCell[d] || index[d] > latticeRanges[d,2] / simulator.parameters.primaryCellNumbersInCell[d]
-            isEmpty = true
-        end
-    end
-    for i in 1:length(cellsStd[1].atoms)
-        atom = cellsStd[1].atoms[i]
-        if isEmpty || i in vacancyIDs
-            atom.isAlive = false
-        else
-            nLatticeAtoms += 1
-            for d in 1:3
-                atom.coordinate[d] = cellsStd[2].atoms[i].coordinate[d] + cell.ranges[d,1]
-            end
-            atom.isAlive = true
-            atom.cellIndex = cell.index
-            Pertubation!(atom, simulator)
-        end
-    end
-    cell.atomicDensity = (length(cell.atoms) + nLatticeAtoms) / simulator.grid.cellVolume
-end
-
-
-function LoadCellAtoms!(cell::Cell, simulator::Simulator)
-        if simulator.parameters.isPrimaryVectorOrthogonal
-            ComputeLatticeAtoms_Orthogonal!(cell, simulator)
-        else
-            error("Lattice must be orthogonal!")
-        end
-        cell.atomicDensity = length(cell.latticeAtoms) / simulator.grid.cellVolume
-end
 
 function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexes::Vector{Int64}, simulator::Simulator)
     grid = simulator.grid
@@ -279,7 +242,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 for target in targets
                     if target.energy > 0.0   
                         LeaveLatticePoint_dynamicLoad!(target, simulator)
-                        DisplaceAtom!(target, target.coordinate, simulator)
+                        DisplaceAtom!(target, target.coordinate, simulator) # why?
                         push!(nextPAtoms, target)
                         target.lastTargets = [pAtom.index]
                     end
@@ -339,10 +302,20 @@ function delete_dynamicLoad!(simulator::Simulator, atom::Atom; isDeleteVacancy::
         simulator.numberOfAtoms -= 1
     else
         deleteat!(cell.vacancies, findfirst(v -> v.index == atom.index, cell.vacancies))
+        if cell.isLoaded
+            atom.type -= length(keys(simulator.parameters.typeDict))
+            latom = CopyAtom(atom, simulator)
+            simulator.minLatticeAtomID -= 1
+            latom.index = simulator.minLatticeAtomID
+            push!(cell.latticeAtoms, latom)
+            latom.isNewlyLoaded = true
+        end 
         simulator.numberOfVacancies -= 1
     end
     atom.isAlive = false 
 end
+
+function UpdateCellNeighborInfo!(cll, grid)
 
 function Stop_dynamicLoad!(atom::Atom, simulator::Simulator)
     grid = simulator.grid
@@ -351,8 +324,11 @@ function Stop_dynamicLoad!(atom::Atom, simulator::Simulator)
     isExist = false
     nearestVacancy = nothing  
     if ! cell.isPushedNeighbor
-        SetCellNeighborInfo!(cell, grid)
-        cell.isPushedNeighbor = true
+        if !cell.hasNeighbor
+            SetCellNeighborInfo!(cell, grid)
+        else
+            UpdateCellNeighborInfo!(cell, grid)
+        end
     end
     if simulator.parameters.vacancyRecoverDistance_squared == 0.0
         return
@@ -423,9 +399,6 @@ function CreateVacancy(atom::Atom, simulator::Simulator)
 end
 
 
-                                                   
-
-
 function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulator)
     grid = simulator.grid
     periodic = simulator.parameters.periodic    
@@ -433,8 +406,11 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
     atom.emptyPath = 0.0
     while true
         if ! cell.isPushedNeighbor
-            SetCellNeighborInfo!(cell, grid)
-            cell.isPushedNeighbor = true
+            if ! cell.hasNeighbor
+                SetCellNeighborInfo!(cell, grid)
+            else 
+                UpdateCellNeighborInfo!(cell, grid)
+            end
         end
         targets = GetTargetsFromNeighbor_dynamicLoad(atom, cell, filterIndexes, simulator)
         if length(targets) > 0
@@ -442,11 +418,24 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
         else
             dimension, direction, t = AtomOutFaceDimension(atom, cell)
             atom.emptyPath = t
-            neighborIndex = MVector{3,Int8}(0, 0, 0)  
-            neighborIndex[dimension] = direction == 1 ? Int8(-1) : Int8(1)
-            neighborIndex .+= 2
+            neighborIndex = MVector{3,Int8}(2, 2, 2)  
+            neighborIndex[dimension] = direction == 1 ? Int8(1) : Int8(3)
             neighborInfo = cell.neighborCellsInfo[neighborIndex[1], neighborIndex[2], neighborIndex[3]]
             crossFlag = neighborInfo.cross
+            for i in 1:3
+                for j in 1:3
+                    oppoDirection = direction == 1? Int8(3) : Int8(1)
+                    if dimension == 1
+                        deprecatedCellKey =  [oppoDirection, i, j]
+                    elseif dimension == 2
+                        deprecatedCellKey = [i, oppoDirection, j]
+                    else
+                        deprecatedCellKey = [i, j, oppoDirection]
+                    end
+                    cell = GetCell(grid, GetCell(grid, cell.neighborCellsInfo[deprecatedCellKey...].index))
+                    DeprecateCell!(cell, simulator)
+                end
+            end
             if crossFlag[dimension] != 0 && periodic[dimension]
                 atom.coordinate[dimension] -= crossFlag[dimension] * simulator.box.vectors[dimension, dimension]
             end
@@ -528,6 +517,16 @@ function Restore_dynamicLoad!(simulator::Simulator)
         if atom.isAlive
             cellIndex = atom.cellIndex
             cell = GetCell(simulator.grid, cellIndex)
+            if cell.isLoaded && atom.type > length(keys(simulator.parameters.typeDict)) 
+                latticeAtom = Atom(atom.type-length(keys(simulator.parameters.typeDict)), atom.coordinate, parameters)
+                latticeAtom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])  
+                Pertubation!(latticeAtom, simulator)
+                latticeAtom.cellIndex = cell.index
+                simulator.minLatticeAtomID -= 1
+                latticeAtom.index = simulator.minLatticeAtomID
+                latticeAtom.isNewlyLoaded = true
+                push!(cell.latticeAtoms, latticeAtom)
+            end
             empty!(cell.atoms)
         end
     end
@@ -537,5 +536,12 @@ function Restore_dynamicLoad!(simulator::Simulator)
     simulator.maxVacancyID = 1E6 
     simulator.numberOfAtoms = 0
     simulator.numberOfVacancies = 0
+end
+
+function DeprecatCell!(cell::Cell, simulator::Simulator)
+    if isEmpty(cell.atoms) && isEmpty(cell.vacancies)
+        cell.isPushedNeighbor = false 
+        delete!(simulator.deprecatedCellKeys, cell.index)
+    end
 end
 

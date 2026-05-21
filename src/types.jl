@@ -89,6 +89,7 @@ mutable struct Cell
     vacancies::Vector{Atom}  # also for static load 
     latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
+    hasNeighbor::Bool
 end
 
 

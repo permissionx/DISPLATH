@@ -86,6 +86,36 @@ function SetCellNeighborInfo!(cell::Cell, grid::Grid)
             end
         end
     end
+    cell.isPushedNeighbor = true 
+    cell.hasNeighbor = true
+end
+
+function UpdateCellNeighborInfo!(cell::Cell, grid::Grid)
+    # Direct triple loop implementation - much faster than recursion
+    for delta_x in [-1, 0, 1]
+        for delta_y in [-1, 0, 1]
+            for delta_z in [-1, 0, 1]
+                neighborCellsInfo = cell.neighborCellsInfo[delta_x+2, delta_y+2, delta_z+2]
+                neighborKeys = (Int8(delta_x), Int8(delta_y), Int8(delta_z))  
+                # Calculate neighbor cell index and cross flags for each dimension
+                for d in 1:3
+                    delta = neighborKeys[d]
+                    index = cell.index[d] + delta
+                    cross = Int8(0)
+                    if index < 1
+                        index += grid.sizes[d]
+                        cross = Int8(-1)
+                    elseif index > grid.sizes[d]
+                        index -= grid.sizes[d]
+                        cross = Int8(1)
+                    end
+                    neighborCellInfo.index[d] = index
+                    neighborCellInfo.cross[d] = cross
+                end
+            end
+        end
+    end
+    cell.isPushedNeighbor = true 
 end
 
 
@@ -135,8 +165,9 @@ function _GetCellDense(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
 end
 
 
-function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64})
+function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
     x, y, z = cellIndex
+    parameters = simulator.parameters
     ranges = Matrix{Float64}(undef, 3, 2)
     ranges[1,1] = (x-1) * vectors[1,1]
     ranges[1,2] = x * vectors[1,1]
@@ -147,21 +178,49 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
     cell = Cell(cellIndex, Vector{Atom}(), Vector{LatticePoint}(), 
                             ranges, 
                             Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
-    
+    cell.isPushedNeighbor = false
+    cell.hasNeighbor = false
+    for d in 1:3
+        if ranges[d,1] < latticeRanges[d,1] * simulator.primaryVector[d,d] || ranges[d,1] > latticeRanges[d,2] * simulator.primaryVector[d,d]
+            isEmpty = true
+        end
+    end
+    for stdAtom in simulator.cellStd.atoms
+        coords = [stdAtom.coordinate[d] + cell.ranges[d, 1] for d in 1:3]
+        atom = Atom(stdAtom.type, coords, parameters)
+        atom.index = 0
+        atom.cellIndex = cellIndex
+        if isEmpty
+            atom.isAlive = false
+        else
+            atom.isAlive = true
+        end
+        push(cell.latticeAtoms, atom)
+    end
     return cell
 end
 
-function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64})
-    ranges = Matrix{Float64}(undef, 3, 2)
-    ranges[1,1] = (x-1) * vectors[1,1]
-    ranges[1,2] = x * vectors[1,1]
-    ranges[2,1] = (y-1) * vectors[2,2]
-    ranges[2,2] = y * vectors[2,2]
-    ranges[3,1] = (z-1) * vectors[3,3]
-    ranges[3,2] = z * vectors[3,3]  
+function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
+    for d in 1:3
+        cell.ranges[d, 1] = (cellIndex[d]-1) * vectors[d,d]
+        cell.ranges[d, 2] = (cellIndex[d]) * vectors[d,d]
+    end
     cell.cellIndex = cellIndex
-    cell.ranges = ranges
-    cell.isPushedNeighbor = false
+    cell.isPushedNeighbor = false  # update by create. 
+    for d in 1:3
+        if ranges[d,1] < latticeRanges[d,1] * simulator.primaryVector[d,d] || ranges[d,1] > latticeRanges[d,2] * simulator.primaryVector[d,d]
+            isEmpty = true
+        end
+    end
+    for atom, stdAtom in zip(cell.latticeAtoms, simulator.cellStd.atoms)
+        [atom.coordinate[d] = stdAtom.coordinate[d] + cell.ranges[d,1] for d in 1:3]
+        atom.cellIndex = cellIndex
+        if isEmpty
+            atom.isAlive = false
+        else
+            atom.isAlive = true
+        end
+    end    
 end
 
 
@@ -507,7 +566,7 @@ function DisplaceAtom!(atom::Atom, newPosition::SVector{3,Float64}, simulator::S
     end
     
     for d in 1:3
-        # need to adappt non-periodic condition
+        # need to adapt non-periodic condition
         if pos[d] < 0
             if simulator.parameters.periodic[d] == false
                 pos[d] = 0.01
