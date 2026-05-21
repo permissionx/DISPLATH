@@ -23,6 +23,7 @@ using .BCA.ConstantFunctions
 include("io.jl")
 using .Output
 include("geometry.jl")
+include("cell.jl")
 include("dte.jl")
 include("kmc.jl")
 include("dynamics.jl")

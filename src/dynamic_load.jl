@@ -1,34 +1,5 @@
 using StaticArrays
 
-function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
-    parameters = simulator.parameters
-    basisTypes = parameters.basisTypes
-    basis = parameters.basis
-    primaryVectors = parameters.primaryVectors
-    cellsStd = simulator.cellsStd
-    indexInCell = 0
-    cellStd = simulator.cellStd
-    for X in 0:nP[1]-1
-        for Y in 0:nP[2]-1
-            for Z in 0:nP[3]-1
-                for i in 1:length(basisTypes)
-                    indexInCell += 1
-                    x = (X + basis[i,1]) * primaryVectors[1,1]
-                    y = (Y + basis[i,2]) * primaryVectors[2,2]
-                    z = (Z + basis[i,3]) * primaryVectors[3,3]
-                    atom = Atom(basisTypes[i], [x, y, z], parameters)
-                    atom.index = 0 
-                    atom.indexInCell = indexInCell
-                    push!(cellStd.atoms, atprimaryVectorsom)
-                end
-            end
-        end
-    end
-    simulator.cellLatticeAtomNumber = indexInCell
-end
-
-
-
 function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexes::Vector{Int64}, simulator::Simulator)
     grid = simulator.grid
     box = simulator.box
@@ -315,7 +286,6 @@ function delete_dynamicLoad!(simulator::Simulator, atom::Atom; isDeleteVacancy::
     atom.isAlive = false 
 end
 
-function UpdateCellNeighborInfo!(cll, grid)
 
 function Stop_dynamicLoad!(atom::Atom, simulator::Simulator)
     grid = simulator.grid
@@ -536,12 +506,5 @@ function Restore_dynamicLoad!(simulator::Simulator)
     simulator.maxVacancyID = 1E6 
     simulator.numberOfAtoms = 0
     simulator.numberOfVacancies = 0
-end
-
-function DeprecatCell!(cell::Cell, simulator::Simulator)
-    if isEmpty(cell.atoms) && isEmpty(cell.vacancies)
-        cell.isPushedNeighbor = false 
-        delete!(simulator.deprecatedCellKeys, cell.index)
-    end
 end
 
