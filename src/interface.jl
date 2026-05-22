@@ -83,3 +83,38 @@ function _PassingLatticeParamtersAndCreateAtoms(
     return atoms
 end
 
+
+function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    @warn "will be deprecated"
+    box = Box(boxVectors)
+    if !IS_DYNAMIC_LOAD
+        atoms = CreateAtomsByPrimaryVectors(parameters)
+    else
+        atoms = Atom[]
+    end
+    simulator = Simulator(box, atoms, inputGridVectors, parameters)
+    return simulator    
+end 
+
+
+function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
+    @warn "will be deprecated"
+    box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
+    if !IS_DYNAMIC_LOAD
+        atoms = CreateAtomsByPrimaryVectors(parameters)
+    else 
+        atoms = Atom[]
+    end
+    simulator = Simulator(box, atoms, inputGridVectors, parameters)
+    return simulator    
+end
+
+function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, parameters::Parameters; replicate::Vector{Int64} = [1,1,1])
+    @warn "will be deprecated"
+    if IS_DYNAMIC_LOAD
+        error("Simulator from date file is not supported in dynamic load mode.")
+    end 
+    box, atoms = LoadAtomsAndBoxFromDataFile(fileName; replicate=replicate)
+    simulator = Simulator(box, atoms, inputGridVectors, parameters)
+    return simulator
+end

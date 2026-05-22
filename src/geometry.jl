@@ -32,7 +32,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     frequencies = Vector{Float64}()
     finalLatticePointEnvIndexs = Vector{Int64}()
     eventIndex = -1
-    isNewlyLoaded = false
+    isLatticeAtom = false
     lattcieCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
     indexInCell = 0
     return Atom(index, isAlive, type, coordinate[:], cellIndex, 
@@ -41,7 +41,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
                 pValue, pVector, pPoint, pL, pAtomIndex, pDirection, lastTargets, # temperory 
                 latticePointIndex,
                 frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, 
-                isNewlyLoaded, lattcieCoordinate, indexInCell)
+                isLatticeAtom, lattcieCoordinate, indexInCell)
 end
 
 
@@ -54,102 +54,47 @@ function TypeToProperties(type::Int64, typeDict::Dict{Int64, Element})
     end 
 end 
 
-
-
-
-
-function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Parameters)
-    V_upterm = Dict{Vector{Int64}, Float64}()
-    a_U = Dict{Vector{Int64}, Float64}()
-    E_m = Dict{Int64, Float64}()
-    S_e_upTerm = Dict{Vector{Int64}, Float64}()
-    S_e_downTerm = Dict{Vector{Int64}, Float64}()
-    x_nl = Dict{Vector{Int64}, Float64}()
-    a = Dict{Vector{Int64}, Float64}()
-    Q_nl = Dict{Vector{Int64}, Float64}()  
-    Q_loc = Dict{Vector{Int64}, Float64}()
-    types = keys(typeDict)
-    qMax = Dict{Vector{Int64}, Float64}()
-    sigma = Dict{Int64, Float64}()
-    log_info("")
-    log_info("Vibration σ for each type:")
-    for p in types
-        radius_p, mass_p, Z_p, _, _, α_p, β_p = TypeToProperties(p, typeDict)
-        for t in types
-            radius_t, _, Z_t, _, _, _, _ = TypeToProperties(t, typeDict)
-            V_upterm[[p,t]] = BCA.ConstantFunctions.V_upterm(Z_p, Z_t)
-            a_U[[p,t]] = BCA.ConstantFunctions.a_U(Z_p, Z_t)
-            S_e_upTerm[[p,t]] = BCA.ConstantFunctions.S_e_upTerm(p, Z_p, Z_t, mass_p, α_p)
-            x_nl[[p,t]] = BCA.ConstantFunctions.x_nl(p, Z_p, Z_t, β_p)
-            a[[p,t]] = BCA.ConstantFunctions.a(Z_p, Z_t)
-            Q_nl[[p,t]] = BCA.ConstantFunctions.Q_nl(Z_p, Z_t, parameters.pMax)
-            Q_loc[[p,t]] = BCA.ConstantFunctions.Q_loc(Z_p, Z_t)
-            qMax[[p,t]] = radius_p + radius_t
-        end
-        E_m[p] = BCA.ConstantFunctions.E_m(Z_p, mass_p)
-        sigma[p] = TemperatureToSigma(parameters.temperature, parameters.DebyeTemperature, mass_p)
-        log_info("  Type $(p): σ = $(round(sigma[p]; digits=3)) Å")
+function CreateGrid(box::Box, inputVectors::Matrix{Float64})
+    if !box.isOrthogonal
+        error("The box is not orthogonal, please use the orthogonal box.")
     end
-    return ConstantsByType(V_upterm, a_U, E_m, S_e_upTerm, S_e_downTerm, x_nl, a, Q_nl, Q_loc, qMax, sigma)
-end
-
-
-function InitθτFunctions(parameters::Parameters, constantsByType::ConstantsByType)
-    typeDict = parameters.typeDict
-    θFunctions = Dict{Vector{Int64}, Function}()
-    τFunctions = Dict{Vector{Int64}, Function}()
+    sizes = Vector{Int64}(undef, 3)
+    vectors = zeros(Float64, 3, 3)
+    for d in 1:3
+        sizes[d] = Int64(floor(box.vectors[d,d] / inputVectors[d,d]))
+        if sizes[d] < 3
+            error("The box size in dimension $d is too small,  use a larger box! (At least 3 cells in each dimension)")
+            exit()
+        end
+        vectors[d,d] = box.vectors[d,d] / sizes[d]
+    end
+    log_info("Cell grid: $(sizes[1]) × $(sizes[2]) × $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells")
+    log_info("Cell size: $(round(vectors[1,1]; digits=2)) × $(round(vectors[2,2]; digits=2)) × $(round(vectors[3,3]; digits=2)) Å")
+    if ! IS_DYNAMIC_LOAD
+        cells = Array{Cell, 3}(undef, sizes[1], sizes[2], sizes[3])
+        @showprogress desc="Creating cells: " for x in 1:sizes[1]
+            for y in 1:sizes[2]
+                for z in 1:sizes[3]
+                    cells[x, y, z] = CreateCell((x, y, z), vectors)
+                end
+            end    
+        end
+        cellVolume = vectors[1,1] * vectors[2,2] * vectors[3,3]
+        grid = Grid(cells, vectors, sizes, cellVolume) 
+        @showprogress desc="Pushing cell neighbors: " for cell in grid.cells
+            SetNeighborCellsInfo!(cell, grid)
+        end
+    else
+        cells = Dict{Tuple{Int64, Int64, Int64}, Cell}()    
+        cellVolume = vectors[1,1] * vectors[2,2] * vectors[3,3]
+        grid = Grid(cells, vectors, sizes, cellVolume) 
+    end
+    log_success("Cell grid created")
     log_separator()
-    log_info("Loading θ and τ functions...")
-    for type_p in keys(typeDict)
-        for type_t in keys(typeDict)
-            mass_p = typeDict[type_p].mass
-            mass_t = typeDict[type_t].mass
-            θInterpolation, τInterpolation = θτFunctions(mass_p, mass_t, type_p, type_t, constantsByType, parameters)
-            θFunctions[[type_p, type_t]] = (E_p, p) -> θInterpolation(E_p, p)
-            τFunctions[[type_p, type_t]] = (E_p, p) -> τInterpolation(E_p, p)
-            log_debug("  $(parameters.typeDict[type_p].name) → $(parameters.typeDict[type_t].name) loaded")
-        end
-    end
-    log_success("All θ and τ functions initialized")
-    log_separator()
-    return θFunctions, τFunctions
+    return grid
 end
 
 
-function θτFunctions(mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::Int64, constantsByType::ConstantsByType, parameters::Parameters)
-    E_p_axis = Float64[]
-    p_axis = Float64[]
-    θMatrix = Matrix{Float64}(undef, 0, 0)
-    τMatrix = Matrix{Float64}(undef, 0, 0)
-    try
-        E_p_axis, p_axis, θMatrix, τMatrix = LoadθτData(type_p, type_t, parameters)
-    catch
-        EPowerRange = parameters.EPowerRange    
-        pPowerRange = parameters.pPowerRange
-        nE = length(EPowerRange)
-        np = length(pPowerRange)
-        θMatrix = Array{Float64, 2}(undef, nE, np)
-        τMatrix = Array{Float64, 2}(undef, nE, np)
-        N = length(EPowerRange)
-        @showprogress @threads for i in 1:N
-            E_p_power = EPowerRange[i]
-            E_p = 10.0^E_p_power
-            for (j, p_power) in enumerate(pPowerRange)
-                p = 10.0^p_power
-                θ, τ = BCA.θτ(E_p, mass_p, mass_t, type_p, type_t, p, constantsByType)
-                θMatrix[i, j] = θ
-                τMatrix[i, j] = τ
-            end
-        end
-        E_p_axis = collect(EPowerRange)
-        p_axis = collect(pPowerRange)    
-        SaveθτData(type_p, type_t, θMatrix, τMatrix, E_p_axis, p_axis, parameters)
-    end
-    # interpolate
-    θFunction = interpolate((E_p_axis, p_axis), θMatrix, Gridded(Linear()))
-    τFunction = interpolate((E_p_axis, p_axis), τMatrix, Gridded(Linear()))
-    return θFunction, τFunction
-end
 
 
 function Simulator(box::Box, atoms::Vector{Atom}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
@@ -213,32 +158,6 @@ function CreateAtomsByPrimaryVectors(parameters::Parameters)
 end
 
 
-function Simulator(boxVectors::Matrix{Float64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    @warn "will be deprecated"
-    box = Box(boxVectors)
-    if !IS_DYNAMIC_LOAD
-        atoms = CreateAtomsByPrimaryVectors(parameters)
-    else
-        atoms = Atom[]
-    end
-    simulator = Simulator(box, atoms, inputGridVectors, parameters)
-    return simulator    
-end 
-
-
-function Simulator(boxSizes::Vector{Int64}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
-    @warn "will be deprecated"
-    box = CreateBoxByPrimaryVectors(parameters.primaryVectors, boxSizes)
-    if !IS_DYNAMIC_LOAD
-        atoms = CreateAtomsByPrimaryVectors(parameters)
-    else 
-        atoms = Atom[]
-    end
-    simulator = Simulator(box, atoms, inputGridVectors, parameters)
-    return simulator    
-end
-
-
 function Parameters(pMax::Float64, vacancyRecoverDistance::Float64, typeDict::Dict{Int64, Element}; kwargs...)
     # non lattice info
     primaryVectors = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
@@ -260,15 +179,7 @@ function LoadAtomsAndBoxFromDataFile(fileName::String; replicate::Vector{Int64} 
     return box, atoms
 end
 
-function Simulator(fileName::String, inputGridVectors::Matrix{Float64}, parameters::Parameters; replicate::Vector{Int64} = [1,1,1])
-    @warn "will be deprecated"
-    if IS_DYNAMIC_LOAD
-        error("Simulator from date file is not supported in dynamic load mode.")
-    end 
-    box, atoms = LoadAtomsAndBoxFromDataFile(fileName; replicate=replicate)
-    simulator = Simulator(box, atoms, inputGridVectors, parameters)
-    return simulator
-end
+
 
 
 function LatticePoint(atom::Atom)
@@ -358,13 +269,8 @@ function delete!(cell::Cell, atom::Atom, simulator::Simulator)
 end
 
 
-function DisplaceAtom!(atom::Atom, newPosition::SVector{3,Float64}, simulator::Simulator)
-    pos = if newPosition isa SVector
-        [newPosition[1], newPosition[2], newPosition[3]]
-    else
-        copy(newPosition)
-    end
-    
+function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
+    pos = newPosition[:]
     for d in 1:3
         # need to adapt non-periodic condition
         if pos[d] < 0
@@ -381,17 +287,16 @@ function DisplaceAtom!(atom::Atom, newPosition::SVector{3,Float64}, simulator::S
             end
         end
     end
-    
     SetCoordinate!(atom, pos)
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
-
     if cellIndex != atom.cellIndex
+        oldCellIndex = atom.cellIndex
         ChangeCell!(atom, cellIndex, simulator)
     end
 end
 
-function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
-    DisplaceAtom!(atom, SVector{3,Float64}(newPosition[1], newPosition[2], newPosition[3]), simulator)
+function DisplaceAtom!(atom::Atom, newPosition::SVector{3, Float64}, simulator::Simulator)
+    DisplaceAtom!(atom, [newPosition[1], newPosition[2], newPosition[3]], simulator)
 end
 
 
@@ -450,14 +355,19 @@ function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::
 end
 
 
-
-
-function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
-    originalCell = GetCell(simulator.grid, atom.cellIndex)
-    delete!(originalCell, atom, simulator)
-    nextCell = GetCell(simulator.grid, nextCellIndex)
-    push!(nextCell, atom, simulator)
+function SimultaneousCriteria(candidateTarget::Atom, nearestTarget::Atom, simulator::Simulator)
+    deltaPL = candidateTarget.pL - nearestTarget.pL
+    if deltaPL > simulator.constantsByType.qMax[[candidateTarget.type, nearestTarget.type]]
+        return false
+    elseif nearestTarget.pValue * nearestTarget.pValue + deltaPL * deltaPL > simulator.parameters.pMax_squared 
+        return false
+    elseif candidateTarget.pValue * candidateTarget.pValue + deltaPL * deltaPL > simulator.parameters.pMax_squared 
+        return false
+    end
+    return true
 end
+
+
 
 
 function SetVelocityDirection!(atom::Atom, velocity::SVector{3,Float64})

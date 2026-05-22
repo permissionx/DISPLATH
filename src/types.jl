@@ -46,7 +46,7 @@ mutable struct Atom
     eventIndex::Int64
 
     # for dynamic load 
-    isNewlyLoaded::Bool
+    isLatticeAtom::Bool
     latticeCoordinate::SVector{3,Float64}
     indexInCell::Int64
 
@@ -89,7 +89,7 @@ mutable struct Cell
     vacancies::Vector{Atom}  # also for static load 
     latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
-    hasNeighbor::Bool
+    hasNeighborObj::Bool
 end
 
 
@@ -106,8 +106,9 @@ function Cell(
     vacancies = Vector{Atom}()
     latticeRanges = Matrix{Int64}(undef, 3, 2)
     isPushedNeighbor = false
+    hasNeighborObj = false
     return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
-                    latticeAtoms, vacancies, latticeRanges, isPushedNeighbor)     
+                    latticeAtoms, vacancies, latticeRanges, isPushedNeighbor, hasNeighborObj)     
 end
 
 struct CellStd
