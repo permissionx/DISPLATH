@@ -62,7 +62,7 @@ function AtomOutFaceDimension(atom::Atom, cell::Cell)
         allInRange = true
         for elseD in elseDs
             crossCoord = coordinate[elseD] + atom.velocityDirection[elseD] * t
-            if !(cell.ranges[elseD, 1] <= crossCoord < cell.ranges[elseD, 2])
+            if !(cell.ranges[elseD, 1] <= crossCoord <= cell.ranges[elseD, 2])
                 allInRange = false
                 break
             end

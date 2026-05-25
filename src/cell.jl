@@ -139,9 +139,9 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
             atom.isAlive = false
         else
             atom.isAlive = true
+            Pertubation!(atom, simulator)   
         end
     end 
-    Pertubation!(atom, simulator)   
 end
 
 

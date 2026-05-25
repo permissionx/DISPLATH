@@ -203,7 +203,7 @@ function DumpInCascade_dynamicLoad(simulator::Simulator)
             atoms = Vector{Atom}()
             for cell in cells
                 if !(cell.index in simulator.deprecatedCellKeys)
-                    append!(atoms, cell.latticeAtoms)
+                    append!([atom for atom in cell.latticeAtoms if atom.isAlive])
                     append!(atoms, cell.atoms)
                 end
             end
@@ -455,6 +455,8 @@ function Restore_dynamicLoad!(simulator::Simulator)
             empty!(cell.atoms)
         end
     end
+    empty!(simulator.grid.cells)
+    empty!(simulator.deprecatedCellKeys)
     empty!(simulator.atoms)
     empty!(simulator.vacancies)
     simulator.maxAtomID = 0
