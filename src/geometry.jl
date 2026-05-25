@@ -612,6 +612,7 @@ function Pertubation!(atom::Atom, simulator::Simulator)
 end
 
 
+
 function SetCoordinate!(atom::Atom, coordinate::Vector{Float64})
     atom.coordinate .= coordinate
 end 

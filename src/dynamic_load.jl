@@ -117,6 +117,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
     _, minIdx = findmin(t -> t.pL, candidateTargets)
     nearestTarget = candidateTargets[minIdx]   
     push!(targets, nearestTarget)
+    push!(simulator.preservedCellKeys, nearestTarget.cellIndex)
 
     for candidateTarget in candidateTargets
         if candidateTarget.index == nearestTarget.index
@@ -124,6 +125,7 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
         end
         if SimultaneousCriteria(candidateTarget, nearestTarget, simulator)
             push!(targets, candidateTarget)
+            push!(simulator.preservedCellKeys, candidateTarget.cellIndex)
         end
     end    
     return targets
@@ -268,6 +270,11 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 push!(nextPAtoms, pAtom)
             end
         end
+        pks = copy(simulator.preservedCellKeys)
+        empty!(simulator.preservedCellKeys)
+        for k in pks
+            DeprecateCell!(GetCell(simulator.grid, k, simulator), simulator)
+        end
         DumpInCascade_dynamicLoad(simulator)
         if length(nextPAtoms) > 0
             pAtoms = nextPAtoms
@@ -330,7 +337,7 @@ function Stop_dynamicLoad!(atom::Atom, simulator::Simulator)
             delete_dynamicLoad!(simulator, nearestVacancy, isDeleteVacancy = true)
         else
             SetCoordinate!(atom, nearestVacancy.coordinate)
-            Pertubation!(atom, simulator)
+            Pertubation_dynamicload!(atom, nearestCell.ranges, simulator)
             ChangeCell!(atom, nearestVacancy.cellIndex, simulator)
         end
     end
@@ -349,16 +356,22 @@ function LeaveLatticePoint_dynamicLoad!(latticeAtom::Atom, simulator::Simulator;
     vacancy.cellIndex = latticeAtom.cellIndex
 
     cell.latticeAtoms[latticeAtom.indexInCell].isAlive = false
+
     atom = Atom(latticeAtom.type, latticeAtom.coordinate, simulator.parameters)
     atom.isLatticeAtom = false
-    push!(cell.atoms, atom)
-    push!(simulator.atoms, atom)
-    atom.cellIndex = latticeAtom.cellIndex
-    simulator.maxAtomID += 1
-    atom.index = simulator.maxAtomID
-    simulator.numberOfAtoms += 1
     atom.velocityDirection = latticeAtom.velocityDirection
     atom.energy = latticeAtom.energy
+    cellIndex = WhichCell(atom.coordinate, simulator.grid)
+    if latticeAtom.cellIndex != cellIndex
+        DeprecateCell!(cell, simulator)
+        cell = GetCell(simulator.grid,cellIndex, simulator)
+    end
+    push!(cell.atoms, atom)
+    atom.cellIndex = cell.index
+    simulator.maxAtomID += 1
+    simulator.numberOfAtoms += 1
+    atom.index = simulator.maxAtomID
+    push!(simulator.atoms, atom)
     return atom
 end
 
@@ -437,24 +450,6 @@ end
 
 
 function Restore_dynamicLoad!(simulator::Simulator)
-    parameters = simulator.parameters
-    for atom in [simulator.atoms; simulator.vacancies]
-        if atom.isAlive
-            cellIndex = atom.cellIndex
-            cell = GetCell(simulator.grid, cellIndex, simulator)
-            if cell.isLoaded && atom.type > length(keys(simulator.parameters.typeDict)) 
-                latticeAtom = Atom(atom.type-length(keys(simulator.parameters.typeDict)), atom.coordinate, parameters)
-                latticeAtom.latticeCoordinate = atom.coordinate[:]
-                Pertubation!(latticeAtom, simulator)
-                latticeAtom.cellIndex = cell.index
-                simulator.minLatticeAtomID -= 1
-                latticeAtom.index = simulator.minLatticeAtomID
-                latticeAtom.isLatticeAtom = true
-                push!(cell.latticeAtoms, latticeAtom)
-            end
-            empty!(cell.atoms)
-        end
-    end
     empty!(simulator.grid.cells)
     empty!(simulator.deprecatedCellKeys)
     empty!(simulator.atoms)
@@ -465,3 +460,27 @@ function Restore_dynamicLoad!(simulator::Simulator)
     simulator.numberOfVacancies = 0
 end
 
+
+function Pertubation_dynamicload!(atom::Atom, ranges::Matrix{Float64}, simulator::Simulator)
+    if simulator.parameters.isAmorphous 
+        rng = THREAD_RNG[Threads.threadid()]
+        atom.coordinate .= ranges[:,1] .+ [rand(rng) * simulator.grid.vectors[d, d] for d in 1:3]
+    else
+        ah = simulator.parameters.amorphousHeight
+        if atom.coordinate[3] > ah
+            rng = THREAD_RNG[Threads.threadid()]
+            atom.coordinate[1] = ranges[1,1] + rand(rng) * simulator.grid.vectors[1, 1]
+            atom.coordinate[2] = ranges[2,1] + rand(rng) * simulator.grid.vectors[2, 2]
+            base = ranges[3,1] > ah ? ranges[3,1] : ah
+            latticeTop = simulator.parameters.primaryVectors[3,3] * simulator.parameters.latticeRanges[3,2]     
+            top = ranges[3,2] < latticeTop ? ranges[3,2] : latticeTop
+            atom.coordinate[3] = base + rand(rng) * (top - base)
+        else
+            if simulator.parameters.temperature > 0.0
+                for d in 1:3
+                    atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
+                end
+            end
+        end
+    end
+end

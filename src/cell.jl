@@ -109,7 +109,7 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
             atom.isAlive = true
         end
         push!(cell.latticeAtoms, atom)
-        Pertubation!(atom, simulator)
+        Pertubation_dynamicload!(atom, ranges, simulator)
     end
     return cell
 end
@@ -139,7 +139,7 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
             atom.isAlive = false
         else
             atom.isAlive = true
-            Pertubation!(atom, simulator)   
+            Pertubation_dynamicload!(atom, cell.ranges, simulator)   
         end
     end 
 end
@@ -228,9 +228,8 @@ end
 
 
 
-
 function DeprecateCell!(cell::Cell, simulator::Simulator)
-    if isempty(cell.atoms) && isempty(cell.vacancies)
+    if isempty(cell.atoms) && isempty(cell.vacancies) && !(cell.index in simulator.preservedCellKeys)
         cell.isPushedNeighbor = false 
         push!(simulator.deprecatedCellKeys, cell.index)
     end

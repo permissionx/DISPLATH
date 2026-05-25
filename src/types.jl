@@ -344,6 +344,7 @@ mutable struct Simulator
     maxVacancyID::Int64
     minLatticeAtomID::Int64
     deprecatedCellKeys::Set{Tuple{Int64, Int64, Int64}}
+    preservedCellKeys::Set{Tuple{Int64, Int64, Int64}}
     cellStd::CellStd
     cellLatticeAtomNumber::Int64
     # for debug
@@ -378,6 +379,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])
     cellStd = CellStd()
     deprecatedCellKeys = Set{Tuple{Int64, Int64, Int64}}()
+    preservedCellKeys = Set{Tuple{Int64, Int64, Int64}}()
     cellLatticeAtomNumber = 0
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
@@ -391,7 +393,8 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      #soap, 
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
-                     vacancies, numberOfVacancies, maxVacancyID, minLatticeAtomID, deprecatedCellKeys, cellStd, cellLatticeAtomNumber, 
+                     vacancies, numberOfVacancies, maxVacancyID, minLatticeAtomID, 
+                     deprecatedCellKeys, preservedCellKeys, cellStd, cellLatticeAtomNumber, 
                      debugAtoms,
                      parameters,
                      workBuffers)  
