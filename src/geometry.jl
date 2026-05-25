@@ -33,7 +33,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     finalLatticePointEnvIndexs = Vector{Int64}()
     eventIndex = -1
     isLatticeAtom = false
-    lattcieCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
+    latticeCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
     indexInCell = 0
     return Atom(index, isAlive, type, coordinate[:], cellIndex, 
                 radius, mass, velocityDirection, energy, Z, 
@@ -41,7 +41,7 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
                 pValue, pVector, pPoint, pL, pAtomIndex, pDirection, lastTargets, # temperory 
                 latticePointIndex,
                 frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, 
-                isLatticeAtom, lattcieCoordinate, indexInCell)
+                isLatticeAtom, latticeCoordinate, indexInCell)
 end
 
 
@@ -60,13 +60,22 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
     end
     sizes = Vector{Int64}(undef, 3)
     vectors = zeros(Float64, 3, 3)
+
+    if ! IS_DYNAMIC_LOAD
+        for d in 1:3
+            sizes[d] = Int64(floor(box.vectors[d,d] / inputVectors[d,d]))
+            vectors[d,d] = box.vectors[d,d] / sizes[d]
+        end
+    else
+        for d in 1:3
+            sizes[d] = Int64(round(box.vectors[d,d] / inputVectors[d,d]))
+            vectors[d,d] = inputVectors[d,d]
+        end
+    end
     for d in 1:3
-        sizes[d] = Int64(floor(box.vectors[d,d] / inputVectors[d,d]))
         if sizes[d] < 3
             error("The box size in dimension $d is too small,  use a larger box! (At least 3 cells in each dimension)")
-            exit()
         end
-        vectors[d,d] = box.vectors[d,d] / sizes[d]
     end
     log_info("Cell grid: $(sizes[1]) × $(sizes[2]) × $(sizes[3]) = $(sizes[1]*sizes[2]*sizes[3]) cells")
     log_info("Cell size: $(round(vectors[1,1]; digits=2)) × $(round(vectors[2,2]; digits=2)) × $(round(vectors[3,3]; digits=2)) Å")
@@ -95,8 +104,6 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
 end
 
 
-
-
 function Simulator(box::Box, atoms::Vector{Atom}, inputGridVectors::Matrix{Float64}, parameters::Parameters)
     # this is the last entrace for simulator initilization 
     log_section("Initializing Simulator")
@@ -105,7 +112,7 @@ function Simulator(box::Box, atoms::Vector{Atom}, inputGridVectors::Matrix{Float
         PN = Vector{Int64}(undef, 3)
         for d in 1:3 
             num = inputGridVectors[d,d] / parameters.primaryVectors[d, d]
-            if !round(num) ≈ num
+            if !(round(num) ≈ num)
                 error("InputGridVector must be integer multiple of primaryVector!")
             end
             PN[d] = Int64(round(inputGridVectors[d,d] / parameters.primaryVectors[d, d]))
@@ -145,7 +152,7 @@ function CreateAtomsByPrimaryVectors(parameters::Parameters)
     @showprogress desc="Creating atoms ($(atomNumber)): " for x in latticeRanges[1,1]:latticeRanges[1,2]-1
         for y in latticeRanges[2,1]:latticeRanges[2,2]-1    
             for z in latticeRanges[3,1]:latticeRanges[3,2]-1
-                for i in 1:length(basisTypes)
+                for i in eachindex(basisTypes)
                     reducedCoordinate = Float64[x,y,z] + basis[i, :]
                     coordinate = primaryVectors' * reducedCoordinate
                     atoms[n] = Atom(basisTypes[i], coordinate, parameters)
@@ -211,7 +218,11 @@ function push!(simulator::Simulator, atom::Atom)
     simulator.numberOfAtoms += 1
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
     atom.cellIndex = cellIndex
-    push!(GetCell(simulator.grid, cellIndex).atoms, atom)
+    if IS_DYNAMIC_LOAD
+        push!(GetCell(simulator.grid, cellIndex, simulator).atoms, atom)
+    else
+        push!(GetCell(simulator.grid, cellIndex).atoms, atom)
+    end
 end 
 
 
@@ -258,6 +269,7 @@ end
 
 function delete!(cell::Cell, atom::Atom, simulator::Simulator)
     if !atom.isAlive
+        #@show simulator.nCascade, simulator.nCollisionEvent
         error("Atom $(atom.index) is not alive when deleting")
     end
     #@show atom.index, atom.cellIndex, simulator.nCascade, simulator.nCollisionEvent, atom.coordinate
@@ -288,9 +300,9 @@ function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simu
         end
     end
     SetCoordinate!(atom, pos)
+    ifdebug = false
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
     if cellIndex != atom.cellIndex
-        oldCellIndex = atom.cellIndex
         ChangeCell!(atom, cellIndex, simulator)
     end
 end
@@ -560,7 +572,7 @@ function GetEnvironmentIndex(latticePoint::LatticePoint, simulator::Simulator)
     latticePoints = simulator.latticePoints
     index = 0
     
-    for i in 1:length(environment)
+    for i in eachindex(enviroment)
         if latticePoints[environment[i]].atomIndex != -1
             index += 2^(i-1)
         end

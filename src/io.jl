@@ -506,6 +506,12 @@ macro dump(file, atoms, properties=[], stepProperty=:nCascade)
                     end
                 elseif p[1] == 'e'
                     print(buf, string(atom.energy) * " ")
+                elseif p == "isLatticeAtom"
+                    if atom.isLatticeAtom 
+                        print(buf, "1" * " ")
+                    else
+                        print(buf, "0" * " ")
+                    end
                 else
                     error("Invalid property: $p")
                 end

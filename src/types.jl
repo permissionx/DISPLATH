@@ -47,7 +47,7 @@ mutable struct Atom
 
     # for dynamic load 
     isLatticeAtom::Bool
-    latticeCoordinate::SVector{3,Float64}
+    latticeCoordinate::Vector{Float64}
     indexInCell::Int64
 
 end
@@ -69,7 +69,7 @@ mutable struct LatticePoint
 end
 
 
-struct NeighborCellInfo
+mutable struct NeighborCellInfo
     index::NTuple{3, Int64}
     cross::NTuple{3, Int8} # 0 for no cross, 1 for hi, -1 for lo, eg. (0,0,1) for top 
 end
@@ -345,6 +345,7 @@ mutable struct Simulator
     minLatticeAtomID::Int64
     deprecatedCellKeys::Set{Tuple{Int64, Int64, Int64}}
     cellStd::CellStd
+    cellLatticeAtomNumber::Int64
     # for debug
     debugAtoms::Vector{Atom}
     parameters::Parameters
@@ -377,6 +378,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])
     cellStd = CellStd()
     deprecatedCellKeys = Set{Tuple{Int64, Int64, Int64}}()
+    cellLatticeAtomNumber = 0
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
                      0, 0, 
@@ -389,7 +391,7 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      #soap, 
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
-                     vacancies, numberOfVacancies, maxVacancyID, minLatticeAtomID, cellStd,
+                     vacancies, numberOfVacancies, maxVacancyID, minLatticeAtomID, deprecatedCellKeys, cellStd, cellLatticeAtomNumber, 
                      debugAtoms,
                      parameters,
                      workBuffers)  

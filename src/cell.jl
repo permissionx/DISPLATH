@@ -8,14 +8,11 @@ function _GetCellDense(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
 end
 
 function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64})
-    x, y, z = cellIndex
     ranges = Matrix{Float64}(undef, 3, 2)
-    ranges[1,1] = (x-1) * vectors[1,1]
-    ranges[1,2] = x * vectors[1,1]
-    ranges[2,1] = (y-1) * vectors[2,2]
-    ranges[2,2] = y * vectors[2,2]
-    ranges[3,1] = (z-1) * vectors[3,3]
-    ranges[3,2] = z * vectors[3,3]  
+    for d in 1:3
+        ranges[d,1] = (cellIndex[d] - 1) * vector[d,d] 
+        ranges[d,2] = cellIndex[d] * vector[d,d]
+    end
     cell = Cell(cellIndex, Vector{Atom}(), Vector{LatticePoint}(), 
                             ranges, 
                             Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
@@ -25,7 +22,7 @@ end
 # belows are for dynamic load
 
 function GetCell(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
-    return _GetCellDict!(grid, cellIndex, simualtor)
+    return _GetCellDict!(grid, cellIndex, simulator)
 end
 
 function _GetCellDict!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64}, simulator)
@@ -37,11 +34,12 @@ function _GetCellDict!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64}, simula
         end
     else
         if isempty(dks)
-            cells[cellIndex] = CreateCell(cellIndex, grid.vectors, simualtor)
+            cells[cellIndex] = CreateCell(cellIndex, grid.vectors, simulator)
         else
             dk = pop!(dks)
-            cells[cellIndex] = pop!(cells, dk)
-            UpdateCell!(cells[cellIndex])
+            cell = pop!(cells, dk)
+            UpdateCell!(cell, cellIndex, grid.vectors, simulator)
+            cells[cellIndex] = cell
         end
     end
     return cells[cellIndex]
@@ -53,13 +51,13 @@ function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
     basisTypes = parameters.basisTypes
     basis = parameters.basis
     primaryVectors = parameters.primaryVectors
-    cellsStd = simulator.cellsStd
+    cellStd = simulator.cellStd
     indexInCell = 0
     cellStd = simulator.cellStd
-    for X in 0:nP[1]-1
-        for Y in 0:nP[2]-1
-            for Z in 0:nP[3]-1
-                for i in 1:length(basisTypes)
+    for X in 0:PN[1]-1
+        for Y in 0:PN[2]-1
+            for Z in 0:PN[3]-1
+                for i in eachindex(basisTypes)
                     indexInCell += 1
                     x = (X + basis[i,1]) * primaryVectors[1,1]
                     y = (Y + basis[i,2]) * primaryVectors[2,2]
@@ -68,7 +66,7 @@ function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
                     atom.index = 0 
                     atom.indexInCell = indexInCell
                     atom.isLatticeAtom = true
-                    push!(cellStd.atoms, atprimaryVectorsom)
+                    push!(cellStd.atoms, atom)
                 end
             end
         end
@@ -78,6 +76,8 @@ end
 
 function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
     parameters = simulator.parameters
+    primaryVectors = parameters.primaryVectors
+    latticeRanges = parameters.latticeRanges
     ranges = Matrix{Float64}(undef, 3, 2)
     for d in 1:3
         ranges[d,1] = (cellIndex[d] - 1) * vectors[1,1]
@@ -88,8 +88,9 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
                             Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
     cell.isPushedNeighbor = false
     cell.hasNeighborObj = false
+    isEmpty = false
     for d in 1:3
-        if ranges[d,1] < latticeRanges[d,1] * simulator.primaryVector[d,d] || ranges[d,1] > latticeRanges[d,2] * simulator.primaryVector[d,d]
+        if ranges[d,1] < latticeRanges[d,1] * primaryVectors[d,d] || ranges[d,1] > latticeRanges[d,2] * primaryVectors[d,d]
             isEmpty = true
         end
     end
@@ -101,31 +102,35 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
         atom.index = simulator.minLatticeAtomID
         atom.cellIndex = cellIndex
         atom.isLatticeAtom = true
+        [atom.latticeCoordinate[d] = atom.coordinate[d] for d in 1:3]
         if isEmpty
             atom.isAlive = false
         else
             atom.isAlive = true
         end
-        push(cell.latticeAtoms, atom)
+        push!(cell.latticeAtoms, atom)
     end
     return cell
 end
 
-
 function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
+    primaryVectors = simulator.parameters.primaryVectors
+    latticeRanges = simulator.parameters.latticeRanges
     for d in 1:3
         cell.ranges[d, 1] = (cellIndex[d] - 1) * vectors[d,d]
         cell.ranges[d, 2] = cellIndex[d] * vectors[d,d]
     end
-    cell.cellIndex = cellIndex
-    cell.isPushedNeighbor = false  # update by create. 
+    cell.index = cellIndex
+    cell.isPushedNeighbor = false 
+    isEmpty = false
     for d in 1:3
-        if ranges[d,1] < latticeRanges[d,1] * simulator.primaryVector[d,d] || ranges[d,1] > latticeRanges[d,2] * simulator.primaryVector[d,d]
+        if cell.ranges[d,1] < latticeRanges[d,1] * primaryVectors[d,d] || cell.ranges[d,1] > latticeRanges[d,2] * primaryVectors[d,d]
             isEmpty = true
         end
     end
-    for atom, stdAtom in zip(cell.latticeAtoms, simulator.cellStd.atoms)
+    for (atom, stdAtom) in zip(cell.latticeAtoms, simulator.cellStd.atoms)
         [atom.coordinate[d] = stdAtom.coordinate[d] + cell.ranges[d,1] for d in 1:3]
+        [atom.latticeCoordinate[d] = atom.coordinate[d] for d in 1:3]
         atom.cellIndex = cellIndex
         simulator.minLatticeAtomID -= 1
         atom.index = simulator.minLatticeAtomID
@@ -194,6 +199,8 @@ function UpdateNeighborCellsInfo!(cell::Cell, grid::Grid)
             for delta_z in [-1, 0, 1]
                 neighborCellInfo = cell.neighborCellsInfo[delta_x+2, delta_y+2, delta_z+2]
                 neighborKeys = (Int8(delta_x), Int8(delta_y), Int8(delta_z))  
+                indexes = Vector{Int64}(undef,3)
+                crosses = Vector{Int64}(undef,3)
                 for d in 1:3
                     delta = neighborKeys[d]
                     index = cell.index[d] + delta
@@ -205,9 +212,11 @@ function UpdateNeighborCellsInfo!(cell::Cell, grid::Grid)
                         index -= grid.sizes[d]
                         cross = Int8(1)
                     end
-                    neighborCellInfo.index[d] = index
-                    neighborCellInfo.cross[d] = cross
+                    indexes[d] = index
+                    crosses[d] = cross
                 end
+                neighborCellInfo.index = (indexes[1], indexes[2], indexes[3])
+                neighborCellInfo.cross = (crosses[1], crosses[2], crosses[3])
             end
         end
     end
@@ -221,7 +230,7 @@ end
 function DeprecateCell!(cell::Cell, simulator::Simulator)
     if isempty(cell.atoms) && isempty(cell.vacancies)
         cell.isPushedNeighbor = false 
-        delete!(simulator.deprecatedCellKeys, cell.index)
+        push!(simulator.deprecatedCellKeys, cell.index)
     end
 end
 
@@ -241,10 +250,9 @@ function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simu
         nextCellIndexes = Set([neighborCellInfo.index for neighborCellInfo in GetNeighborCellsInfo!(nextCell, grid)])
         for cellInfo in GetNeighborCellsInfo!(originalCell, grid)
             neighborIndex = cellInfo.index
-            if !neighborIndex in nextCellIndexes
+            if !(neighborIndex in nextCellIndexes)
                 DeprecateCell!(GetCell(grid, neighborIndex, simulator), simulator)
             end
         end
-            
     end
 end

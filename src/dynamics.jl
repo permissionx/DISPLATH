@@ -71,8 +71,10 @@ function AtomOutFaceDimension(atom::Atom, cell::Cell)
             return d, rangeIndex, t
         end
     end
+    @show atom.velocityDirection
+    @show atom.energy
     error("Out face not found\n 
-           ####Simulator######\n $(simulator.nCascade)\n
+           ####Simulator######\n Cascade number = $(simulator.nCascade)\n Collision number = $(simulator.nCollisionEvent)\n
            ########Atom#######\n $(atom) \n 
            ########cell#######\n $(cell.ranges) \n $(cell.index)\n")
 end
