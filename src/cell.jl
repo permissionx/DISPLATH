@@ -109,6 +109,7 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
             atom.isAlive = true
         end
         push!(cell.latticeAtoms, atom)
+        Pertubation!(atom, simulator)
     end
     return cell
 end
@@ -139,7 +140,8 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
         else
             atom.isAlive = true
         end
-    end    
+    end 
+    Pertubation!(atom, simulator)   
 end
 
 
