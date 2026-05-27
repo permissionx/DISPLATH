@@ -40,16 +40,15 @@ mutable struct Atom
     latticePointIndex::Int64 # -1 for off lattice
     
     # for KMC 
-    frequency::Float64 # Hz, s^-1
-    frequencies::Vector{Float64} 
-    finalLatticePointIndexs::Vector{Int64}
-    eventIndex::Int64
+    #frequency::Float64 # Hz, s^-1
+    #frequencies::Vector{Float64} 
+    #finalLatticePointIndexs::Vector{Int64}
+    #eventIndex::Int64
 
     # for dynamic load 
     isLatticeAtom::Bool
     latticeCoordinate::Vector{Float64}
     indexInCell::Int64
-
 end
 
 struct Material
@@ -90,8 +89,8 @@ mutable struct Cell
     latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
     hasNeighborObj::Bool
+    isNonLatticeAtoms::Bool
 end
-
 
 function Cell(
     index::Tuple{Int64, Int64, Int64},
@@ -107,8 +106,9 @@ function Cell(
     latticeRanges = Matrix{Int64}(undef, 3, 2)
     isPushedNeighbor = false
     hasNeighborObj = false
+    isNonLatticeAtoms = false
     return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
-                    latticeAtoms, vacancies, latticeRanges, isPushedNeighbor, hasNeighborObj)     
+                    latticeAtoms, vacancies, latticeRanges, isPushedNeighbor, hasNeighborObj, isNonLatticeAtoms)     
 end
 
 struct CellStd

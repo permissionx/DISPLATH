@@ -91,6 +91,9 @@ function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexe
                 push!(buf, neighborAtom)
             end
         end
+        if neighborCell.isNonLatticeAtoms
+            RefillLatticeAtoms!(neighborCell, simulator)
+        end
         for neighborAtom in neighborCell.latticeAtoms
             if !neighborAtom.isAlive || neighborAtom.index in filterIndexes
                 continue
@@ -196,23 +199,6 @@ function Collision_dynamicLoad!(atom_p::Atom, atoms_t::Vector{Atom}, simulator::
 end 
 
 
-function DumpInCascade_dynamicLoad(simulator::Simulator)
-    if simulator.parameters.isDumpInCascade
-        if simulator.parameters.debugMode == false
-            @dump "Cascade_$(simulator.nCascade).dump" [simulator.atoms; simulator.vacancies] ["vx", "vy", "vz", "e"]
-        else
-            cells = values(simulator.grid.cells)
-            atoms = Vector{Atom}()
-            for cell in cells
-                if !(cell.index in simulator.deprecatedCellKeys)
-                    append!([atom for atom in cell.latticeAtoms if atom.isAlive])
-                    append!(atoms, cell.atoms)
-                end
-            end
-            @dump "Cascade_$(simulator.nCascade).dump" atoms ["vx", "vy", "vz", "e", "isLatticeAtom"]
-        end
-    end
-end
 
 
 function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
@@ -270,9 +256,9 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 push!(nextPAtoms, pAtom)
             end
         end
-        pks = copy(simulator.preservedCellKeys)
+        ks = copy(simulator.preservedCellKeys)
         empty!(simulator.preservedCellKeys)
-        for k in pks
+        for k in ks
             DeprecateCell!(GetCell(simulator.grid, k, simulator), simulator)
         end
         DumpInCascade_dynamicLoad(simulator)
@@ -311,15 +297,15 @@ function Stop_dynamicLoad!(atom::Atom, simulator::Simulator)
     isExist = false
     nearestVacancy = nothing  
     nearestCell = nothing
-    if simulator.parameters.vacancyRecoverDistance_squared == 0.0
-        return
-    end
     neighborCellsInfo = GetNeighborCellsInfo!(cell, grid)
     for neighborCellInfo in neighborCellsInfo
         index = neighborCellInfo.index
         cross = neighborCellInfo.cross
         neighborCell = GetCell(simulator.grid, index, simulator)
         DeprecateCell!(neighborCell, simulator)
+        if simulator.parameters.vacancyRecoverDistance_squared == 0.0
+            continue
+        end
         for vacancy in neighborCell.vacancies
             dr2 = ComputeDistance_squared(atom.coordinate, vacancy.coordinate, cross, simulator.box)
             if dr2 < simulator.parameters.vacancyRecoverDistance_squared && dr2 < nearestVacancyDistance_squared
@@ -361,6 +347,14 @@ function LeaveLatticePoint_dynamicLoad!(latticeAtom::Atom, simulator::Simulator;
     atom.isLatticeAtom = false
     atom.velocityDirection = latticeAtom.velocityDirection
     atom.energy = latticeAtom.energy
+    for d in 1:3
+        length = simulator.box.vectors[d,d]
+        if atom.coordinate[d] < 0
+            atom.coordinate[d] += length
+        elseif atom.coordinate[d] >= length
+            atom.coordinate[d] -= length
+        end
+    end
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
     if latticeAtom.cellIndex != cellIndex
         DeprecateCell!(cell, simulator)
@@ -481,6 +475,24 @@ function Pertubation_dynamicload!(atom::Atom, ranges::Matrix{Float64}, simulator
                     atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
                 end
             end
+        end
+    end
+end
+
+function DumpInCascade_dynamicLoad(simulator::Simulator)
+    if simulator.parameters.isDumpInCascade
+        if simulator.parameters.debugMode == false
+            @dump "Cascade_$(simulator.nCascade).dump" [simulator.atoms; simulator.vacancies] ["vx", "vy", "vz", "e"]
+        else
+            cells = values(simulator.grid.cells)
+            atoms = Vector{Atom}()
+            for cell in cells
+                if !(cell.index in simulator.deprecatedCellKeys)
+                    append!(atoms, [atom for atom in cell.latticeAtoms if atom.isAlive])
+                    append!(atoms, cell.atoms)
+                end
+            end
+            @dump "Cascade_$(simulator.nCascade).dump" atoms ["vx", "vy", "vz", "e", "isLatticeAtom"]
         end
     end
 end

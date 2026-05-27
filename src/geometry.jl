@@ -28,10 +28,6 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
     pAtomIndex = -1 # temperory 
     pDirection = Float64[0.0,0.0,0.0] # temperory 
     latticePointIndex = -1
-    frequency = 0.0
-    frequencies = Vector{Float64}()
-    finalLatticePointEnvIndexs = Vector{Int64}()
-    eventIndex = -1
     isLatticeAtom = false
     latticeCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
     indexInCell = 0
@@ -40,7 +36,6 @@ function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
                 dte, bde, emptyPath, #numberOfEmptyCells,
                 pValue, pVector, pPoint, pL, pAtomIndex, pDirection, lastTargets, # temperory 
                 latticePointIndex,
-                frequency, frequencies, finalLatticePointEnvIndexs, eventIndex, 
                 isLatticeAtom, latticeCoordinate, indexInCell)
 end
 

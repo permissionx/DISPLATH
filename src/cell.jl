@@ -144,7 +144,38 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
     end 
 end
 
-
+function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
+    latticeRanges = simulator.parameters.latticeRanges
+    primaryVectors = simulator.parameters.primaryVectors
+    isEmpty = false
+    for d in 1:3
+        if cell.ranges[d,1] < latticeRanges[d,1] * primaryVectors[d,d] || cell.ranges[d,1] > latticeRanges[d,2] * primaryVectors[d,d]
+            isEmpty = true
+        end
+    end
+    vIndexs = [v.index for v in cell.vacancies]
+    for stdAtom in simulator.cellStd.atoms
+        if stdAtom.indexInCell in vIndexs
+            continue
+        end
+        coords = [stdAtom.coordinate[d] + cell.ranges[d, 1] for d in 1:3]
+        atom = Atom(stdAtom.type, coords, parameters)
+        atom.indexInCell = stdAtom.indexInCell
+        simulator.minLatticeAtomID -= 1
+        atom.index = simulator.minLatticeAtomID
+        atom.cellIndex = cell.index
+        atom.isLatticeAtom = true
+        [atom.latticeCoordinate[d] = atom.coordinate[d] for d in 1:3]
+        if isEmpty
+            atom.isAlive = false
+        else
+            atom.isAlive = true
+        end
+        push!(cell.latticeAtoms, atom)
+        Pertubation_dynamicload!(atom, cell.ranges, simulator)
+    end
+    cell.isNonLatticeAtoms = false
+end
 
 function GetNeighborCellsInfo!(cell, grid)
     if ! cell.isPushedNeighbor
@@ -227,13 +258,25 @@ end
 
 
 
-
 function DeprecateCell!(cell::Cell, simulator::Simulator)
-    if isempty(cell.atoms) && isempty(cell.vacancies) && !(cell.index in simulator.preservedCellKeys)
-        cell.isPushedNeighbor = false 
-        push!(simulator.deprecatedCellKeys, cell.index)
+    if !(cell.index in simulator.preservedCellKeys)
+        if isempty(cell.atoms) && isempty(cell.vacancies) 
+            cell.isPushedNeighbor = false 
+            push!(simulator.deprecatedCellKeys, cell.index)
+        else
+            for atom in cell.atoms
+                if atom.energy >= simulator.parameters.stopEnergy
+                    return
+                end
+            end
+            cell.isNonLatticeAtoms = true
+            empty!(cell.latticeAtoms)
+        end
     end
 end
+
+
+
 
 
 function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
@@ -251,7 +294,7 @@ function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simu
         nextCellIndexes = Set([neighborCellInfo.index for neighborCellInfo in GetNeighborCellsInfo!(nextCell, grid)])
         for cellInfo in GetNeighborCellsInfo!(originalCell, grid)
             neighborIndex = cellInfo.index
-            if !(neighborIndex in nextCellIndexes)
+            if !(neighborIndex in nextCellIndexes) 
                 DeprecateCell!(GetCell(grid, neighborIndex, simulator), simulator)
             end
         end
