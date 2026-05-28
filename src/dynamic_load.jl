@@ -230,12 +230,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
         for (pAtom, targets) in zip(pAtoms, targetsList)
             if length(targets) > 0
                 pAtom.lastTargets = [t.index for t in targets]
-                #@show length(simulator.deprecatedCellKeys)
-                #@show keys(simulator.grid.cells)
                 Collision_dynamicLoad!(pAtom, targets, simulator)
-                #@show length(simulator.deprecatedCellKeys)
-                #@show keys(simulator.grid.cells)
-                #exit()
                 for target in targets
                     if target.energy > 0.0   
                         if target.isLatticeAtom
@@ -256,11 +251,11 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
                 push!(nextPAtoms, pAtom)
             end
         end
-        ks = copy(simulator.preservedCellKeys)
         empty!(simulator.preservedCellKeys)
-        for k in ks
+        for k in simulator.attempedDeCellKeys
             DeprecateCell!(GetCell(simulator.grid, k, simulator), simulator)
         end
+        empty!(simulator.attempedDeCellKeys)
         DumpInCascade_dynamicLoad(simulator)
         if length(nextPAtoms) > 0
             pAtoms = nextPAtoms

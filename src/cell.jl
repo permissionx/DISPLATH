@@ -261,7 +261,6 @@ end
 function DeprecateCell!(cell::Cell, simulator::Simulator)
     if !(cell.index in simulator.preservedCellKeys)
         if isempty(cell.atoms) && isempty(cell.vacancies) 
-            cell.isPushedNeighbor = false 
             push!(simulator.deprecatedCellKeys, cell.index)
         else
             for atom in cell.atoms
@@ -272,6 +271,8 @@ function DeprecateCell!(cell::Cell, simulator::Simulator)
             cell.isNonLatticeAtoms = true
             empty!(cell.latticeAtoms)
         end
+    else
+        push!(simulator.attempedDeCellKeys, cell.index)
     end
 end
 
