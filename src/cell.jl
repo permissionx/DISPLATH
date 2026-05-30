@@ -10,8 +10,8 @@ end
 function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64})
     ranges = Matrix{Float64}(undef, 3, 2)
     for d in 1:3
-        ranges[d,1] = (cellIndex[d] - 1) * vector[d,d] 
-        ranges[d,2] = cellIndex[d] * vector[d,d]
+        ranges[d,1] = (cellIndex[d] - 1) * vectors[d,d]
+        ranges[d,2] = cellIndex[d] * vectors[d,d]
     end
     cell = Cell(cellIndex, Vector{Atom}(), Vector{LatticePoint}(), 
                             ranges, 
@@ -25,7 +25,7 @@ function GetCell(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64}, simulator::S
     return _GetCellDict!(grid, cellIndex, simulator)
 end
 
-function _GetCellDict!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64}, simulator)
+function _GetCellDict!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
     dks = simulator.deprecatedCellKeys
     cells = grid.cells
     if haskey(cells, cellIndex)
@@ -85,7 +85,7 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
     end
     cell = Cell(cellIndex, Vector{Atom}(), Vector{LatticePoint}(), 
                             ranges, 
-                            Array{NeighborCellInfo, 3}(undef, 3, 3, 3), false, 0.0)
+                            nothing, false, 0.0)
     cell.isPushedNeighbor = false
     cell.hasNeighborObj = false
     isEmpty = false
@@ -102,9 +102,7 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
         atom.index = simulator.minLatticeAtomID
         atom.cellIndex = cellIndex
         atom.isLatticeAtom = true
-        for d in 1:3
-            atom.latticeCoordinate[d] = atom.coordinate[d]
-        end
+        atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
         if isEmpty
             atom.isAlive = false
         else
@@ -134,8 +132,8 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
     for (atom, stdAtom) in zip(cell.latticeAtoms, simulator.cellStd.atoms)
         for d in 1:3
             atom.coordinate[d] = stdAtom.coordinate[d] + cell.ranges[d,1]
-            atom.latticeCoordinate[d] = atom.coordinate[d]
         end
+        atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
         atom.cellIndex = cellIndex
         simulator.minLatticeAtomID -= 1
         atom.index = simulator.minLatticeAtomID
@@ -167,9 +165,7 @@ function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
         atom.index = simulator.minLatticeAtomID
         atom.cellIndex = cell.index
         atom.isLatticeAtom = true
-        for d in 1:3
-            atom.latticeCoordinate[d] = atom.coordinate[d]
-        end
+        atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
         if isEmpty || stdAtom.indexInCell in vIndexs
             atom.isAlive = false
         else
@@ -182,6 +178,7 @@ function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
 end
 
 function GetNeighborCellsInfo!(cell, grid)
+    cell.neighborCellsInfo === nothing && error("Cell neighbor info is not stored on this cell")
     if ! cell.isPushedNeighbor
         if ! cell.hasNeighborObj
             SetNeighborCellsInfo!(cell, grid)
@@ -192,32 +189,34 @@ function GetNeighborCellsInfo!(cell, grid)
     return cell.neighborCellsInfo
 end
 
+function GetNeighborCellsInfo!(cell::Cell, grid::Grid, simulator, slot::Int=1)
+    neighborCellsInfo = simulator.workBuffers.neighborCellsInfos[slot]
+    UpdateNeighborCellsInfo!(neighborCellsInfo, cell.index, grid)
+    return neighborCellsInfo
+end
+
+@inline function _neighbor_index_cross(index::Int64, delta::Int64, size::Int64)
+    neighborIndex = index + delta
+    cross = Int8(0)
+    if neighborIndex < 1
+        neighborIndex += size
+        cross = Int8(-1)
+    elseif neighborIndex > size
+        neighborIndex -= size
+        cross = Int8(1)
+    end
+    return neighborIndex, cross
+end
+
 function SetNeighborCellsInfo!(cell::Cell, grid::Grid)
     # Direct triple loop implementation - much faster than recursion
-    for delta_x in [-1, 0, 1]
-        for delta_y in [-1, 0, 1]
-            for delta_z in [-1, 0, 1]
-                neighborKeys = (Int8(delta_x), Int8(delta_y), Int8(delta_z))  
-                neighborIndex = [0, 0, 0]  
-                neighborCross = [Int8(0), Int8(0), Int8(0)]  
-                # Calculate neighbor cell index and cross flags for each dimension
-                for d in 1:3
-                    delta = neighborKeys[d]
-                    index = cell.index[d] + delta
-                    cross = Int8(0)
-                    if index < 1
-                        index += grid.sizes[d]
-                        cross = Int8(-1)
-                    elseif index > grid.sizes[d]
-                        index -= grid.sizes[d]
-                        cross = Int8(1)
-                    end
-                    neighborIndex[d] = index
-                    neighborCross[d] = cross
-                end
-                neighborIndex_tuple = (neighborIndex[1], neighborIndex[2], neighborIndex[3])
-                neighborCross_tuple = (neighborCross[1], neighborCross[2], neighborCross[3])
-                neighborCellInfo = NeighborCellInfo(neighborIndex_tuple, neighborCross_tuple)
+    for delta_x in -1:1
+        for delta_y in -1:1
+            for delta_z in -1:1
+                ix, cx = _neighbor_index_cross(cell.index[1], delta_x, grid.sizes[1])
+                iy, cy = _neighbor_index_cross(cell.index[2], delta_y, grid.sizes[2])
+                iz, cz = _neighbor_index_cross(cell.index[3], delta_z, grid.sizes[3])
+                neighborCellInfo = NeighborCellInfo((ix, iy, iz), (cx, cy, cz))
                 idx = (delta_x + 2, delta_y + 2, delta_z + 2)
                 cell.neighborCellsInfo[idx...] = neighborCellInfo
             end
@@ -227,33 +226,39 @@ function SetNeighborCellsInfo!(cell::Cell, grid::Grid)
     cell.hasNeighborObj = true
 end
 
+function UpdateNeighborCellsInfo!(
+    neighborCellsInfo::Array{NeighborCellInfo, 3},
+    cellIndex::Tuple{Int64, Int64, Int64},
+    grid::Grid,
+)
+    for delta_x in -1:1
+        for delta_y in -1:1
+            for delta_z in -1:1
+                neighborCellInfo = neighborCellsInfo[delta_x+2, delta_y+2, delta_z+2]
+                ix, cx = _neighbor_index_cross(cellIndex[1], delta_x, grid.sizes[1])
+                iy, cy = _neighbor_index_cross(cellIndex[2], delta_y, grid.sizes[2])
+                iz, cz = _neighbor_index_cross(cellIndex[3], delta_z, grid.sizes[3])
+                neighborCellInfo.index = (ix, iy, iz)
+                neighborCellInfo.cross = (cx, cy, cz)
+            end
+        end
+    end
+    return neighborCellsInfo
+end
+
 
 
 function UpdateNeighborCellsInfo!(cell::Cell, grid::Grid)
     # Direct triple loop implementation - much faster than recursion
-    for delta_x in [-1, 0, 1]
-        for delta_y in [-1, 0, 1]
-            for delta_z in [-1, 0, 1]
+    for delta_x in -1:1
+        for delta_y in -1:1
+            for delta_z in -1:1
                 neighborCellInfo = cell.neighborCellsInfo[delta_x+2, delta_y+2, delta_z+2]
-                neighborKeys = (Int8(delta_x), Int8(delta_y), Int8(delta_z))  
-                indexes = Vector{Int64}(undef,3)
-                crosses = Vector{Int64}(undef,3)
-                for d in 1:3
-                    delta = neighborKeys[d]
-                    index = cell.index[d] + delta
-                    cross = Int8(0)
-                    if index < 1
-                        index += grid.sizes[d]
-                        cross = Int8(-1)
-                    elseif index > grid.sizes[d]
-                        index -= grid.sizes[d]
-                        cross = Int8(1)
-                    end
-                    indexes[d] = index
-                    crosses[d] = cross
-                end
-                neighborCellInfo.index = (indexes[1], indexes[2], indexes[3])
-                neighborCellInfo.cross = (crosses[1], crosses[2], crosses[3])
+                ix, cx = _neighbor_index_cross(cell.index[1], delta_x, grid.sizes[1])
+                iy, cy = _neighbor_index_cross(cell.index[2], delta_y, grid.sizes[2])
+                iz, cz = _neighbor_index_cross(cell.index[3], delta_z, grid.sizes[3])
+                neighborCellInfo.index = (ix, iy, iz)
+                neighborCellInfo.cross = (cx, cy, cz)
             end
         end
     end
@@ -272,8 +277,9 @@ function DeprecateCell!(cell::Cell, simulator::Simulator)
                     return
                 end
             end
-            cell.isNonLatticeAtoms = true
-            empty!(cell.latticeAtoms)
+            # Keep defect-cell lattice atoms cached. Rebuilding them in
+            # RefillLatticeAtoms! dominated late-cascade transient allocation.
+            cell.isNonLatticeAtoms = false
         end
     else
         push!(simulator.attempedDeCellKeys, cell.index)
@@ -296,10 +302,18 @@ function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simu
         delete!(originalCell, atom, simulator)
         nextCell = GetCell(grid, nextCellIndex, simulator)
         push!(nextCell, atom, simulator)
-        nextCellIndexes = Set([neighborCellInfo.index for neighborCellInfo in GetNeighborCellsInfo!(nextCell, grid)])
-        for cellInfo in GetNeighborCellsInfo!(originalCell, grid)
+        nextNeighborCellsInfo = GetNeighborCellsInfo!(nextCell, grid, simulator, 1)
+        originalNeighborCellsInfo = GetNeighborCellsInfo!(originalCell, grid, simulator, 2)
+        for cellInfo in originalNeighborCellsInfo
             neighborIndex = cellInfo.index
-            if !(neighborIndex in nextCellIndexes) 
+            isNextNeighbor = false
+            for nextCellInfo in nextNeighborCellsInfo
+                if neighborIndex == nextCellInfo.index
+                    isNextNeighbor = true
+                    break
+                end
+            end
+            if !isNextNeighbor
                 DeprecateCell!(GetCell(grid, neighborIndex, simulator), simulator)
             end
         end

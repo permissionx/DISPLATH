@@ -1,16 +1,16 @@
 
 function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Parameters)
-    V_upterm = Dict{Vector{Int64}, Float64}()
-    a_U = Dict{Vector{Int64}, Float64}()
+    V_upterm = Dict{Tuple{Int64, Int64}, Float64}()
+    a_U = Dict{Tuple{Int64, Int64}, Float64}()
     E_m = Dict{Int64, Float64}()
-    S_e_upTerm = Dict{Vector{Int64}, Float64}()
-    S_e_downTerm = Dict{Vector{Int64}, Float64}()
-    x_nl = Dict{Vector{Int64}, Float64}()
-    a = Dict{Vector{Int64}, Float64}()
-    Q_nl = Dict{Vector{Int64}, Float64}()  
-    Q_loc = Dict{Vector{Int64}, Float64}()
+    S_e_upTerm = Dict{Tuple{Int64, Int64}, Float64}()
+    S_e_downTerm = Dict{Tuple{Int64, Int64}, Float64}()
+    x_nl = Dict{Tuple{Int64, Int64}, Float64}()
+    a = Dict{Tuple{Int64, Int64}, Float64}()
+    Q_nl = Dict{Tuple{Int64, Int64}, Float64}()
+    Q_loc = Dict{Tuple{Int64, Int64}, Float64}()
     types = keys(typeDict)
-    qMax = Dict{Vector{Int64}, Float64}()
+    qMax = Dict{Tuple{Int64, Int64}, Float64}()
     sigma = Dict{Int64, Float64}()
     log_info("")
     log_info("Vibration σ for each type:")
@@ -18,14 +18,15 @@ function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Paramet
         radius_p, mass_p, Z_p, _, _, α_p, β_p = TypeToProperties(p, typeDict)
         for t in types
             radius_t, _, Z_t, _, _, _, _ = TypeToProperties(t, typeDict)
-            V_upterm[[p,t]] = BCA.ConstantFunctions.V_upterm(Z_p, Z_t)
-            a_U[[p,t]] = BCA.ConstantFunctions.a_U(Z_p, Z_t)
-            S_e_upTerm[[p,t]] = BCA.ConstantFunctions.S_e_upTerm(p, Z_p, Z_t, mass_p, α_p)
-            x_nl[[p,t]] = BCA.ConstantFunctions.x_nl(p, Z_p, Z_t, β_p)
-            a[[p,t]] = BCA.ConstantFunctions.a(Z_p, Z_t)
-            Q_nl[[p,t]] = BCA.ConstantFunctions.Q_nl(Z_p, Z_t, parameters.pMax)
-            Q_loc[[p,t]] = BCA.ConstantFunctions.Q_loc(Z_p, Z_t)
-            qMax[[p,t]] = radius_p + radius_t
+            key = (p, t)
+            V_upterm[key] = BCA.ConstantFunctions.V_upterm(Z_p, Z_t)
+            a_U[key] = BCA.ConstantFunctions.a_U(Z_p, Z_t)
+            S_e_upTerm[key] = BCA.ConstantFunctions.S_e_upTerm(p, Z_p, Z_t, mass_p, α_p)
+            x_nl[key] = BCA.ConstantFunctions.x_nl(p, Z_p, Z_t, β_p)
+            a[key] = BCA.ConstantFunctions.a(Z_p, Z_t)
+            Q_nl[key] = BCA.ConstantFunctions.Q_nl(Z_p, Z_t, parameters.pMax)
+            Q_loc[key] = BCA.ConstantFunctions.Q_loc(Z_p, Z_t)
+            qMax[key] = radius_p + radius_t
         end
         E_m[p] = BCA.ConstantFunctions.E_m(Z_p, mass_p)
         sigma[p] = TemperatureToSigma(parameters.temperature, parameters.DebyeTemperature, mass_p)
@@ -37,8 +38,8 @@ end
 
 function InitθτFunctions(parameters::Parameters, constantsByType::ConstantsByType)
     typeDict = parameters.typeDict
-    θFunctions = Dict{Vector{Int64}, Function}()
-    τFunctions = Dict{Vector{Int64}, Function}()
+    θFunctions = Dict{Tuple{Int64, Int64}, Function}()
+    τFunctions = Dict{Tuple{Int64, Int64}, Function}()
     log_separator()
     log_info("Loading θ and τ functions...")
     for type_p in keys(typeDict)
@@ -46,8 +47,9 @@ function InitθτFunctions(parameters::Parameters, constantsByType::ConstantsByT
             mass_p = typeDict[type_p].mass
             mass_t = typeDict[type_t].mass
             θInterpolation, τInterpolation = θτFunctions(mass_p, mass_t, type_p, type_t, constantsByType, parameters)
-            θFunctions[[type_p, type_t]] = (E_p, p) -> θInterpolation(E_p, p)
-            τFunctions[[type_p, type_t]] = (E_p, p) -> τInterpolation(E_p, p)
+            key = (type_p, type_t)
+            θFunctions[key] = (E_p, p) -> θInterpolation(E_p, p)
+            τFunctions[key] = (E_p, p) -> τInterpolation(E_p, p)
             log_debug("  $(parameters.typeDict[type_p].name) → $(parameters.typeDict[type_t].name) loaded")
         end
     end

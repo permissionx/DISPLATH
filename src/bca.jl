@@ -19,7 +19,8 @@ function Φ(x::Float64)
 end
 
 function V(r::Float64, type_p::Int64, type_t::Int64, constantsByType::ConstantsByType)
-    return constantsByType.V_upterm[[type_p, type_t]] / r * Φ(r / constantsByType.a_U[[type_p, type_t]])  
+    key = (type_p, type_t)
+    return constantsByType.V_upterm[key] / r * Φ(r / constantsByType.a_U[key])
 end
 
 function E_r(energy_p::Float64, mass_p::Float64, mass_t::Float64)
@@ -161,7 +162,7 @@ function S_e(energy_p::Float64, type_p::Int64, type_t::Int64, constantsByType::C
     A = energy_p / constantsByType.E_m[type_p]
     termLeftDown = (A / log(A + 1 / A + ℯ - 2))^δ_1_2 
     termRightDown = A ^ δ_1_2_
-    termUp = constantsByType.S_e_upTerm[[type_p, type_t]]
+    termUp = constantsByType.S_e_upTerm[(type_p, type_t)]
     return termUp / (termLeftDown + termRightDown)^δ_1
 end
 
@@ -169,7 +170,7 @@ end
 function x_nl(type_p::Int64, type_t::Int64, E_r::Float64, constantsByType::ConstantsByType)
     # termOthers 
     termE_r = E_r^0.075
-    termOthers = constantsByType.x_nl[[type_p, type_t]]
+    termOthers = constantsByType.x_nl[(type_p, type_t)]
     return termE_r * termOthers
 end 
 
@@ -180,13 +181,14 @@ end
 
 function Q_nl_f(type_p::Int64, type_t::Int64, S_e::Float64, x_nl::Float64, x_loc::Float64, pL::Float64, N::Float64, constantsByType::ConstantsByType)
     # constant:  pMax (half of lattice constant)
-    termRight = x_nl + x_loc * constantsByType.Q_nl[[type_p, type_t]]
+    termRight = x_nl + x_loc * constantsByType.Q_nl[(type_p, type_t)]
     return S_e * N * termRight * pL 
 end 
 
 function Q_loc_f(type_p::Int64, type_t::Int64, S_e::Float64, x_loc::Float64, p::Float64, constantsByType::ConstantsByType)
-    termUp = x_loc * S_e * exp(-p / constantsByType.a[[type_p, type_t]])
-    termDown = constantsByType.Q_loc[[type_p, type_t]]
+    key = (type_p, type_t)
+    termUp = x_loc * S_e * exp(-p / constantsByType.a[key])
+    termDown = constantsByType.Q_loc[key]
     return termUp * termDown
 end
 

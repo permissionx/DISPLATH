@@ -23,21 +23,11 @@ mutable struct Atom
 
     dte::Float64
     bde::Float64
-    # temperory values 
-    #numberOfEmptyCells::Int64
-    emptyPath::Float64
-
     # for atom_t
     pValue::Float64
     pPoint::SVector{3,Float64}
     pVector::SVector{3,Float64}
     pL::Float64
-    pAtomIndex::Int64 # temperory 
-    pDirection::Vector{Float64}  # temperory 
-
-    # for atom_p
-    lastTargets::Vector{Int64}
-
 
     latticePointIndex::Int64 # -1 for off lattice
     
@@ -49,7 +39,7 @@ mutable struct Atom
 
     # for dynamic load 
     isLatticeAtom::Bool
-    latticeCoordinate::Vector{Float64}
+    latticeCoordinate::SVector{3,Float64}
     indexInCell::Int64
 end
 
@@ -82,13 +72,12 @@ mutable struct Cell
     atoms::Vector{Atom}
     latticePoints::Vector{LatticePoint}  
     ranges::Matrix{Float64}
-    neighborCellsInfo::Array{NeighborCellInfo, 3}
+    neighborCellsInfo::Union{Nothing, Array{NeighborCellInfo, 3}}
     isExplored::Bool
     atomicDensity::Float64
     # for dynamic load
     latticeAtoms::Vector{Atom}
     vacancies::Vector{Atom}  # also for static load 
-    latticeRanges::Matrix{Int64}
     isPushedNeighbor::Bool
     hasNeighborObj::Bool
     isNonLatticeAtoms::Bool
@@ -100,17 +89,16 @@ function Cell(
     latticePoints::Vector{LatticePoint},
     ranges::Matrix{Float64},
     #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo},
-    neighborCellsInfo::Array{NeighborCellInfo, 3},
+    neighborCellsInfo::Union{Nothing, Array{NeighborCellInfo, 3}},
     isExplored::Bool,
     atomicDensity::Float64)           
     latticeAtoms = Vector{Atom}()
     vacancies = Vector{Atom}()
-    latticeRanges = Matrix{Int64}(undef, 3, 2)
     isPushedNeighbor = false
     hasNeighborObj = false
     isNonLatticeAtoms = false
     return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
-                    latticeAtoms, vacancies, latticeRanges, isPushedNeighbor, hasNeighborObj, isNonLatticeAtoms)     
+                    latticeAtoms, vacancies, isPushedNeighbor, hasNeighborObj, isNonLatticeAtoms)
 end
 
 struct CellStd
@@ -137,16 +125,16 @@ end
 
 
 struct ConstantsByType
-    V_upterm::Dict{Vector{Int64}, Float64}
-    a_U::Dict{Vector{Int64}, Float64}
+    V_upterm::Dict{Tuple{Int64, Int64}, Float64}
+    a_U::Dict{Tuple{Int64, Int64}, Float64}
     E_m::Dict{Int64, Float64}
-    S_e_upTerm::Dict{Vector{Int64}, Float64}
-    S_e_downTerm::Dict{Vector{Int64}, Float64}
-    x_nl::Dict{Vector{Int64}, Float64}
-    a::Dict{Vector{Int64}, Float64}
-    Q_nl::Dict{Vector{Int64}, Float64}  
-    Q_loc::Dict{Vector{Int64}, Float64}
-    qMax::Dict{Vector{Int64}, Float64}
+    S_e_upTerm::Dict{Tuple{Int64, Int64}, Float64}
+    S_e_downTerm::Dict{Tuple{Int64, Int64}, Float64}
+    x_nl::Dict{Tuple{Int64, Int64}, Float64}
+    a::Dict{Tuple{Int64, Int64}, Float64}
+    Q_nl::Dict{Tuple{Int64, Int64}, Float64}
+    Q_loc::Dict{Tuple{Int64, Int64}, Float64}
+    qMax::Dict{Tuple{Int64, Int64}, Float64}
     sigma::Dict{Int64, Float64}
 end
 
@@ -281,6 +269,8 @@ mutable struct WorkBuffers
     candidateTargets::Vector{Atom}
     collisionParames::CollisionParamsBuffers
     threadCandidates::Vector{Vector{Atom}}
+    neighborCellsInfos::Vector{Array{NeighborCellInfo, 3}}
+    lastTargets::Dict{Int64, Vector{Int64}}
     function WorkBuffers(max_threads::Int64=Threads.nthreads())
         coordinates = [Vector{Float64}(undef, 3) for _ in 1:max_threads]
         candidateTargets = Vector{Atom}()
@@ -290,9 +280,31 @@ mutable struct WorkBuffers
         for tc in threadCandidates
             sizehint!(tc, 50)
         end
-        return new(coordinates, candidateTargets, 
-                  collisionParams, threadCandidates)
+        neighborCellsInfos = [_new_neighbor_info_buffer() for _ in 1:2]
+        lastTargets = Dict{Int64, Vector{Int64}}()
+        return new(coordinates, candidateTargets,
+                  collisionParams, threadCandidates, neighborCellsInfos, lastTargets)
     end
+end
+
+function _new_neighbor_info_buffer()
+    buffer = Array{NeighborCellInfo, 3}(undef, 3, 3, 3)
+    for i in eachindex(buffer)
+        buffer[i] = NeighborCellInfo((0, 0, 0), (Int8(0), Int8(0), Int8(0)))
+    end
+    return buffer
+end
+
+function LastTargets!(atom::Atom, simulator)
+    return get!(simulator.workBuffers.lastTargets, atom.index) do
+        Vector{Int64}()
+    end
+end
+
+function ClearLastTargets!(atom::Atom, simulator)
+    targets = get(simulator.workBuffers.lastTargets, atom.index, nothing)
+    targets === nothing || empty!(targets)
+    return nothing
 end
 
 function EnsureCollisionCapacity!(buffers::CollisionParamsBuffers, n::Int)
@@ -307,12 +319,11 @@ function EnsureCollisionCapacity!(buffers::CollisionParamsBuffers, n::Int)
 end
 
 function ClearBuffers!(buffers::WorkBuffers)
-    empty!(buffers.coordinate)
-    empty!(buffers.targets)
     empty!(buffers.candidateTargets)
     for tc in buffers.threadCandidates
         empty!(tc)
     end
+    empty!(buffers.lastTargets)
 end
 
 mutable struct Simulator
@@ -329,8 +340,8 @@ mutable struct Simulator
     nCascade::Int64
     nCollisionEvent::Int64
     exploredCells::Vector{Cell}
-    θFunctions::Dict{Vector{Int64}, Function}
-    τFunctions::Dict{Vector{Int64}, Function}
+    θFunctions::Dict{Tuple{Int64, Int64}, Function}
+    τFunctions::Dict{Tuple{Int64, Int64}, Function}
     uniformDensity::Float64
     #soap::PyObject
     environmentCut::Float64
@@ -404,4 +415,3 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      parameters,
                      workBuffers)  
 end
-

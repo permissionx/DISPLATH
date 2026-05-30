@@ -11,30 +11,26 @@ function CreateBoxByPrimaryVectors(primaryVectors::Matrix{Float64}, sizes::Vecto
 end 
 
 
-function Atom(type::Int64, coordinate::Vector{Float64}, parameters::Parameters)
+function Atom(type::Int64, coordinate::AbstractVector{<:Real}, parameters::Parameters)
     index = 0
     isAlive = true
     cellIndex = (0,0,0)
     velocityDirection = SVector{3,Float64}(0.0, 0.0, 0.0)  
     energy = 0.0
     radius, mass, Z, dte, bde, _, _ = TypeToProperties(type, parameters.typeDict)
-    #numberOfEmptyCells = 0
-    emptyPath = 0.0
     pValue = 0.0
     pVector = SVector{3,Float64}(0.0, 0.0, 0.0)  
     pPoint = SVector{3,Float64}(0.0, 0.0, 0.0)   
-    lastTargets = Vector{Int64}()
     pL = 0.0
-    pAtomIndex = -1 # temperory 
-    pDirection = Float64[0.0,0.0,0.0] # temperory 
     latticePointIndex = -1
     isLatticeAtom = false
-    latticeCoordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])  
+    coordinateVector = Float64[coordinate[1], coordinate[2], coordinate[3]]
+    latticeCoordinate = SVector{3,Float64}(coordinateVector[1], coordinateVector[2], coordinateVector[3])
     indexInCell = 0
-    return Atom(index, isAlive, type, coordinate[:], cellIndex, 
+    return Atom(index, isAlive, type, coordinateVector, cellIndex,
                 radius, mass, velocityDirection, energy, Z, 
-                dte, bde, emptyPath, #numberOfEmptyCells,
-                pValue, pVector, pPoint, pL, pAtomIndex, pDirection, lastTargets, # temperory 
+                dte, bde,
+                pValue, pPoint, pVector, pL,
                 latticePointIndex,
                 isLatticeAtom, latticeCoordinate, indexInCell)
 end
@@ -192,17 +188,22 @@ function LatticePoint(atom::Atom)
 end
 
 
-function WhichCell(coordinate::Vector{Float64}, grid::Grid)
-    cellIndex = Vector{Int64}(undef, 3)
-    for d in 1:3
-        cellIndex[d] = Int64(floor(coordinate[d] / grid.vectors[d,d])) + 1
-        if cellIndex[d] < 1 
-            cellIndex[d] = 1
-        elseif cellIndex[d] > grid.sizes[d]
-            cellIndex[d] = grid.sizes[d]
-        end
+@inline function _cell_index_1d(x::Float64, d::Int64, grid::Grid)
+    cellIndex = Int64(floor(x / grid.vectors[d,d])) + 1
+    if cellIndex < 1
+        return 1
+    elseif cellIndex > grid.sizes[d]
+        return grid.sizes[d]
     end
-    return (cellIndex[1], cellIndex[2], cellIndex[3])
+    return cellIndex
+end
+
+function WhichCell(coordinate::Vector{Float64}, grid::Grid)
+    return (
+        _cell_index_1d(coordinate[1], 1, grid),
+        _cell_index_1d(coordinate[2], 2, grid),
+        _cell_index_1d(coordinate[3], 3, grid),
+    )
 end
 
 
@@ -276,25 +277,25 @@ function delete!(cell::Cell, atom::Atom, simulator::Simulator)
 end
 
 
-function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
-    pos = newPosition[:]
-    for d in 1:3
-        # need to adapt non-periodic condition
-        if pos[d] < 0
-            if simulator.parameters.periodic[d] == false
-                pos[d] = 0.01
-            else
-                pos[d] += simulator.box.vectors[d,d]
-            end
-        elseif pos[d] >= simulator.box.vectors[d,d]
-            if simulator.parameters.periodic[d] == false
-                pos[d] = simulator.box.vectors[d,d] - 0.01
-            else
-                pos[d] -= simulator.box.vectors[d,d]
-            end
+@inline function _wrapped_position_component(x::Float64, d::Int64, simulator::Simulator)
+    if x < 0
+        if simulator.parameters.periodic[d] == false
+            return 0.01
         end
+        return x + simulator.box.vectors[d,d]
+    elseif x >= simulator.box.vectors[d,d]
+        if simulator.parameters.periodic[d] == false
+            return simulator.box.vectors[d,d] - 0.01
+        end
+        return x - simulator.box.vectors[d,d]
     end
-    SetCoordinate!(atom, pos)
+    return x
+end
+
+function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
+    atom.coordinate[1] = _wrapped_position_component(newPosition[1], 1, simulator)
+    atom.coordinate[2] = _wrapped_position_component(newPosition[2], 2, simulator)
+    atom.coordinate[3] = _wrapped_position_component(newPosition[3], 3, simulator)
     ifdebug = false
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
     if cellIndex != atom.cellIndex
@@ -303,7 +304,14 @@ function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simu
 end
 
 function DisplaceAtom!(atom::Atom, newPosition::SVector{3, Float64}, simulator::Simulator)
-    DisplaceAtom!(atom, [newPosition[1], newPosition[2], newPosition[3]], simulator)
+    atom.coordinate[1] = _wrapped_position_component(newPosition[1], 1, simulator)
+    atom.coordinate[2] = _wrapped_position_component(newPosition[2], 2, simulator)
+    atom.coordinate[3] = _wrapped_position_component(newPosition[3], 3, simulator)
+    ifdebug = false
+    cellIndex = WhichCell(atom.coordinate, simulator.grid)
+    if cellIndex != atom.cellIndex
+        ChangeCell!(atom, cellIndex, simulator)
+    end
 end
 
 
@@ -373,7 +381,7 @@ end
 
 function SimultaneousCriteria(candidateTarget::Atom, nearestTarget::Atom, simulator::Simulator)
     deltaPL = candidateTarget.pL - nearestTarget.pL
-    if deltaPL > simulator.constantsByType.qMax[[candidateTarget.type, nearestTarget.type]]
+    if deltaPL > simulator.constantsByType.qMax[(candidateTarget.type, nearestTarget.type)]
         return false
     elseif nearestTarget.pValue * nearestTarget.pValue + deltaPL * deltaPL > simulator.parameters.pMax_squared 
         return false
