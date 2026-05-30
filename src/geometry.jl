@@ -322,13 +322,17 @@ end
 function ComputeVDistance(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::Box)
     # v for atom_p
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
-    return dv' * atom_p.velocityDirection
+    return dot(dv, atom_p.velocityDirection)
 end
 
 
 function VectorDifference(v1::Vector{Float64}, v2::Vector{Float64}, crossFlag::NTuple{3, Int8}, box::Box)
     if crossFlag == (Int8(0), Int8(0), Int8(0))
-        return v2 - v1
+        return SVector{3,Float64}(
+            v2[1] - v1[1],
+            v2[2] - v1[2],
+            v2[3] - v1[3],
+        )
     end 
     return SVector{3,Float64}(
         v2[1] - v1[1] + crossFlag[1] * box.vectors[1,1],
@@ -342,19 +346,24 @@ function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::
     dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
     t = dot(dv, atom_p.velocityDirection)
     atom_t.pL = t
-    if 1 in crossFlag || -1 in crossFlag
-        pPoint_calc = Vector{Float64}(atom_p.coordinate + t * atom_p.velocityDirection)
-        for d in 1:3
-            if crossFlag[d] != 0
-                pPoint_calc[d] -= crossFlag[d] * box.vectors[d,d]
-            end
-        end
-    else
-        pPoint_calc = atom_p.coordinate + t * atom_p.velocityDirection
+    pPoint_calc = SVector{3,Float64}(
+        atom_p.coordinate[1] + t * atom_p.velocityDirection[1],
+        atom_p.coordinate[2] + t * atom_p.velocityDirection[2],
+        atom_p.coordinate[3] + t * atom_p.velocityDirection[3],
+    )
+    if crossFlag != (Int8(0), Int8(0), Int8(0))
+        pPoint_calc = SVector{3,Float64}(
+            pPoint_calc[1] - crossFlag[1] * box.vectors[1,1],
+            pPoint_calc[2] - crossFlag[2] * box.vectors[2,2],
+            pPoint_calc[3] - crossFlag[3] * box.vectors[3,3],
+        )
     end
-    atom_t.pPoint = SVector{3,Float64}(pPoint_calc[1], pPoint_calc[2], pPoint_calc[3])
-    pVector_calc = atom_t.pPoint - atom_t.coordinate
-    atom_t.pVector = SVector{3,Float64}(pVector_calc[1], pVector_calc[2], pVector_calc[3])
+    atom_t.pPoint = pPoint_calc
+    atom_t.pVector = SVector{3,Float64}(
+        atom_t.pPoint[1] - atom_t.coordinate[1],
+        atom_t.pPoint[2] - atom_t.coordinate[2],
+        atom_t.pPoint[3] - atom_t.coordinate[3],
+    )
     p = norm(atom_t.pVector)
     atom_t.pValue = p
     # need to check periodic condition
@@ -530,7 +539,7 @@ function GetEnvironmentLatticePoints(latticePoint::LatticePoint, simulator::Simu
     cut_squared = simulator.environmentCut^2
     box = simulator.box
     environmentLatticePointsIndex = Vector{Int64}()
-    dVectors = Vector{Vector{Float64}}()
+    dVectors = Vector{SVector{3,Float64}}()
     for neighborCellInfo in theCell.neighborCellsInfo
         index, cross = neighborCellInfo.index, neighborCellInfo.cross
         cell = GetCell(grid, index)

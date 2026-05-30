@@ -102,7 +102,9 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
         atom.index = simulator.minLatticeAtomID
         atom.cellIndex = cellIndex
         atom.isLatticeAtom = true
-        [atom.latticeCoordinate[d] = atom.coordinate[d] for d in 1:3]
+        for d in 1:3
+            atom.latticeCoordinate[d] = atom.coordinate[d]
+        end
         if isEmpty
             atom.isAlive = false
         else
@@ -130,8 +132,10 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
         end
     end
     for (atom, stdAtom) in zip(cell.latticeAtoms, simulator.cellStd.atoms)
-        [atom.coordinate[d] = stdAtom.coordinate[d] + cell.ranges[d,1] for d in 1:3]
-        [atom.latticeCoordinate[d] = atom.coordinate[d] for d in 1:3]
+        for d in 1:3
+            atom.coordinate[d] = stdAtom.coordinate[d] + cell.ranges[d,1]
+            atom.latticeCoordinate[d] = atom.coordinate[d]
+        end
         atom.cellIndex = cellIndex
         simulator.minLatticeAtomID -= 1
         atom.index = simulator.minLatticeAtomID
@@ -145,6 +149,7 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
 end
 
 function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
+    parameters = simulator.parameters
     latticeRanges = simulator.parameters.latticeRanges
     primaryVectors = simulator.parameters.primaryVectors
     isEmpty = false
@@ -153,11 +158,8 @@ function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
             isEmpty = true
         end
     end
-    vIndexs = [v.index for v in cell.vacancies]
+    vIndexs = Set(v.indexInCell for v in cell.vacancies)
     for stdAtom in simulator.cellStd.atoms
-        if stdAtom.indexInCell in vIndexs
-            continue
-        end
         coords = [stdAtom.coordinate[d] + cell.ranges[d, 1] for d in 1:3]
         atom = Atom(stdAtom.type, coords, parameters)
         atom.indexInCell = stdAtom.indexInCell
@@ -165,8 +167,10 @@ function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
         atom.index = simulator.minLatticeAtomID
         atom.cellIndex = cell.index
         atom.isLatticeAtom = true
-        [atom.latticeCoordinate[d] = atom.coordinate[d] for d in 1:3]
-        if isEmpty
+        for d in 1:3
+            atom.latticeCoordinate[d] = atom.coordinate[d]
+        end
+        if isEmpty || stdAtom.indexInCell in vIndexs
             atom.isAlive = false
         else
             atom.isAlive = true

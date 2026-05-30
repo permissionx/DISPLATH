@@ -434,7 +434,7 @@ end
 
 module Output
 using Main: Simulator
-export @dump, @record
+export @dump, @record, close_all!
 
 FLUSH_BYTES = 4_096
 const _fh = Dict{String, IO}()
@@ -475,10 +475,19 @@ function _flush!(file::String)
     write(io, take!(buf)); flush(io)
 end
 
+function close_all!()
+    for file in collect(keys(_fh))
+        _flush!(file)
+        close(_fh[file])
+        delete!(_fh, file)
+        delete!(_buf, file)
+    end
+end
+
 macro dump(file, atoms, properties=[], stepProperty=:nCascade)
     # for example: properties = ["vx", "vy", "vz", "e"]
     quote
-        atomNumber = sum([a.isAlive for a in $(esc(atoms))])
+        atomNumber = count(a -> a.isAlive, $(esc(atoms)))
         local _file = $(esc(file))
         Output._ensure(_file)
         local buf = Output._buf[_file]
@@ -517,6 +526,9 @@ macro dump(file, atoms, properties=[], stepProperty=:nCascade)
                 end
             end
             print(buf, "\n")
+            if position(buf) >= Output.FLUSH_BYTES
+                Output._flush!(_file)
+            end
         end
         if position(buf) >= Output.FLUSH_BYTES
             Output._flush!(_file)
@@ -541,9 +553,7 @@ macro record(file, value, title="", isSmall=false)
 end
 
 atexit() do
-    for s in keys(_fh)
-        _flush!(s); close(_fh[s])
-    end
+    close_all!()
 end
 
 end

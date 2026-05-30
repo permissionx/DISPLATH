@@ -8,11 +8,13 @@ end
 
 
 mutable struct Atom
+    # for every atom
     index::Int64  # never change
     isAlive::Bool
     type::Int64
     coordinate::Vector{Float64}
     cellIndex::Tuple{Int64, Int64, Int64}
+    # for each type
     radius::Float64
     mass::Float64
     velocityDirection::SVector{3,Float64}
@@ -21,7 +23,7 @@ mutable struct Atom
 
     dte::Float64
     bde::Float64
-
+    # temperory values 
     #numberOfEmptyCells::Int64
     emptyPath::Float64
 
