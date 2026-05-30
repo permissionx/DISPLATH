@@ -26,16 +26,19 @@ function Dump(simulator::Simulator, fileName::String, step::Int64, type::String=
         end
         for atom in simulator.atoms
             if atom.isAlive
+                velocityDirection = AtomVelocityDirection(atom, simulator)
+                energy = AtomEnergy(atom, simulator)
+                mass = AtomMass(atom, simulator)
                 if isDebug
                     write(file, "$(atom.index) $(atom.type) \
                     $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3]) \
-                    $(atom.velocityDirection[1]*sqrt(2*atom.mass*atom.energy)) $(atom.velocityDirection[2]*sqrt(2*atom.mass*atom.energy)) $(atom.velocityDirection[3]*sqrt(2*atom.mass*atom.energy)) \
-                    $(atom.energy) \
+                    $(velocityDirection[1]*sqrt(2*mass*energy)) $(velocityDirection[2]*sqrt(2*mass*energy)) $(velocityDirection[3]*sqrt(2*mass*energy)) \
+                    $(energy) \
                     $(atom.cellIndex[1]) $(atom.cellIndex[2]) $(atom.cellIndex[3]) \
                     $(GetDTE(atom, simulator))\n")
                 else
                     write(file, "$(atom.index) $(atom.type) \
-                    $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3]) $(atom.energy)\n")
+                    $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3]) $(energy)\n")
                 end
             end
         end 
@@ -424,10 +427,12 @@ function OutputAtoms(atoms::Vector{Atom}, simulator::Simulator, fileName::String
         end
         write(file, "ITEM: ATOMS id type x y z vx vy vz e\n")
         for atom in atoms
+            velocityDirection = AtomVelocityDirection(atom, simulator)
+            energy = AtomEnergy(atom, simulator)
             write(file, "$(atom.index) $(atom.type) \
             $(atom.coordinate[1]) $(atom.coordinate[2]) $(atom.coordinate[3]) \
-            $(atom.velocityDirection[1]) $(atom.velocityDirection[2]) $(atom.velocityDirection[3]) \
-            $(atom.energy)\n")
+            $(velocityDirection[1]) $(velocityDirection[2]) $(velocityDirection[3]) \
+            $(energy)\n")
         end
     end
 end
@@ -501,22 +506,24 @@ macro dump(file, atoms, properties=[], stepProperty=:nCascade)
             if !atom.isAlive
                 continue
             end
+            local velocityDirection = $(esc(:AtomVelocityDirection))(atom, $(esc(:simulator)))
+            local energy = $(esc(:AtomEnergy))(atom, $(esc(:simulator)))
             print(buf, string(atom.index) * " " * string(atom.type) * " " * string(atom.coordinate[1]) * " " * string(atom.coordinate[2]) * " " * string(atom.coordinate[3]) * " ")
             for p in $(esc(properties))
                 if p[1] == 'v'
                     if p[2] == 'x'
-                        print(buf, string(atom.velocityDirection[1]) * " ")
+                        print(buf, string(velocityDirection[1]) * " ")
                     elseif p[2] == 'y'
-                        print(buf, string(atom.velocityDirection[2]) * " ")
+                        print(buf, string(velocityDirection[2]) * " ")
                     elseif p[2] == 'z'
-                        print(buf, string(atom.velocityDirection[3]) * " ")
+                        print(buf, string(velocityDirection[3]) * " ")
                     else
                         error("Invalid velocity property: $p")
                     end
                 elseif p[1] == 'e'
-                    print(buf, string(atom.energy) * " ")
+                    print(buf, string(energy) * " ")
                 elseif p == "isLatticeAtom"
-                    if atom.isLatticeAtom 
+                    if $(esc(:IsLatticeAtom))(atom)
                         print(buf, "1" * " ")
                     else
                         print(buf, "0" * " ")

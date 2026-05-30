@@ -64,8 +64,6 @@ function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
                     z = (Z + basis[i,3]) * primaryVectors[3,3]
                     atom = Atom(basisTypes[i], [x, y, z], parameters)
                     atom.index = 0 
-                    atom.indexInCell = indexInCell
-                    atom.isLatticeAtom = true
                     push!(cellStd.atoms, atom)
                 end
             end
@@ -97,12 +95,9 @@ function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float
     for stdAtom in simulator.cellStd.atoms
         coords = [stdAtom.coordinate[d] + cell.ranges[d, 1] for d in 1:3]
         atom = Atom(stdAtom.type, coords, parameters)
-        atom.indexInCell = stdAtom.indexInCell
         simulator.minLatticeAtomID -= 1
         atom.index = simulator.minLatticeAtomID
         atom.cellIndex = cellIndex
-        atom.isLatticeAtom = true
-        atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
         if isEmpty
             atom.isAlive = false
         else
@@ -130,10 +125,10 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
         end
     end
     for (atom, stdAtom) in zip(cell.latticeAtoms, simulator.cellStd.atoms)
+        ClearAtomDynamics!(atom, simulator)
         for d in 1:3
             atom.coordinate[d] = stdAtom.coordinate[d] + cell.ranges[d,1]
         end
-        atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
         atom.cellIndex = cellIndex
         simulator.minLatticeAtomID -= 1
         atom.index = simulator.minLatticeAtomID
@@ -156,17 +151,14 @@ function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
             isEmpty = true
         end
     end
-    vIndexs = Set(v.indexInCell for v in cell.vacancies)
-    for stdAtom in simulator.cellStd.atoms
+    vIndexs = Set(IndexInCellByCoordinate(v, cell, simulator) for v in cell.vacancies)
+    for (indexInCell, stdAtom) in enumerate(simulator.cellStd.atoms)
         coords = [stdAtom.coordinate[d] + cell.ranges[d, 1] for d in 1:3]
         atom = Atom(stdAtom.type, coords, parameters)
-        atom.indexInCell = stdAtom.indexInCell
         simulator.minLatticeAtomID -= 1
         atom.index = simulator.minLatticeAtomID
         atom.cellIndex = cell.index
-        atom.isLatticeAtom = true
-        atom.latticeCoordinate = SVector{3,Float64}(atom.coordinate[1], atom.coordinate[2], atom.coordinate[3])
-        if isEmpty || stdAtom.indexInCell in vIndexs
+        if isEmpty || indexInCell in vIndexs
             atom.isAlive = false
         else
             atom.isAlive = true
@@ -273,7 +265,7 @@ function DeprecateCell!(cell::Cell, simulator::Simulator)
             push!(simulator.deprecatedCellKeys, cell.index)
         else
             for atom in cell.atoms
-                if atom.energy >= simulator.parameters.stopEnergy
+                if AtomEnergy(atom, simulator) >= simulator.parameters.stopEnergy
                     return
                 end
             end

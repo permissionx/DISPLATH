@@ -23,7 +23,7 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
             empty!(simulator.exploredCells)
             return targets, true, nothing, emptyPath
         else
-            dimension, direction,t = AtomOutFaceDimension(atom, cell)
+            dimension, direction,t = AtomOutFaceDimension(atom, cell, simulator)
             emptyPath = t
             neighborIndex = Vector{Int8}([0,0,0])
             neighborIndex[dimension] = direction == 1 ? Int8(-1) : Int8(1)
@@ -47,20 +47,21 @@ function ShotTarget(atom::Atom, filterIndexes::Vector{Int64}, simulator::Simulat
 end
 
 
-function AtomOutFaceDimension(atom::Atom, cell::Cell)
+function AtomOutFaceDimension(atom::Atom, cell::Cell, simulator::Simulator)
     coordinate = atom.coordinate
+    velocityDirection = AtomVelocityDirection(atom, simulator)
     for d in 1:3
-        if atom.velocityDirection[d] >= 0
+        if velocityDirection[d] >= 0
             rangeIndex = 2
         else
             rangeIndex = 1
         end
         faceCoordinate = cell.ranges[d, rangeIndex]
-        t = (faceCoordinate - coordinate[d]) / atom.velocityDirection[d]
+        t = (faceCoordinate - coordinate[d]) / velocityDirection[d]
         elseDs = [ed for ed in 1:3 if ed != d]
         allInRange = true
         for elseD in elseDs
-            crossCoord = coordinate[elseD] + atom.velocityDirection[elseD] * t
+            crossCoord = coordinate[elseD] + velocityDirection[elseD] * t
             if !(cell.ranges[elseD, 1] <= crossCoord <= cell.ranges[elseD, 2])
                 allInRange = false
                 break
@@ -70,8 +71,8 @@ function AtomOutFaceDimension(atom::Atom, cell::Cell)
             return d, rangeIndex, t
         end
     end
-    @show atom.velocityDirection
-    @show atom.energy
+    @show velocityDirection
+    @show AtomEnergy(atom, simulator)
     error("Out face not found\n 
            ####Simulator######\n Cascade number = $(simulator.nCascade)\n Collision number = $(simulator.nCollisionEvent)\n
            ########Atom#######\n $(atom) \n 

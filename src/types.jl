@@ -8,39 +8,11 @@ end
 
 
 mutable struct Atom
-    # for every atom
     index::Int64  # never change
     isAlive::Bool
     type::Int64
     coordinate::Vector{Float64}
     cellIndex::Tuple{Int64, Int64, Int64}
-    # for each type
-    radius::Float64
-    mass::Float64
-    velocityDirection::SVector{3,Float64}
-    energy::Float64
-    Z::Float64
-
-    dte::Float64
-    bde::Float64
-    # for atom_t
-    pValue::Float64
-    pPoint::SVector{3,Float64}
-    pVector::SVector{3,Float64}
-    pL::Float64
-
-    latticePointIndex::Int64 # -1 for off lattice
-    
-    # for KMC 
-    #frequency::Float64 # Hz, s^-1
-    #frequencies::Vector{Float64} 
-    #finalLatticePointIndexs::Vector{Int64}
-    #eventIndex::Int64
-
-    # for dynamic load 
-    isLatticeAtom::Bool
-    latticeCoordinate::SVector{3,Float64}
-    indexInCell::Int64
 end
 
 struct Material
@@ -64,6 +36,25 @@ mutable struct NeighborCellInfo
     index::NTuple{3, Int64}
     cross::NTuple{3, Int8} # 0 for no cross, 1 for hi, -1 for lo, eg. (0,0,1) for top 
 end
+
+struct TargetCandidate
+    index::Int64
+    type::Int64
+    cellIndex::Tuple{Int64, Int64, Int64}
+    isLatticeAtom::Bool
+    pValue::Float64
+    pPoint::SVector{3,Float64}
+    pVector::SVector{3,Float64}
+    pL::Float64
+end
+
+struct AtomDynamics
+    velocityDirection::SVector{3,Float64}
+    energy::Float64
+end
+
+const ZERO_VELOCITY_DIRECTION = SVector{3,Float64}(0.0, 0.0, 0.0)
+const ZERO_ATOM_DYNAMICS = AtomDynamics(ZERO_VELOCITY_DIRECTION, 0.0)
 
 
 mutable struct Cell
@@ -266,24 +257,26 @@ end
 
 mutable struct WorkBuffers
     coordinates::Vector{Vector{Float64}}
-    candidateTargets::Vector{Atom}
+    candidateTargets::Vector{TargetCandidate}
     collisionParames::CollisionParamsBuffers
-    threadCandidates::Vector{Vector{Atom}}
+    threadCandidates::Vector{Vector{TargetCandidate}}
     neighborCellsInfos::Vector{Array{NeighborCellInfo, 3}}
     lastTargets::Dict{Int64, Vector{Int64}}
+    atomDynamics::Dict{Int64, AtomDynamics}
     function WorkBuffers(max_threads::Int64=Threads.nthreads())
         coordinates = [Vector{Float64}(undef, 3) for _ in 1:max_threads]
-        candidateTargets = Vector{Atom}()
+        candidateTargets = Vector{TargetCandidate}()
         sizehint!(candidateTargets, 100)
         collisionParams = CollisionParamsBuffers()
-        threadCandidates = [Vector{Atom}() for _ in 1:max_threads]
+        threadCandidates = [Vector{TargetCandidate}() for _ in 1:max_threads]
         for tc in threadCandidates
             sizehint!(tc, 50)
         end
         neighborCellsInfos = [_new_neighbor_info_buffer() for _ in 1:2]
         lastTargets = Dict{Int64, Vector{Int64}}()
+        atomDynamics = Dict{Int64, AtomDynamics}()
         return new(coordinates, candidateTargets,
-                  collisionParams, threadCandidates, neighborCellsInfos, lastTargets)
+                  collisionParams, threadCandidates, neighborCellsInfos, lastTargets, atomDynamics)
     end
 end
 
@@ -307,6 +300,15 @@ function ClearLastTargets!(atom::Atom, simulator)
     return nothing
 end
 
+function AtomDynamics!(atom::Atom, simulator)
+    return get(simulator.workBuffers.atomDynamics, atom.index, ZERO_ATOM_DYNAMICS)
+end
+
+function ClearAtomDynamics!(atom::Atom, simulator)
+    delete!(simulator.workBuffers.atomDynamics, atom.index)
+    return nothing
+end
+
 function EnsureCollisionCapacity!(buffers::CollisionParamsBuffers, n::Int)
     if length(buffers.tanφList) < n
         resize!(buffers.tanφList, n)
@@ -324,6 +326,7 @@ function ClearBuffers!(buffers::WorkBuffers)
         empty!(tc)
     end
     empty!(buffers.lastTargets)
+    empty!(buffers.atomDynamics)
 end
 
 mutable struct Simulator
