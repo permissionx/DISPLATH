@@ -14,6 +14,14 @@ function GetDTE(atom::Atom, simulator::Simulator)
     end
 end
 
+function GetDTE(target::TargetCandidate, simulator::Simulator)
+    if simulator.parameters.DTEMode == 1
+        return TargetDTE(target, simulator)
+    else
+        return TargetDTE(target, simulator)
+    end
+end
+
 function GetBDE(atom::Atom, simulator::Simulator)  # BDE: binding energy
     if simulator.parameters.DTEMode == 1  # direct 
         return AtomBDE(atom, simulator)
@@ -23,6 +31,14 @@ function GetBDE(atom::Atom, simulator::Simulator)  # BDE: binding energy
     #    return GetBDEBySoap(atom, simulator)
     elseif simulator.parameters.DTEMode == 4
         return GetBDECustom(atom, simulator)
+    end
+end
+
+function GetBDE(target::TargetCandidate, simulator::Simulator)
+    if simulator.parameters.DTEMode == 1
+        return TargetBDE(target, simulator)
+    else
+        return TargetBDE(target, simulator)
     end
 end
 

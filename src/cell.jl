@@ -21,6 +21,40 @@ end
 
 # belows are for dynamic load
 
+@inline function CellLower(cellIndex::Tuple{Int64, Int64, Int64}, d::Int64, grid::Grid)
+    return (cellIndex[d] - 1) * grid.vectors[d,d]
+end
+
+@inline function CellUpper(cellIndex::Tuple{Int64, Int64, Int64}, d::Int64, grid::Grid)
+    return cellIndex[d] * grid.vectors[d,d]
+end
+
+@inline CellLower(cell::Cell, d::Int64, grid::Grid) = CellLower(cell.index, d, grid)
+@inline CellUpper(cell::Cell, d::Int64, grid::Grid) = CellUpper(cell.index, d, grid)
+
+function CellRanges(cellIndex::Tuple{Int64, Int64, Int64}, grid::Grid)
+    return @SMatrix [
+        CellLower(cellIndex, 1, grid) CellUpper(cellIndex, 1, grid)
+        CellLower(cellIndex, 2, grid) CellUpper(cellIndex, 2, grid)
+        CellLower(cellIndex, 3, grid) CellUpper(cellIndex, 3, grid)
+    ]
+end
+
+CellRanges(cell::Cell, grid::Grid) = CellRanges(cell.index, grid)
+
+function IsEmptyDynamicCell(cellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
+    latticeRanges = simulator.parameters.latticeRanges
+    primaryVectors = simulator.parameters.primaryVectors
+    grid = simulator.grid
+    for d in 1:3
+        lo = CellLower(cellIndex, d, grid)
+        if lo < latticeRanges[d,1] * primaryVectors[d,d] || lo > latticeRanges[d,2] * primaryVectors[d,d]
+            return true
+        end
+    end
+    return false
+end
+
 function GetCell(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
     return _GetCellDict!(grid, cellIndex, simulator)
 end
@@ -73,100 +107,18 @@ function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
 end
 
 function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
-    parameters = simulator.parameters
-    primaryVectors = parameters.primaryVectors
-    latticeRanges = parameters.latticeRanges
-    ranges = Matrix{Float64}(undef, 3, 2)
-    for d in 1:3
-        ranges[d,1] = (cellIndex[d] - 1) * vectors[1,1]
-        ranges[d,2] = cellIndex[d] * vectors[1,1]
-    end
-    cell = Cell(cellIndex, Vector{Atom}(), Vector{LatticePoint}(), 
-                            ranges, 
-                            nothing, false, 0.0)
-    cell.isPushedNeighbor = false
-    cell.hasNeighborObj = false
-    isEmpty = false
-    for d in 1:3
-        if ranges[d,1] < latticeRanges[d,1] * primaryVectors[d,d] || ranges[d,1] > latticeRanges[d,2] * primaryVectors[d,d]
-            isEmpty = true
-        end
-    end
-    for stdAtom in simulator.cellStd.atoms
-        coords = [stdAtom.coordinate[d] + cell.ranges[d, 1] for d in 1:3]
-        atom = Atom(stdAtom.type, coords, parameters)
-        simulator.minLatticeAtomID -= 1
-        atom.index = simulator.minLatticeAtomID
-        atom.cellIndex = cellIndex
-        if isEmpty
-            atom.isAlive = false
-        else
-            atom.isAlive = true
-        end
-        push!(cell.latticeAtoms, atom)
-        Pertubation_dynamicload!(atom, ranges, simulator)
-    end
-    return cell
+    return Cell(cellIndex, Atom[], Atom[])
 end
 
 function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
-    primaryVectors = simulator.parameters.primaryVectors
-    latticeRanges = simulator.parameters.latticeRanges
-    for d in 1:3
-        cell.ranges[d, 1] = (cellIndex[d] - 1) * vectors[d,d]
-        cell.ranges[d, 2] = cellIndex[d] * vectors[d,d]
-    end
+    empty!(cell.atoms)
+    empty!(cell.vacancies)
     cell.index = cellIndex
-    cell.isPushedNeighbor = false 
-    isEmpty = false
-    for d in 1:3
-        if cell.ranges[d,1] < latticeRanges[d,1] * primaryVectors[d,d] || cell.ranges[d,1] > latticeRanges[d,2] * primaryVectors[d,d]
-            isEmpty = true
-        end
-    end
-    for (atom, stdAtom) in zip(cell.latticeAtoms, simulator.cellStd.atoms)
-        ClearAtomDynamics!(atom, simulator)
-        for d in 1:3
-            atom.coordinate[d] = stdAtom.coordinate[d] + cell.ranges[d,1]
-        end
-        atom.cellIndex = cellIndex
-        simulator.minLatticeAtomID -= 1
-        atom.index = simulator.minLatticeAtomID
-        if isEmpty
-            atom.isAlive = false
-        else
-            atom.isAlive = true
-            Pertubation_dynamicload!(atom, cell.ranges, simulator)   
-        end
-    end 
+    return cell
 end
 
 function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
-    parameters = simulator.parameters
-    latticeRanges = simulator.parameters.latticeRanges
-    primaryVectors = simulator.parameters.primaryVectors
-    isEmpty = false
-    for d in 1:3
-        if cell.ranges[d,1] < latticeRanges[d,1] * primaryVectors[d,d] || cell.ranges[d,1] > latticeRanges[d,2] * primaryVectors[d,d]
-            isEmpty = true
-        end
-    end
-    vIndexs = Set(IndexInCellByCoordinate(v, cell, simulator) for v in cell.vacancies)
-    for (indexInCell, stdAtom) in enumerate(simulator.cellStd.atoms)
-        coords = [stdAtom.coordinate[d] + cell.ranges[d, 1] for d in 1:3]
-        atom = Atom(stdAtom.type, coords, parameters)
-        simulator.minLatticeAtomID -= 1
-        atom.index = simulator.minLatticeAtomID
-        atom.cellIndex = cell.index
-        if isEmpty || indexInCell in vIndexs
-            atom.isAlive = false
-        else
-            atom.isAlive = true
-        end
-        push!(cell.latticeAtoms, atom)
-        Pertubation_dynamicload!(atom, cell.ranges, simulator)
-    end
-    cell.isNonLatticeAtoms = false
+    return nothing
 end
 
 function GetNeighborCellsInfo!(cell, grid)
@@ -269,9 +221,6 @@ function DeprecateCell!(cell::Cell, simulator::Simulator)
                     return
                 end
             end
-            # Keep defect-cell lattice atoms cached. Rebuilding them in
-            # RefillLatticeAtoms! dominated late-cascade transient allocation.
-            cell.isNonLatticeAtoms = false
         end
     else
         push!(simulator.attempedDeCellKeys, cell.index)

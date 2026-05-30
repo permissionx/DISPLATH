@@ -42,6 +42,8 @@ struct TargetCandidate
     type::Int64
     cellIndex::Tuple{Int64, Int64, Int64}
     isLatticeAtom::Bool
+    indexInCell::Int64
+    coordinate::SVector{3,Float64}
     pValue::Float64
     pPoint::SVector{3,Float64}
     pVector::SVector{3,Float64}
@@ -57,39 +59,36 @@ const ZERO_VELOCITY_DIRECTION = SVector{3,Float64}(0.0, 0.0, 0.0)
 const ZERO_ATOM_DYNAMICS = AtomDynamics(ZERO_VELOCITY_DIRECTION, 0.0)
 
 
-mutable struct Cell
-    # only for orthogonal box
-    index::Tuple{Int64, Int64, Int64}
-    atoms::Vector{Atom}
-    latticePoints::Vector{LatticePoint}  
-    ranges::Matrix{Float64}
-    neighborCellsInfo::Union{Nothing, Array{NeighborCellInfo, 3}}
-    isExplored::Bool
-    atomicDensity::Float64
-    # for dynamic load
-    latticeAtoms::Vector{Atom}
-    vacancies::Vector{Atom}  # also for static load 
-    isPushedNeighbor::Bool
-    hasNeighborObj::Bool
-    isNonLatticeAtoms::Bool
-end
+if IS_DYNAMIC_LOAD
+    mutable struct Cell
+        index::Tuple{Int64, Int64, Int64}
+        atoms::Vector{Atom}
+        vacancies::Vector{Atom}
+    end
+else
+    mutable struct Cell
+        # only for orthogonal box
+        index::Tuple{Int64, Int64, Int64}
+        atoms::Vector{Atom}
+        latticePoints::Vector{LatticePoint}
+        ranges::Matrix{Float64}
+        neighborCellsInfo::Array{NeighborCellInfo, 3}
+        isExplored::Bool
+        atomicDensity::Float64
+        vacancies::Vector{Atom}
+    end
 
-function Cell(
-    index::Tuple{Int64, Int64, Int64},
-    atoms::Vector{Atom},
-    latticePoints::Vector{LatticePoint},
-    ranges::Matrix{Float64},
-    #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo},
-    neighborCellsInfo::Union{Nothing, Array{NeighborCellInfo, 3}},
-    isExplored::Bool,
-    atomicDensity::Float64)           
-    latticeAtoms = Vector{Atom}()
-    vacancies = Vector{Atom}()
-    isPushedNeighbor = false
-    hasNeighborObj = false
-    isNonLatticeAtoms = false
-    return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
-                    latticeAtoms, vacancies, isPushedNeighbor, hasNeighborObj, isNonLatticeAtoms)
+    function Cell(
+        index::Tuple{Int64, Int64, Int64},
+        atoms::Vector{Atom},
+        latticePoints::Vector{LatticePoint},
+        ranges::Matrix{Float64},
+        neighborCellsInfo::Array{NeighborCellInfo, 3},
+        isExplored::Bool,
+        atomicDensity::Float64)
+        vacancies = Vector{Atom}()
+        return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, vacancies)
+    end
 end
 
 struct CellStd
@@ -301,11 +300,19 @@ function ClearLastTargets!(atom::Atom, simulator)
 end
 
 function AtomDynamics!(atom::Atom, simulator)
-    return get(simulator.workBuffers.atomDynamics, atom.index, ZERO_ATOM_DYNAMICS)
+    return AtomDynamics!(atom.index, simulator)
+end
+
+function AtomDynamics!(index::Int64, simulator)
+    return get(simulator.workBuffers.atomDynamics, index, ZERO_ATOM_DYNAMICS)
 end
 
 function ClearAtomDynamics!(atom::Atom, simulator)
-    delete!(simulator.workBuffers.atomDynamics, atom.index)
+    return ClearAtomDynamics!(atom.index, simulator)
+end
+
+function ClearAtomDynamics!(index::Int64, simulator)
+    delete!(simulator.workBuffers.atomDynamics, index)
     return nothing
 end
 

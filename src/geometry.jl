@@ -36,13 +36,20 @@ const PENDING_ATOM_DYNAMICS = IdDict{Atom, AtomDynamics}()
     return type > ntypes ? type - ntypes : type
 end
 
+@inline function TypeElement(type::Int64, simulator::Simulator)
+    return simulator.parameters.typeDict[BaseType(type, simulator)]
+end
+
 @inline function AtomElement(atom::Atom, simulator::Simulator)
-    return simulator.parameters.typeDict[BaseType(atom.type, simulator)]
+    return TypeElement(atom.type, simulator)
 end
 
 @inline AtomMass(atom::Atom, simulator::Simulator) = AtomElement(atom, simulator).mass
 @inline AtomDTE(atom::Atom, simulator::Simulator) = AtomElement(atom, simulator).dte
 @inline AtomBDE(atom::Atom, simulator::Simulator) = AtomElement(atom, simulator).bde
+@inline TargetMass(target::TargetCandidate, simulator::Simulator) = TypeElement(target.type, simulator).mass
+@inline TargetDTE(target::TargetCandidate, simulator::Simulator) = TypeElement(target.type, simulator).dte
+@inline TargetBDE(target::TargetCandidate, simulator::Simulator) = TypeElement(target.type, simulator).bde
 
 function _pending_dynamics(atom::Atom)
     return get(PENDING_ATOM_DYNAMICS, atom, ZERO_ATOM_DYNAMICS)
@@ -60,11 +67,27 @@ function _transfer_pending_dynamics!(atom::Atom, simulator::Simulator)
 end
 
 function AtomEnergy(atom::Atom, simulator::Simulator)
-    return get(simulator.workBuffers.atomDynamics, atom.index, ZERO_ATOM_DYNAMICS).energy
+    return AtomEnergy(atom.index, simulator)
+end
+
+function AtomEnergy(index::Int64, simulator::Simulator)
+    return get(simulator.workBuffers.atomDynamics, index, ZERO_ATOM_DYNAMICS).energy
+end
+
+function AtomEnergy(target::TargetCandidate, simulator::Simulator)
+    return AtomEnergy(target.index, simulator)
 end
 
 function AtomVelocityDirection(atom::Atom, simulator::Simulator)
-    return get(simulator.workBuffers.atomDynamics, atom.index, ZERO_ATOM_DYNAMICS).velocityDirection
+    return AtomVelocityDirection(atom.index, simulator)
+end
+
+function AtomVelocityDirection(index::Int64, simulator::Simulator)
+    return get(simulator.workBuffers.atomDynamics, index, ZERO_ATOM_DYNAMICS).velocityDirection
+end
+
+function AtomVelocityDirection(target::TargetCandidate, simulator::Simulator)
+    return AtomVelocityDirection(target.index, simulator)
 end
 
 function CreateGrid(box::Box, inputVectors::Matrix{Float64})
@@ -231,25 +254,25 @@ end
 @inline IsLatticeAtom(atom::Atom) = atom.index < 0
 
 function TargetAtom(candidate::TargetCandidate, simulator::Simulator)
+    candidate.isLatticeAtom && error("Lattice target $(candidate.index) has no stored Atom")
     cell = GetCell(simulator.grid, candidate.cellIndex, simulator)
-    atoms = candidate.isLatticeAtom ? cell.latticeAtoms : cell.atoms
-    idx = findfirst(atom -> atom.index == candidate.index, atoms)
+    idx = findfirst(atom -> atom.index == candidate.index, cell.atoms)
     idx === nothing && error("Target atom $(candidate.index) is not in cell $(candidate.cellIndex)")
-    return atoms[idx]
+    return cell.atoms[idx]
 end
 
 function IndexInCell(atom::Atom, cell::Cell)
-    idx = findfirst(a -> a === atom, cell.latticeAtoms)
-    idx === nothing && error("Atom $(atom.index) is not in cell $(cell.index) latticeAtoms")
-    return idx
+    return IndexInCellByCoordinate(atom, cell, nothing)
 end
 
-function IndexInCellByCoordinate(atom::Atom, cell::Cell, simulator::Simulator)
+function IndexInCellByCoordinate(atom::Atom, cell::Cell, simulator)
+    simulator === nothing && error("Simulator is required to infer indexInCell")
+    grid = simulator.grid
     for (idx, stdAtom) in enumerate(simulator.cellStd.atoms)
         if atom.type == stdAtom.type || BaseType(atom.type, simulator) == stdAtom.type
-            x = stdAtom.coordinate[1] + cell.ranges[1, 1]
-            y = stdAtom.coordinate[2] + cell.ranges[2, 1]
-            z = stdAtom.coordinate[3] + cell.ranges[3, 1]
+            x = stdAtom.coordinate[1] + CellLower(cell.index, 1, grid)
+            y = stdAtom.coordinate[2] + CellLower(cell.index, 2, grid)
+            z = stdAtom.coordinate[3] + CellLower(cell.index, 3, grid)
             if isapprox(atom.coordinate[1], x; atol=1e-8) &&
                isapprox(atom.coordinate[2], y; atol=1e-8) &&
                isapprox(atom.coordinate[3], z; atol=1e-8)
@@ -262,13 +285,96 @@ end
 
 function LatticeCoordinate(atom::Atom, simulator::Simulator)
     cell = GetCell(simulator.grid, atom.cellIndex, simulator)
-    indexInCell = IsLatticeAtom(atom) ? IndexInCell(atom, cell) : IndexInCellByCoordinate(atom, cell, simulator)
+    indexInCell = IndexInCellByCoordinate(atom, cell, simulator)
+    return LatticeCoordinate(cell.index, indexInCell, simulator)
+end
+
+function LatticeCoordinate(cellIndex::Tuple{Int64, Int64, Int64}, indexInCell::Int64, simulator::Simulator)
     stdAtom = simulator.cellStd.atoms[indexInCell]
     return SVector{3,Float64}(
-        stdAtom.coordinate[1] + cell.ranges[1, 1],
-        stdAtom.coordinate[2] + cell.ranges[2, 1],
-        stdAtom.coordinate[3] + cell.ranges[3, 1],
+        stdAtom.coordinate[1] + CellLower(cellIndex, 1, simulator.grid),
+        stdAtom.coordinate[2] + CellLower(cellIndex, 2, simulator.grid),
+        stdAtom.coordinate[3] + CellLower(cellIndex, 3, simulator.grid),
     )
+end
+
+function LatticeSiteIndex(cellIndex::Tuple{Int64, Int64, Int64}, indexInCell::Int64, simulator::Simulator)
+    sizes = simulator.grid.sizes
+    linearIndex = ((cellIndex[1] - 1) * sizes[2] + (cellIndex[2] - 1)) * sizes[3] + cellIndex[3]
+    return -((linearIndex - 1) * simulator.cellLatticeAtomNumber + indexInCell)
+end
+
+@inline function _splitmix64(x::UInt64)
+    x += 0x9e3779b97f4a7c15
+    x = (x ⊻ (x >> 30)) * 0xbf58476d1ce4e5b9
+    x = (x ⊻ (x >> 27)) * 0x94d049bb133111eb
+    return x ⊻ (x >> 31)
+end
+
+@inline function _unit_random(seed::UInt64, stream::Unsigned)
+    bits = _splitmix64(seed + UInt64(stream))
+    return Float64(bits >> 11) * 0x1.0p-53
+end
+
+function _normal_random(seed::UInt64, stream::Unsigned)
+    u1 = max(_unit_random(seed, stream), eps(Float64))
+    u2 = _unit_random(seed, UInt64(stream) + 0x9e3779b97f4a7c15)
+    return sqrt(-2.0 * log(u1)) * cos(2π * u2)
+end
+
+function _lattice_site_seed(cellIndex::Tuple{Int64, Int64, Int64}, indexInCell::Int64, simulator::Simulator)
+    seed = UInt64(simulator.nCascade + 1)
+    seed ⊻= UInt64(cellIndex[1]) * 0x9e3779b97f4a7c15
+    seed ⊻= UInt64(cellIndex[2]) * 0xbf58476d1ce4e5b9
+    seed ⊻= UInt64(cellIndex[3]) * 0x94d049bb133111eb
+    seed ⊻= UInt64(indexInCell) * 0xd6e8feb86659fd93
+    return seed
+end
+
+function LatticeSiteCoordinate(cellIndex::Tuple{Int64, Int64, Int64}, indexInCell::Int64, simulator::Simulator)
+    coordinate = LatticeCoordinate(cellIndex, indexInCell, simulator)
+    stdAtom = simulator.cellStd.atoms[indexInCell]
+    seed = _lattice_site_seed(cellIndex, indexInCell, simulator)
+    grid = simulator.grid
+    lo1 = CellLower(cellIndex, 1, grid)
+    lo2 = CellLower(cellIndex, 2, grid)
+    lo3 = CellLower(cellIndex, 3, grid)
+    if simulator.parameters.isAmorphous
+        return SVector{3,Float64}(
+            lo1 + _unit_random(seed, 0x01) * grid.vectors[1, 1],
+            lo2 + _unit_random(seed, 0x02) * grid.vectors[2, 2],
+            lo3 + _unit_random(seed, 0x03) * grid.vectors[3, 3],
+        )
+    elseif coordinate[3] > simulator.parameters.amorphousHeight
+        hi3 = CellUpper(cellIndex, 3, grid)
+        ah = simulator.parameters.amorphousHeight
+        base = lo3 > ah ? lo3 : ah
+        latticeTop = simulator.parameters.primaryVectors[3,3] * simulator.parameters.latticeRanges[3,2]
+        top = hi3 < latticeTop ? hi3 : latticeTop
+        height = max(top - base, 0.0)
+        return SVector{3,Float64}(
+            lo1 + _unit_random(seed, 0x01) * grid.vectors[1, 1],
+            lo2 + _unit_random(seed, 0x02) * grid.vectors[2, 2],
+            base + _unit_random(seed, 0x03) * height,
+        )
+    elseif simulator.parameters.temperature > 0.0
+        sigma = simulator.constantsByType.sigma[stdAtom.type]
+        return SVector{3,Float64}(
+            coordinate[1] + _normal_random(seed, 0x11) * sigma,
+            coordinate[2] + _normal_random(seed, 0x22) * sigma,
+            coordinate[3] + _normal_random(seed, 0x33) * sigma,
+        )
+    end
+    return coordinate
+end
+
+function HasVacancyAtIndex(cell::Cell, indexInCell::Int64, simulator::Simulator)
+    for vacancy in cell.vacancies
+        if IndexInCellByCoordinate(vacancy, cell, simulator) == indexInCell
+            return true
+        end
+    end
+    return false
 end
 
 
@@ -399,8 +505,13 @@ function ComputeVDistance(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}
     return dot(dv, AtomVelocityDirection(atom_p, simulator))
 end
 
+function ComputeVDistance(atom_p::Atom, targetCoordinate::SVector{3,Float64}, crossFlag::NTuple{3, Int8}, box::Box, simulator::Simulator)
+    dv = VectorDifference(atom_p.coordinate, targetCoordinate, crossFlag, box)
+    return dot(dv, AtomVelocityDirection(atom_p, simulator))
+end
 
-function VectorDifference(v1::Vector{Float64}, v2::Vector{Float64}, crossFlag::NTuple{3, Int8}, box::Box)
+
+function VectorDifference(v1::AbstractVector{<:Real}, v2::AbstractVector{<:Real}, crossFlag::NTuple{3, Int8}, box::Box)
     if crossFlag == (Int8(0), Int8(0), Int8(0))
         return SVector{3,Float64}(
             v2[1] - v1[1],
@@ -417,7 +528,23 @@ end
 
 
 function ComputeP(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::Box, simulator::Simulator)
-    dv = VectorDifference(atom_p.coordinate, atom_t.coordinate, crossFlag, box)
+    coordinate = SVector{3,Float64}(atom_t.coordinate[1], atom_t.coordinate[2], atom_t.coordinate[3])
+    return ComputeP(atom_p, atom_t.index, atom_t.type, atom_t.cellIndex, IsLatticeAtom(atom_t), 0, coordinate, crossFlag, box, simulator)
+end
+
+function ComputeP(
+    atom_p::Atom,
+    targetIndex::Int64,
+    targetType::Int64,
+    targetCellIndex::Tuple{Int64, Int64, Int64},
+    isLatticeAtom::Bool,
+    indexInCell::Int64,
+    targetCoordinate::SVector{3,Float64},
+    crossFlag::NTuple{3, Int8},
+    box::Box,
+    simulator::Simulator,
+)
+    dv = VectorDifference(atom_p.coordinate, targetCoordinate, crossFlag, box)
     velocityDirection = AtomVelocityDirection(atom_p, simulator)
     t = dot(dv, velocityDirection)
     pPoint_calc = SVector{3,Float64}(
@@ -433,13 +560,13 @@ function ComputeP(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::B
         )
     end
     pVector = SVector{3,Float64}(
-        pPoint_calc[1] - atom_t.coordinate[1],
-        pPoint_calc[2] - atom_t.coordinate[2],
-        pPoint_calc[3] - atom_t.coordinate[3],
+        pPoint_calc[1] - targetCoordinate[1],
+        pPoint_calc[2] - targetCoordinate[2],
+        pPoint_calc[3] - targetCoordinate[3],
     )
     p = norm(pVector)
     # need to check periodic condition
-    return TargetCandidate(atom_t.index, atom_t.type, atom_t.cellIndex, IsLatticeAtom(atom_t), p, pPoint_calc, pVector, t)
+    return TargetCandidate(targetIndex, targetType, targetCellIndex, isLatticeAtom, indexInCell, targetCoordinate, p, pPoint_calc, pVector, t)
 end
 
 
@@ -459,8 +586,12 @@ end
 
 
 function SetVelocityDirection!(atom::Atom, velocity::SVector{3,Float64}, simulator::Simulator)
+    SetVelocityDirection!(atom.index, velocity, simulator)
+end
+
+function SetVelocityDirection!(index::Int64, velocity::SVector{3,Float64}, simulator::Simulator)
     n = norm(velocity)
-    dynamics = AtomDynamics!(atom, simulator)
+    dynamics = AtomDynamics!(index, simulator)
     nextVelocity = ZERO_VELOCITY_DIRECTION
     if isnan(n) || n == Inf || n == 0.0
         nextVelocity = ZERO_VELOCITY_DIRECTION
@@ -468,21 +599,37 @@ function SetVelocityDirection!(atom::Atom, velocity::SVector{3,Float64}, simulat
         normalized_velocity = velocity / n
         nextVelocity = SVector{3,Float64}(normalized_velocity[1], normalized_velocity[2], normalized_velocity[3])
     end
-    simulator.workBuffers.atomDynamics[atom.index] = AtomDynamics(nextVelocity, dynamics.energy)
+    simulator.workBuffers.atomDynamics[index] = AtomDynamics(nextVelocity, dynamics.energy)
+end
+
+function SetVelocityDirection!(target::TargetCandidate, velocity::SVector{3,Float64}, simulator::Simulator)
+    SetVelocityDirection!(target.index, velocity, simulator)
 end
 
 function SetVelocityDirection!(atom::Atom, velocity::Vector{Float64}, simulator::Simulator)
     SetVelocityDirection!(atom, SVector{3,Float64}(velocity[1], velocity[2], velocity[3]), simulator)
 end
 
+function SetVelocityDirection!(target::TargetCandidate, velocity::Vector{Float64}, simulator::Simulator)
+    SetVelocityDirection!(target, SVector{3,Float64}(velocity[1], velocity[2], velocity[3]), simulator)
+end
+
 function SetEnergy!(atom::Atom, energy::Float64, simulator::Simulator)
+    SetEnergy!(atom.index, energy, simulator)
+end
+
+function SetEnergy!(target::TargetCandidate, energy::Float64, simulator::Simulator)
+    SetEnergy!(target.index, energy, simulator)
+end
+
+function SetEnergy!(index::Int64, energy::Float64, simulator::Simulator)
     nextEnergy = energy < 0.0 ? 0.0 : energy
     if nextEnergy == 0.0
-        ClearAtomDynamics!(atom, simulator)
+        ClearAtomDynamics!(index, simulator)
         return nothing
     end
-    dynamics = AtomDynamics!(atom, simulator)
-    simulator.workBuffers.atomDynamics[atom.index] = AtomDynamics(dynamics.velocityDirection, nextEnergy)
+    dynamics = AtomDynamics!(index, simulator)
+    simulator.workBuffers.atomDynamics[index] = AtomDynamics(dynamics.velocityDirection, nextEnergy)
     return nothing
 end
 

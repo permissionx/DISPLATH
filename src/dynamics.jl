@@ -56,13 +56,13 @@ function AtomOutFaceDimension(atom::Atom, cell::Cell, simulator::Simulator)
         else
             rangeIndex = 1
         end
-        faceCoordinate = cell.ranges[d, rangeIndex]
+        faceCoordinate = rangeIndex == 1 ? CellLower(cell, d, simulator.grid) : CellUpper(cell, d, simulator.grid)
         t = (faceCoordinate - coordinate[d]) / velocityDirection[d]
         elseDs = [ed for ed in 1:3 if ed != d]
         allInRange = true
         for elseD in elseDs
             crossCoord = coordinate[elseD] + velocityDirection[elseD] * t
-            if !(cell.ranges[elseD, 1] <= crossCoord <= cell.ranges[elseD, 2])
+            if !(CellLower(cell, elseD, simulator.grid) <= crossCoord <= CellUpper(cell, elseD, simulator.grid))
                 allInRange = false
                 break
             end
@@ -76,7 +76,7 @@ function AtomOutFaceDimension(atom::Atom, cell::Cell, simulator::Simulator)
     error("Out face not found\n 
            ####Simulator######\n Cascade number = $(simulator.nCascade)\n Collision number = $(simulator.nCollisionEvent)\n
            ########Atom#######\n $(atom) \n 
-           ########cell#######\n $(cell.ranges) \n $(cell.index)\n")
+           ########cell#######\n $(CellRanges(cell, simulator.grid)) \n $(cell.index)\n")
 end
 
 
