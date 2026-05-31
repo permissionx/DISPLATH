@@ -228,9 +228,9 @@ end
 function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
     grid = simulator.grid
     if !IS_DYNAMIC_LOAD
-        originalCell = GetCell(grid, atom.cellIndex, simulator)
+        originalCell = GetCell(grid, atom.cellIndex)
         delete!(originalCell, atom, simulator)
-        nextCell = GetCell(grid, nextCellIndex, simulator)
+        nextCell = GetCell(grid, nextCellIndex)
         push!(nextCell, atom, simulator)
     else
         originalCell = GetCell(grid, atom.cellIndex, simulator)
