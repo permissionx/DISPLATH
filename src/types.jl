@@ -260,6 +260,7 @@ mutable struct WorkBuffers
     collisionParames::CollisionParamsBuffers
     threadCandidates::Vector{Vector{TargetCandidate}}
     neighborCellsInfos::Vector{Array{NeighborCellInfo, 3}}
+    latticeSiteCoordinates::Vector{Dict{Tuple{Int64, Int64, Int64}, Vector{SVector{3,Float64}}}}
     lastTargets::Dict{Int64, Vector{Int64}}
     atomDynamics::Dict{Int64, AtomDynamics}
     function WorkBuffers(max_threads::Int64=Threads.nthreads())
@@ -272,10 +273,12 @@ mutable struct WorkBuffers
             sizehint!(tc, 50)
         end
         neighborCellsInfos = [_new_neighbor_info_buffer() for _ in 1:2]
+        latticeSiteCoordinates = [Dict{Tuple{Int64, Int64, Int64}, Vector{SVector{3,Float64}}}() for _ in 1:max_threads]
         lastTargets = Dict{Int64, Vector{Int64}}()
         atomDynamics = Dict{Int64, AtomDynamics}()
         return new(coordinates, candidateTargets,
-                  collisionParams, threadCandidates, neighborCellsInfos, lastTargets, atomDynamics)
+                  collisionParams, threadCandidates, neighborCellsInfos, latticeSiteCoordinates,
+                  lastTargets, atomDynamics)
     end
 end
 
@@ -332,8 +335,16 @@ function ClearBuffers!(buffers::WorkBuffers)
     for tc in buffers.threadCandidates
         empty!(tc)
     end
+    ClearLatticeSiteCoordinateCaches!(buffers)
     empty!(buffers.lastTargets)
     empty!(buffers.atomDynamics)
+end
+
+function ClearLatticeSiteCoordinateCaches!(buffers::WorkBuffers)
+    for cache in buffers.latticeSiteCoordinates
+        empty!(cache)
+    end
+    return nothing
 end
 
 mutable struct Simulator

@@ -368,6 +368,19 @@ function LatticeSiteCoordinate(cellIndex::Tuple{Int64, Int64, Int64}, indexInCel
     return coordinate
 end
 
+function LatticeSiteCoordinates!(cellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
+    cache = simulator.workBuffers.latticeSiteCoordinates[Threads.threadid()]
+    coords = get(cache, cellIndex, nothing)
+    if coords === nothing
+        coords = Vector{SVector{3,Float64}}(undef, simulator.cellLatticeAtomNumber)
+        for indexInCell in eachindex(coords)
+            coords[indexInCell] = LatticeSiteCoordinate(cellIndex, indexInCell, simulator)
+        end
+        cache[cellIndex] = coords
+    end
+    return coords
+end
+
 function HasVacancyAtIndex(cell::Cell, indexInCell::Int64, simulator::Simulator)
     for vacancy in cell.vacancies
         if IndexInCellByCoordinate(vacancy, cell, simulator) == indexInCell

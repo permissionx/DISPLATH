@@ -74,12 +74,13 @@ function _append_neighbor_candidates!(
     if IsEmptyDynamicCell(neighborCell.index, simulator)
         return nothing
     end
+    latticeCoordinates = LatticeSiteCoordinates!(neighborCell.index, simulator)
     for (indexInCell, stdAtom) in enumerate(simulator.cellStd.atoms)
         targetIndex = LatticeSiteIndex(neighborCell.index, indexInCell, simulator)
         if targetIndex in filterIndexes || HasVacancyAtIndex(neighborCell, indexInCell, simulator)
             continue
         end
-        coordinate = LatticeSiteCoordinate(neighborCell.index, indexInCell, simulator)
+        coordinate = latticeCoordinates[indexInCell]
         if ComputeVDistance(atom, coordinate, cross, box, simulator) > 0
             candidate = ComputeP(atom, targetIndex, stdAtom.type, neighborCell.index, true, indexInCell, coordinate, cross, box, simulator)
             if candidate.pValue < pMax
@@ -232,6 +233,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
     parameters = simulator.parameters
     simulator.nCollisionEvent = 0
     simulator.nCascade += 1
+    ClearLatticeSiteCoordinateCaches!(simulator.workBuffers)
     DumpInCascade_dynamicLoad(simulator)
     while true
         simulator.nCollisionEvent += 1
@@ -314,6 +316,7 @@ function Cascade_dynamicLoad!(atom_p::Atom, simulator::Simulator)
     end
     empty!(simulator.workBuffers.lastTargets)
     empty!(simulator.workBuffers.atomDynamics)
+    ClearLatticeSiteCoordinateCaches!(simulator.workBuffers)
 end
 
 
