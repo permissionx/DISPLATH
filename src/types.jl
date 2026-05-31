@@ -7,13 +7,68 @@ mutable struct Box
 end
 
 
-mutable struct Atom
-    index::Int64  # never change
-    isAlive::Bool
-    type::Int64
-    coordinate::Vector{Float64}
-    cellIndex::Tuple{Int64, Int64, Int64}
+macro load_variant(dynamic_expr, static_expr)
+    if !isdefined(__module__, :IS_DYNAMIC_LOAD)
+        error("IS_DYNAMIC_LOAD must be defined before including DISPLATH types")
+    end
+    return getfield(__module__, :IS_DYNAMIC_LOAD) ? esc(dynamic_expr) : esc(static_expr)
 end
+
+
+@load_variant(
+    begin
+        mutable struct Atom
+            index::Int64  # never change
+            isAlive::Bool
+            type::Int64
+            coordinate::Vector{Float64}
+            cellIndex::Tuple{Int64, Int64, Int64}
+        end
+    end,
+    begin
+    mutable struct Atom
+        index::Int64  # never change
+        isAlive::Bool
+        type::Int64
+        coordinate::Vector{Float64}
+        cellIndex::Tuple{Int64, Int64, Int64}
+        radius::Float64
+        mass::Float64
+        velocityDirection::SVector{3,Float64}
+        energy::Float64
+        Z::Float64
+
+        dte::Float64
+        bde::Float64
+
+        emptyPath::Float64
+
+        # for atom_t
+        pValue::Float64
+        pPoint::SVector{3,Float64}
+        pVector::SVector{3,Float64}
+        pL::Float64
+        pAtomIndex::Int64
+        pDirection::Vector{Float64}
+
+        # for atom_p
+        lastTargets::Vector{Int64}
+
+        latticePointIndex::Int64 # -1 for off lattice
+
+        # for KMC
+        frequency::Float64
+        frequencies::Vector{Float64}
+        finalLatticePointIndexs::Vector{Int64}
+        eventIndex::Int64
+
+        # for dynamic load, kept here so static mode retains the main-branch shape
+        isNewlyLoaded::Bool
+        latticeCoordinate::SVector{3,Float64}
+        indexInCell::Int64
+    end
+    end
+)
 
 struct Material
     box::Box
@@ -59,13 +114,16 @@ const ZERO_VELOCITY_DIRECTION = SVector{3,Float64}(0.0, 0.0, 0.0)
 const ZERO_ATOM_DYNAMICS = AtomDynamics(ZERO_VELOCITY_DIRECTION, 0.0)
 
 
-if IS_DYNAMIC_LOAD
-    mutable struct Cell
-        index::Tuple{Int64, Int64, Int64}
-        atoms::Vector{Atom}
-        vacancies::Vector{Atom}
+@load_variant(
+    begin
+        mutable struct Cell
+            index::Tuple{Int64, Int64, Int64}
+            atoms::Vector{Atom}
+            vacancies::Vector{Atom}
+        end
     end
-else
+,
+    begin
     mutable struct Cell
         # only for orthogonal box
         index::Tuple{Int64, Int64, Int64}
@@ -75,7 +133,12 @@ else
         neighborCellsInfo::Array{NeighborCellInfo, 3}
         isExplored::Bool
         atomicDensity::Float64
+        latticeAtoms::Vector{Atom}
+        isLoaded::Bool
         vacancies::Vector{Atom}
+        isSavedLatticeRange::Bool
+        latticeRanges::Matrix{Int64}
+        isPushedNeighbor::Bool
     end
 
     function Cell(
@@ -86,10 +149,17 @@ else
         neighborCellsInfo::Array{NeighborCellInfo, 3},
         isExplored::Bool,
         atomicDensity::Float64)
+        latticeAtoms = Vector{Atom}()
+        isLoaded = false
         vacancies = Vector{Atom}()
-        return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, vacancies)
+        isSavedLatticeRange = false
+        latticeRanges = Matrix{Int64}(undef, 3, 2)
+        isPushedNeighbor = false
+        return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity,
+                    latticeAtoms, isLoaded, vacancies, isSavedLatticeRange, latticeRanges, isPushedNeighbor)
     end
-end
+    end
+)
 
 struct CellStd
     atoms::Vector{Atom}

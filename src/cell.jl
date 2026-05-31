@@ -122,13 +122,8 @@ function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
 end
 
 function GetNeighborCellsInfo!(cell, grid)
-    cell.neighborCellsInfo === nothing && error("Cell neighbor info is not stored on this cell")
     if ! cell.isPushedNeighbor
-        if ! cell.hasNeighborObj
-            SetNeighborCellsInfo!(cell, grid)
-        else
-            UpdateNeighborCellsInfo!(cell, grid)
-        end
+        SetNeighborCellsInfo!(cell, grid)
     end
     return cell.neighborCellsInfo
 end
@@ -167,7 +162,6 @@ function SetNeighborCellsInfo!(cell::Cell, grid::Grid)
         end
     end
     cell.isPushedNeighbor = true 
-    cell.hasNeighborObj = true
 end
 
 function UpdateNeighborCellsInfo!(

@@ -16,7 +16,36 @@ function Atom(type::Int64, coordinate::AbstractVector{<:Real}, parameters::Param
     isAlive = true
     cellIndex = (0,0,0)
     coordinateVector = Float64[coordinate[1], coordinate[2], coordinate[3]]
-    return Atom(index, isAlive, type, coordinateVector, cellIndex)
+    if IS_DYNAMIC_LOAD
+        return Atom(index, isAlive, type, coordinateVector, cellIndex)
+    end
+
+    velocityDirection = ZERO_VELOCITY_DIRECTION
+    energy = 0.0
+    radius, mass, Z, dte, bde, _, _ = TypeToProperties(type, parameters.typeDict)
+    emptyPath = 0.0
+    pValue = 0.0
+    pPoint = SVector{3,Float64}(0.0, 0.0, 0.0)
+    pVector = SVector{3,Float64}(0.0, 0.0, 0.0)
+    pL = 0.0
+    pAtomIndex = -1
+    pDirection = Float64[0.0, 0.0, 0.0]
+    lastTargets = Vector{Int64}()
+    latticePointIndex = -1
+    frequency = 0.0
+    frequencies = Vector{Float64}()
+    finalLatticePointIndexs = Vector{Int64}()
+    eventIndex = -1
+    isNewlyLoaded = false
+    latticeCoordinate = SVector{3,Float64}(coordinateVector[1], coordinateVector[2], coordinateVector[3])
+    indexInCell = 0
+    return Atom(index, isAlive, type, coordinateVector, cellIndex,
+                radius, mass, velocityDirection, energy, Z,
+                dte, bde, emptyPath,
+                pValue, pPoint, pVector, pL, pAtomIndex, pDirection,
+                lastTargets, latticePointIndex,
+                frequency, frequencies, finalLatticePointIndexs, eventIndex,
+                isNewlyLoaded, latticeCoordinate, indexInCell)
 end
 
 
@@ -56,6 +85,9 @@ function _pending_dynamics(atom::Atom)
 end
 
 function _transfer_pending_dynamics!(atom::Atom, simulator::Simulator)
+    if !IS_DYNAMIC_LOAD
+        return nothing
+    end
     dynamics = get(PENDING_ATOM_DYNAMICS, atom, nothing)
     if dynamics !== nothing
         if dynamics.energy > 0.0
@@ -67,6 +99,9 @@ function _transfer_pending_dynamics!(atom::Atom, simulator::Simulator)
 end
 
 function AtomEnergy(atom::Atom, simulator::Simulator)
+    if !IS_DYNAMIC_LOAD
+        return atom.energy
+    end
     return AtomEnergy(atom.index, simulator)
 end
 
@@ -79,6 +114,9 @@ function AtomEnergy(target::TargetCandidate, simulator::Simulator)
 end
 
 function AtomVelocityDirection(atom::Atom, simulator::Simulator)
+    if !IS_DYNAMIC_LOAD
+        return atom.velocityDirection
+    end
     return AtomVelocityDirection(atom.index, simulator)
 end
 
@@ -599,6 +637,9 @@ end
 
 
 function SetVelocityDirection!(atom::Atom, velocity::SVector{3,Float64}, simulator::Simulator)
+    if !IS_DYNAMIC_LOAD
+        return SetVelocityDirection!(atom, velocity)
+    end
     SetVelocityDirection!(atom.index, velocity, simulator)
 end
 
@@ -628,6 +669,9 @@ function SetVelocityDirection!(target::TargetCandidate, velocity::Vector{Float64
 end
 
 function SetEnergy!(atom::Atom, energy::Float64, simulator::Simulator)
+    if !IS_DYNAMIC_LOAD
+        return SetEnergy!(atom, energy)
+    end
     SetEnergy!(atom.index, energy, simulator)
 end
 
@@ -647,6 +691,16 @@ function SetEnergy!(index::Int64, energy::Float64, simulator::Simulator)
 end
 
 function SetVelocityDirection!(atom::Atom, velocity::SVector{3,Float64})
+    if !IS_DYNAMIC_LOAD
+        n = norm(velocity)
+        if isnan(n) || n == Inf || n == 0.0
+            atom.velocityDirection = ZERO_VELOCITY_DIRECTION
+        else
+            normalized_velocity = velocity / n
+            atom.velocityDirection = SVector{3,Float64}(normalized_velocity[1], normalized_velocity[2], normalized_velocity[3])
+        end
+        return nothing
+    end
     dynamics = _pending_dynamics(atom)
     n = norm(velocity)
     nextVelocity = ZERO_VELOCITY_DIRECTION
@@ -664,6 +718,10 @@ function SetVelocityDirection!(atom::Atom, velocity::Vector{Float64})
 end
 
 function SetEnergy!(atom::Atom, energy::Float64)
+    if !IS_DYNAMIC_LOAD
+        atom.energy = energy < 0.0 ? 0.0 : energy
+        return nothing
+    end
     nextEnergy = energy < 0.0 ? 0.0 : energy
     if nextEnergy == 0.0
         delete!(PENDING_ATOM_DYNAMICS, atom)
