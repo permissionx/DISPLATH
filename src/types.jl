@@ -104,9 +104,12 @@ struct TargetCandidate
     coordinate::SVector{3,Float64}
     pValue::Float64
     pPoint::SVector{3,Float64}
-    pVector::SVector{3,Float64}
+    # pVector is derivable as pPoint - coordinate; not stored to keep the
+    # candidate (copied around hot buffers) 24 bytes smaller.
     pL::Float64
 end
+
+@inline TargetPVector(target::TargetCandidate) = target.pPoint - target.coordinate
 
 struct AtomDynamics
     velocityDirection::SVector{3,Float64}
@@ -135,9 +138,11 @@ const ZERO_ATOM_DYNAMICS = AtomDynamics(ZERO_VELOCITY_DIRECTION, 0.0)
             # cross flags) in workBuffers.neighborCellsArena/neighborCrossArena.
             neighborsOffset::Int64
             neighborsCascade::Int64
+            # Cached IsEmptyDynamicCell(index): pure function of the index.
+            isEmptyDynamic::Bool
         end
         Cell(index::Tuple{Int64, Int64, Int64}, atoms::Vector{Atom}, vacancies::Vector{Atom}) =
-            Cell(index, atoms, vacancies, UInt128(0), 0, -1, 0, -1)
+            Cell(index, atoms, vacancies, UInt128(0), 0, -1, 0, -1, false)
     end
 ,
     begin

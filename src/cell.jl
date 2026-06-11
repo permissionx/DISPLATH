@@ -142,7 +142,9 @@ function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
 end
 
 function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
-    return Cell(cellIndex, Atom[], Atom[])
+    cell = Cell(cellIndex, Atom[], Atom[])
+    cell.isEmptyDynamic = IsEmptyDynamicCell(cellIndex, simulator)
+    return cell
 end
 
 function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
@@ -152,6 +154,7 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
     cell.coordsCascade = -1
     cell.neighborsCascade = -1
     cell.index = cellIndex
+    cell.isEmptyDynamic = IsEmptyDynamicCell(cellIndex, simulator)
     return cell
 end
 

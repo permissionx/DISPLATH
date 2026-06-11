@@ -608,10 +608,6 @@ function ComputeP!(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::
 end
 
 
-function ComputeP(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::Box, simulator::Simulator)
-    coordinate = SVector{3,Float64}(atom_t.coordinate[1], atom_t.coordinate[2], atom_t.coordinate[3])
-    return ComputeP(atom_p, atom_t.index, atom_t.type, atom_t.cellIndex, IsLatticeAtom(atom_t), 0, coordinate, crossFlag, box, simulator)
-end
 
 # Hoisted-velocity clones of ComputeVDistance/ComputeP for the dynamic-load
 # candidate search: identical bodies and function boundaries (bit-identical
@@ -654,44 +650,7 @@ function ComputePHoisted(
         pPoint_calc[3] - targetCoordinate[3],
     )
     p = norm(pVector)
-    return TargetCandidate(targetIndex, targetType, targetCellIndex, isLatticeAtom, indexInCell, targetCoordinate, p, pPoint_calc, pVector, t)
-end
-
-function ComputeP(
-    atom_p::Atom,
-    targetIndex::Int64,
-    targetType::Int64,
-    targetCellIndex::Tuple{Int64, Int64, Int64},
-    isLatticeAtom::Bool,
-    indexInCell::Int64,
-    targetCoordinate::SVector{3,Float64},
-    crossFlag::NTuple{3, Int8},
-    box::Box,
-    simulator::Simulator,
-)
-    dv = VectorDifference(atom_p.coordinate, targetCoordinate, crossFlag, box)
-    velocityDirection = AtomVelocityDirection(atom_p, simulator)
-    t = dot(dv, velocityDirection)
-    pPoint_calc = SVector{3,Float64}(
-        atom_p.coordinate[1] + t * velocityDirection[1],
-        atom_p.coordinate[2] + t * velocityDirection[2],
-        atom_p.coordinate[3] + t * velocityDirection[3],
-    )
-    if crossFlag != (Int8(0), Int8(0), Int8(0))
-        pPoint_calc = SVector{3,Float64}(
-            pPoint_calc[1] - crossFlag[1] * box.vectors[1,1],
-            pPoint_calc[2] - crossFlag[2] * box.vectors[2,2],
-            pPoint_calc[3] - crossFlag[3] * box.vectors[3,3],
-        )
-    end
-    pVector = SVector{3,Float64}(
-        pPoint_calc[1] - targetCoordinate[1],
-        pPoint_calc[2] - targetCoordinate[2],
-        pPoint_calc[3] - targetCoordinate[3],
-    )
-    p = norm(pVector)
-    # need to check periodic condition
-    return TargetCandidate(targetIndex, targetType, targetCellIndex, isLatticeAtom, indexInCell, targetCoordinate, p, pPoint_calc, pVector, t)
+    return TargetCandidate(targetIndex, targetType, targetCellIndex, isLatticeAtom, indexInCell, targetCoordinate, p, pPoint_calc, t)
 end
 
 

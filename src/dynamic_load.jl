@@ -67,7 +67,7 @@ function _append_neighbor_candidates!(
             end
         end
     end
-    if IsEmptyDynamicCell(neighborCell.index, simulator)
+    if neighborCell.isEmptyDynamic
         return nothing
     end
     mask = neighborCell.vacancyMask
@@ -109,7 +109,7 @@ function _append_threaded_neighbor_candidates!(
         # Preload lattice-coordinate caches serially so the parallel section
         # below only reads shared state.
         neighborCell = cellsArena[nbase + k]
-        if !IsEmptyDynamicCell(neighborCell.index, simulator)
+        if !neighborCell.isEmptyDynamic
             LatticeSiteCoordinatesBase!(neighborCell, simulator)
         end
     end
@@ -197,7 +197,7 @@ function Collision_dynamicLoad!(atom_p::Atom, targets::Vector{TargetCandidate}, 
             atom_p_energy, atom_p_mass, target_mass, atom_p.type, target.type, p, simulator.constantsByType,
             simulator.θFunctions[(atom_p.type, target.type)], simulator.τFunctions[(atom_p.type, target.type)])
         if target.pValue != 0
-            velocityDirectionTmp = -target.pVector / target.pValue * tanψList[i] + atom_p_velocity
+            velocityDirectionTmp = -TargetPVector(target) / target.pValue * tanψList[i] + atom_p_velocity
         else
             velocityDirectionTmp = atom_p_velocity
         end
