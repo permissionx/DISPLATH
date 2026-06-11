@@ -129,13 +129,16 @@ function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
                     y = (Y + basis[i,2]) * primaryVectors[2,2]
                     z = (Z + basis[i,3]) * primaryVectors[3,3]
                     atom = Atom(basisTypes[i], [x, y, z], parameters)
-                    atom.index = 0 
+                    atom.index = 0
                     push!(cellStd.atoms, atom)
                 end
             end
         end
     end
     simulator.cellLatticeAtomNumber = indexInCell
+    if indexInCell > 128
+        error("Dynamic load supports at most 128 lattice sites per cell (got $(indexInCell)); use a smaller inputGridVector.")
+    end
 end
 
 function CreateCell(cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
@@ -145,6 +148,7 @@ end
 function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors::Matrix{Float64}, simulator::Simulator)
     empty!(cell.atoms)
     empty!(cell.vacancies)
+    cell.vacancyMask = UInt128(0)
     cell.index = cellIndex
     return cell
 end

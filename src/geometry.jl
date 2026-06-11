@@ -419,13 +419,8 @@ function LatticeSiteCoordinates!(cellIndex::Tuple{Int64, Int64, Int64}, simulato
     return coords
 end
 
-function HasVacancyAtIndex(cell::Cell, indexInCell::Int64, simulator::Simulator)
-    for vacancy in cell.vacancies
-        if IndexInCellByCoordinate(vacancy, cell, simulator) == indexInCell
-            return true
-        end
-    end
-    return false
+@inline function HasVacancyAtIndex(cell::Cell, indexInCell::Int64, simulator::Simulator)
+    return (cell.vacancyMask >> (indexInCell - 1)) & UInt128(1) != 0
 end
 
 
@@ -610,6 +605,50 @@ function ComputeP(atom_p::Atom, atom_t::Atom, crossFlag::NTuple{3, Int8}, box::B
     return ComputeP(atom_p, atom_t.index, atom_t.type, atom_t.cellIndex, IsLatticeAtom(atom_t), 0, coordinate, crossFlag, box, simulator)
 end
 
+# Hoisted-velocity clones of ComputeVDistance/ComputeP for the dynamic-load
+# candidate search: identical bodies and function boundaries (bit-identical
+# results, verified), but the projectile state comes in as arguments so the
+# hot loop performs no atomDynamics lookups per candidate.
+function ComputeVDistanceHoisted(pCoordinate, pVelocity::SVector{3,Float64}, targetCoordinate, crossFlag::NTuple{3, Int8}, box::Box)
+    dv = VectorDifference(pCoordinate, targetCoordinate, crossFlag, box)
+    return dot(dv, pVelocity)
+end
+
+function ComputePHoisted(
+    pCoordinate::Vector{Float64},
+    pVelocity::SVector{3,Float64},
+    targetIndex::Int64,
+    targetType::Int64,
+    targetCellIndex::Tuple{Int64, Int64, Int64},
+    isLatticeAtom::Bool,
+    indexInCell::Int64,
+    targetCoordinate::SVector{3,Float64},
+    crossFlag::NTuple{3, Int8},
+    box::Box,
+)
+    dv = VectorDifference(pCoordinate, targetCoordinate, crossFlag, box)
+    t = dot(dv, pVelocity)
+    pPoint_calc = SVector{3,Float64}(
+        pCoordinate[1] + t * pVelocity[1],
+        pCoordinate[2] + t * pVelocity[2],
+        pCoordinate[3] + t * pVelocity[3],
+    )
+    if crossFlag != (Int8(0), Int8(0), Int8(0))
+        pPoint_calc = SVector{3,Float64}(
+            pPoint_calc[1] - crossFlag[1] * box.vectors[1,1],
+            pPoint_calc[2] - crossFlag[2] * box.vectors[2,2],
+            pPoint_calc[3] - crossFlag[3] * box.vectors[3,3],
+        )
+    end
+    pVector = SVector{3,Float64}(
+        pPoint_calc[1] - targetCoordinate[1],
+        pPoint_calc[2] - targetCoordinate[2],
+        pPoint_calc[3] - targetCoordinate[3],
+    )
+    p = norm(pVector)
+    return TargetCandidate(targetIndex, targetType, targetCellIndex, isLatticeAtom, indexInCell, targetCoordinate, p, pPoint_calc, pVector, t)
+end
+
 function ComputeP(
     atom_p::Atom,
     targetIndex::Int64,
@@ -693,6 +732,7 @@ function SetVelocityDirection!(index::Int64, velocity::SVector{3,Float64}, simul
         nextVelocity = SVector{3,Float64}(normalized_velocity[1], normalized_velocity[2], normalized_velocity[3])
     end
     simulator.workBuffers.atomDynamics[index] = AtomDynamics(nextVelocity, dynamics.energy)
+    return nextVelocity
 end
 
 function SetVelocityDirection!(target::TargetCandidate, velocity::SVector{3,Float64}, simulator::Simulator)

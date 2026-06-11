@@ -120,7 +120,12 @@ const ZERO_ATOM_DYNAMICS = AtomDynamics(ZERO_VELOCITY_DIRECTION, 0.0)
             index::Tuple{Int64, Int64, Int64}
             atoms::Vector{Atom}
             vacancies::Vector{Atom}
+            # Bit i-1 set <=> lattice site i of this cell is vacant; mirrors
+            # `vacancies` so the hot candidate search can test occupancy in O(1).
+            vacancyMask::UInt128
         end
+        Cell(index::Tuple{Int64, Int64, Int64}, atoms::Vector{Atom}, vacancies::Vector{Atom}) =
+            Cell(index, atoms, vacancies, UInt128(0))
     end
 ,
     begin
@@ -358,6 +363,18 @@ mutable struct WorkBuffers
     latticeSiteCoordinates::Vector{Dict{Tuple{Int64, Int64, Int64}, Vector{SVector{3,Float64}}}}
     lastTargets::Dict{Int64, Vector{Int64}}
     atomDynamics::Dict{Int64, AtomDynamics}
+    # Reusable cascade-loop storage (single cascade runs at a time).
+    targetsPool::Vector{Vector{TargetCandidate}}
+    targetsPoolTop::Int64
+    targetsList::Vector{Vector{TargetCandidate}}
+    emptyPathList::Vector{Float64}
+    deleteIndexes::Vector{Int64}
+    othersTargetIndexes::Vector{Int64}
+    pAtoms::Vector{Atom}
+    nextPAtoms::Vector{Atom}
+    pAtomsIndex::Vector{Int64}
+    filterIndexes::Vector{Int64}
+    lastTargetsPool::Vector{Vector{Int64}}
     function WorkBuffers(max_threads::Int64=Threads.nthreads())
         coordinates = [Vector{Float64}(undef, 3) for _ in 1:max_threads]
         candidateTargets = Vector{TargetCandidate}()
@@ -373,8 +390,39 @@ mutable struct WorkBuffers
         atomDynamics = Dict{Int64, AtomDynamics}()
         return new(coordinates, candidateTargets,
                   collisionParams, threadCandidates, neighborCellsInfos, latticeSiteCoordinates,
-                  lastTargets, atomDynamics)
+                  lastTargets, atomDynamics,
+                  Vector{Vector{TargetCandidate}}(), 0, Vector{Vector{TargetCandidate}}(),
+                  Vector{Float64}(), Vector{Int64}(), Vector{Int64}(),
+                  Vector{Atom}(), Vector{Atom}(), Vector{Int64}(), Vector{Int64}(),
+                  Vector{Vector{Int64}}())
     end
+end
+
+# Pool of targets vectors handed out by GetTargetsFromNeighbor_dynamicLoad;
+# reset once per collision event instead of allocating per call.
+function AcquireTargetsBuffer!(buffers::WorkBuffers)
+    buffers.targetsPoolTop += 1
+    if buffers.targetsPoolTop > length(buffers.targetsPool)
+        v = Vector{TargetCandidate}()
+        push!(buffers.targetsPool, v)
+        return v
+    end
+    v = buffers.targetsPool[buffers.targetsPoolTop]
+    empty!(v)
+    return v
+end
+
+function ResetTargetsPool!(buffers::WorkBuffers)
+    buffers.targetsPoolTop = 0
+    return nothing
+end
+
+function ReleaseLastTargets!(buffers::WorkBuffers)
+    for v in values(buffers.lastTargets)
+        push!(buffers.lastTargetsPool, v)
+    end
+    empty!(buffers.lastTargets)
+    return nothing
 end
 
 function _new_neighbor_info_buffer()
@@ -386,8 +434,9 @@ function _new_neighbor_info_buffer()
 end
 
 function LastTargets!(atom::Atom, simulator)
-    return get!(simulator.workBuffers.lastTargets, atom.index) do
-        Vector{Int64}()
+    buffers = simulator.workBuffers
+    return get!(buffers.lastTargets, atom.index) do
+        isempty(buffers.lastTargetsPool) ? Vector{Int64}() : empty!(pop!(buffers.lastTargetsPool))
     end
 end
 
@@ -433,6 +482,17 @@ function ClearBuffers!(buffers::WorkBuffers)
     ClearLatticeSiteCoordinateCaches!(buffers)
     empty!(buffers.lastTargets)
     empty!(buffers.atomDynamics)
+    empty!(buffers.targetsPool)
+    buffers.targetsPoolTop = 0
+    empty!(buffers.targetsList)
+    empty!(buffers.emptyPathList)
+    empty!(buffers.deleteIndexes)
+    empty!(buffers.othersTargetIndexes)
+    empty!(buffers.pAtoms)
+    empty!(buffers.nextPAtoms)
+    empty!(buffers.pAtomsIndex)
+    empty!(buffers.filterIndexes)
+    empty!(buffers.lastTargetsPool)
 end
 
 function ClearLatticeSiteCoordinateCaches!(buffers::WorkBuffers)
