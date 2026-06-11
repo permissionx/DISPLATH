@@ -41,19 +41,18 @@ function _append_neighbor_candidates!(
     buf::Vector{TargetCandidate},
     atom::Atom,
     pVelocity::SVector{3,Float64},
-    neighborCellInfo::NeighborCellInfo,
+    neighborCell::Cell,
+    cross::NTuple{3, Int8},
     filterIndexes::Vector{Int64},
     simulator::Simulator,
 )
     box = simulator.box
     pMax = simulator.parameters.pMax
-    cross = neighborCellInfo.cross
     for d in 1:3
         if cross[d] != 0 && !simulator.parameters.periodic[d]
             return nothing
         end
     end
-    neighborCell = GetCell(simulator.grid, neighborCellInfo.index, simulator)
     pCoordinate = atom.coordinate
     for neighborAtom in neighborCell.atoms
         if neighborAtom.index == atom.index || neighborAtom.index in filterIndexes
@@ -99,24 +98,24 @@ function _append_threaded_neighbor_candidates!(
     threadCandidates::Vector{Vector{TargetCandidate}},
     atom::Atom,
     pVelocity::SVector{3,Float64},
-    neighborCellsInfo::Array{NeighborCellInfo, 3},
+    nbase::Int64,
     filterIndexes::Vector{Int64},
     simulator::Simulator,
 )
-    grid = simulator.grid
-    for n in eachindex(neighborCellsInfo)
-        neighborCellInfo = neighborCellsInfo[n]
-        # Preload the cell and its lattice-coordinate cache serially so the
-        # parallel section below only reads shared state.
-        cell = GetCell(grid, neighborCellInfo.index, simulator)
-        if !IsEmptyDynamicCell(cell.index, simulator)
-            LatticeSiteCoordinatesBase!(cell, simulator)
+    buffers = simulator.workBuffers
+    cellsArena = buffers.neighborCellsArena
+    crossArena = buffers.neighborCrossArena
+    for k in 1:27
+        # Preload lattice-coordinate caches serially so the parallel section
+        # below only reads shared state.
+        neighborCell = cellsArena[nbase + k]
+        if !IsEmptyDynamicCell(neighborCell.index, simulator)
+            LatticeSiteCoordinatesBase!(neighborCell, simulator)
         end
     end
-    @threads :static for n in eachindex(neighborCellsInfo)
-        neighborCellInfo = neighborCellsInfo[n]
+    @threads :static for k in 1:27
         buf = threadCandidates[Threads.threadid()]
-        _append_neighbor_candidates!(buf, atom, pVelocity, neighborCellInfo, filterIndexes, simulator)
+        _append_neighbor_candidates!(buf, atom, pVelocity, cellsArena[nbase + k], crossArena[nbase + k], filterIndexes, simulator)
     end
     return nothing
 end
@@ -124,20 +123,20 @@ end
 function GetTargetsFromNeighbor_dynamicLoad(atom::Atom, cell::Cell, filterIndexes::Vector{Int64}, simulator::Simulator)
     buffers = simulator.workBuffers
     targets = AcquireTargetsBuffer!(buffers)
-    neighborCellsInfo = GetNeighborCellsInfo!(cell, simulator.grid, simulator)
+    cellsArena, crossArena, nbase = NeighborhoodBase!(cell, simulator.grid, simulator)
     candidateTargets = buffers.candidateTargets
     empty!(candidateTargets)
     pVelocity = AtomVelocityDirection(atom, simulator)
     if Threads.nthreads() == 1
-        for neighborCellInfo in neighborCellsInfo
-            _append_neighbor_candidates!(candidateTargets, atom, pVelocity, neighborCellInfo, filterIndexes, simulator)
+        for k in 1:27
+            _append_neighbor_candidates!(candidateTargets, atom, pVelocity, cellsArena[nbase + k], crossArena[nbase + k], filterIndexes, simulator)
         end
     else
         threadCandidates = buffers.threadCandidates
         for tc in threadCandidates
             empty!(tc)
         end
-        _append_threaded_neighbor_candidates!(threadCandidates, atom, pVelocity, neighborCellsInfo, filterIndexes, simulator)
+        _append_threaded_neighbor_candidates!(threadCandidates, atom, pVelocity, nbase, filterIndexes, simulator)
         for tc in threadCandidates
             append!(candidateTargets, tc)
         end

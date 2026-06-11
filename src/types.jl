@@ -131,9 +131,13 @@ const ZERO_ATOM_DYNAMICS = AtomDynamics(ZERO_VELOCITY_DIRECTION, 0.0)
             # workBuffers.latticeCoordsArena[coordsOffset+1 : coordsOffset+n].
             coordsOffset::Int64
             coordsCascade::Int64
+            # Per-cascade cache of the 27 neighbor cells (and their periodic
+            # cross flags) in workBuffers.neighborCellsArena/neighborCrossArena.
+            neighborsOffset::Int64
+            neighborsCascade::Int64
         end
         Cell(index::Tuple{Int64, Int64, Int64}, atoms::Vector{Atom}, vacancies::Vector{Atom}) =
-            Cell(index, atoms, vacancies, UInt128(0), 0, -1)
+            Cell(index, atoms, vacancies, UInt128(0), 0, -1, 0, -1)
     end
 ,
     begin
@@ -372,6 +376,10 @@ mutable struct WorkBuffers
     # cells point into it via (coordsOffset, coordsCascade). Reset per cascade.
     latticeCoordsArena::Vector{SVector{3,Float64}}
     latticeCoordsTop::Int64
+    # Arena holding per-cascade 27-neighborhoods (cell refs + cross flags).
+    neighborCellsArena::Vector{Cell}
+    neighborCrossArena::Vector{NTuple{3, Int8}}
+    neighborTop::Int64
     lastTargets::Dict{Int64, Vector{Int64}}
     atomDynamics::Dict{Int64, AtomDynamics}
     # Reusable cascade-loop storage (single cascade runs at a time).
@@ -397,10 +405,13 @@ mutable struct WorkBuffers
         end
         neighborCellsInfos = [_new_neighbor_info_buffer() for _ in 1:2]
         latticeCoordsArena = Vector{SVector{3,Float64}}()
+        neighborCellsArena = Vector{Cell}()
+        neighborCrossArena = Vector{NTuple{3, Int8}}()
         lastTargets = Dict{Int64, Vector{Int64}}()
         atomDynamics = Dict{Int64, AtomDynamics}()
         return new(coordinates, candidateTargets,
                   collisionParams, threadCandidates, neighborCellsInfos, latticeCoordsArena, 0,
+                  neighborCellsArena, neighborCrossArena, 0,
                   lastTargets, atomDynamics,
                   Vector{Vector{TargetCandidate}}(), 0, Vector{Vector{TargetCandidate}}(),
                   Vector{Float64}(), Vector{Int64}(), Vector{Int64}(),
@@ -508,6 +519,7 @@ end
 
 function ClearLatticeSiteCoordinateCaches!(buffers::WorkBuffers)
     buffers.latticeCoordsTop = 0
+    buffers.neighborTop = 0
     return nothing
 end
 

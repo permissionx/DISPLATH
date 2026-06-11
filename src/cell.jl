@@ -150,8 +150,43 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
     empty!(cell.vacancies)
     cell.vacancyMask = UInt128(0)
     cell.coordsCascade = -1
+    cell.neighborsCascade = -1
     cell.index = cellIndex
     return cell
+end
+
+# Fill (once per cell per cascade) the 27-neighborhood cache: cell references
+# and periodic cross flags, stored in shared arenas. Iteration order matches
+# eachindex of the 3x3x3 neighbor array (dx fastest, then dy, then dz).
+function NeighborhoodBase!(cell::Cell, grid::Grid, simulator::Simulator)
+    buffers = simulator.workBuffers
+    if cell.neighborsCascade != simulator.nCascade
+        base = buffers.neighborTop
+        cellsArena = buffers.neighborCellsArena
+        crossArena = buffers.neighborCrossArena
+        if length(cellsArena) < base + 27
+            resize!(cellsArena, base + 27)
+            resize!(crossArena, base + 27)
+        end
+        k = base
+        index = cell.index
+        for delta_z in -1:1
+            for delta_y in -1:1
+                for delta_x in -1:1
+                    ix, cx = _neighbor_index_cross(index[1], delta_x, grid.sizes[1])
+                    iy, cy = _neighbor_index_cross(index[2], delta_y, grid.sizes[2])
+                    iz, cz = _neighbor_index_cross(index[3], delta_z, grid.sizes[3])
+                    k += 1
+                    cellsArena[k] = GetCell(grid, (ix, iy, iz), simulator)
+                    crossArena[k] = (cx, cy, cz)
+                end
+            end
+        end
+        buffers.neighborTop = base + 27
+        cell.neighborsOffset = base
+        cell.neighborsCascade = simulator.nCascade
+    end
+    return buffers.neighborCellsArena, buffers.neighborCrossArena, cell.neighborsOffset
 end
 
 function RefillLatticeAtoms!(cell::Cell, simulator::Simulator)
