@@ -115,7 +115,7 @@ end
 
 function CollisionParams(energy_p::Float64, mass_p::Float64, mass_t::Float64, type_p::Int64, type_t::Int64,
                          p::Float64, constantsByType::ConstantsByType,
-                         θFunction::Function, τFunction::Function)
+                         θFunction, τFunction)
     E_r_v = E_r(energy_p, mass_p, mass_t)
     Q_loc_v = QLoss.Q_loc(energy_p, type_p, type_t, E_r_v, p, constantsByType)
     Q_loc_v = min(Q_loc_v, (1 - 1E-6) * E_r_v)

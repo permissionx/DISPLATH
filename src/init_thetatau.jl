@@ -1,61 +1,71 @@
 
+function _CheckContiguousTypes(typeDict::Dict{Int64, Element})
+    n = length(typeDict)
+    for t in 1:n
+        haskey(typeDict, t) || error("typeDict keys must be 1:$(n), missing $(t).")
+    end
+    return n
+end
+
 function InitConstantsByType(typeDict::Dict{Int64, Element}, parameters::Parameters)
-    V_upterm = Dict{Tuple{Int64, Int64}, Float64}()
-    a_U = Dict{Tuple{Int64, Int64}, Float64}()
-    E_m = Dict{Int64, Float64}()
-    S_e_upTerm = Dict{Tuple{Int64, Int64}, Float64}()
-    S_e_downTerm = Dict{Tuple{Int64, Int64}, Float64}()
-    x_nl = Dict{Tuple{Int64, Int64}, Float64}()
-    a = Dict{Tuple{Int64, Int64}, Float64}()
-    Q_nl = Dict{Tuple{Int64, Int64}, Float64}()
-    Q_loc = Dict{Tuple{Int64, Int64}, Float64}()
-    types = keys(typeDict)
-    qMax = Dict{Tuple{Int64, Int64}, Float64}()
-    sigma = Dict{Int64, Float64}()
+    n = _CheckContiguousTypes(typeDict)
+    V_upterm = zeros(Float64, n, n)
+    a_U = zeros(Float64, n, n)
+    E_m = zeros(Float64, n)
+    S_e_upTerm = zeros(Float64, n, n)
+    S_e_downTerm = zeros(Float64, n, n)
+    x_nl = zeros(Float64, n, n)
+    a = zeros(Float64, n, n)
+    Q_nl = zeros(Float64, n, n)
+    Q_loc = zeros(Float64, n, n)
+    qMax = zeros(Float64, n, n)
+    sigma = zeros(Float64, n)
     log_info("")
     log_info("Vibration σ for each type:")
-    for p in types
+    for p in 1:n
         radius_p, mass_p, Z_p, _, _, α_p, β_p = TypeToProperties(p, typeDict)
-        for t in types
+        for t in 1:n
             radius_t, _, Z_t, _, _, _, _ = TypeToProperties(t, typeDict)
-            key = (p, t)
-            V_upterm[key] = BCA.ConstantFunctions.V_upterm(Z_p, Z_t)
-            a_U[key] = BCA.ConstantFunctions.a_U(Z_p, Z_t)
-            S_e_upTerm[key] = BCA.ConstantFunctions.S_e_upTerm(p, Z_p, Z_t, mass_p, α_p)
-            x_nl[key] = BCA.ConstantFunctions.x_nl(p, Z_p, Z_t, β_p)
-            a[key] = BCA.ConstantFunctions.a(Z_p, Z_t)
-            Q_nl[key] = BCA.ConstantFunctions.Q_nl(Z_p, Z_t, parameters.pMax)
-            Q_loc[key] = BCA.ConstantFunctions.Q_loc(Z_p, Z_t)
-            qMax[key] = radius_p + radius_t
+            V_upterm[p, t] = BCA.ConstantFunctions.V_upterm(Z_p, Z_t)
+            a_U[p, t] = BCA.ConstantFunctions.a_U(Z_p, Z_t)
+            S_e_upTerm[p, t] = BCA.ConstantFunctions.S_e_upTerm(p, Z_p, Z_t, mass_p, α_p)
+            x_nl[p, t] = BCA.ConstantFunctions.x_nl(p, Z_p, Z_t, β_p)
+            a[p, t] = BCA.ConstantFunctions.a(Z_p, Z_t)
+            Q_nl[p, t] = BCA.ConstantFunctions.Q_nl(Z_p, Z_t, parameters.pMax)
+            Q_loc[p, t] = BCA.ConstantFunctions.Q_loc(Z_p, Z_t)
+            qMax[p, t] = radius_p + radius_t
         end
         E_m[p] = BCA.ConstantFunctions.E_m(Z_p, mass_p)
         sigma[p] = TemperatureToSigma(parameters.temperature, parameters.DebyeTemperature, mass_p)
         log_info("  Type $(p): σ = $(round(sigma[p]; digits=3)) Å")
     end
-    return ConstantsByType(V_upterm, a_U, E_m, S_e_upTerm, S_e_downTerm, x_nl, a, Q_nl, Q_loc, qMax, sigma)
+    return ConstantsByType(PairTable(V_upterm), PairTable(a_U), TypeTable(E_m),
+                           PairTable(S_e_upTerm), PairTable(S_e_downTerm), PairTable(x_nl),
+                           PairTable(a), PairTable(Q_nl), PairTable(Q_loc), PairTable(qMax),
+                           TypeTable(sigma))
 end
 
 
 function InitθτFunctions(parameters::Parameters, constantsByType::ConstantsByType)
     typeDict = parameters.typeDict
-    θFunctions = Dict{Tuple{Int64, Int64}, Function}()
-    τFunctions = Dict{Tuple{Int64, Int64}, Function}()
+    n = _CheckContiguousTypes(typeDict)
+    θTable = Matrix{ΘτInterpolation}(undef, n, n)
+    τTable = Matrix{ΘτInterpolation}(undef, n, n)
     log_separator()
     log_info("Loading θ and τ functions...")
-    for type_p in keys(typeDict)
-        for type_t in keys(typeDict)
+    for type_p in 1:n
+        for type_t in 1:n
             mass_p = typeDict[type_p].mass
             mass_t = typeDict[type_t].mass
             θInterpolation, τInterpolation = θτFunctions(mass_p, mass_t, type_p, type_t, constantsByType, parameters)
-            key = (type_p, type_t)
-            θFunctions[key] = (E_p, p) -> θInterpolation(E_p, p)
-            τFunctions[key] = (E_p, p) -> τInterpolation(E_p, p)
+            θTable[type_p, type_t] = θInterpolation
+            τTable[type_p, type_t] = τInterpolation
             log_debug("  $(parameters.typeDict[type_p].name) → $(parameters.typeDict[type_t].name) loaded")
         end
     end
     log_success("All θ and τ functions initialized")
     log_separator()
-    return θFunctions, τFunctions
+    return InterpTable(θTable), InterpTable(τTable)
 end
 
 

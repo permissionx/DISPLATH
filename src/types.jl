@@ -170,7 +170,8 @@ end
 
 macro cell_storage_type()
     if IS_DYNAMIC_LOAD
-        return :(Dict{Tuple{Int64, Int64, Int64}, Cell}) #:(SparseVector{Cell})
+        # Packed Int64 linear index as key: one cheap hash instead of a 3-tuple hash.
+        return :(Dict{Int64, Cell})
     else
         return :(Array{Cell, 3})
     end
@@ -184,19 +185,43 @@ mutable struct Grid
 end 
 
 
-struct ConstantsByType
-    V_upterm::Dict{Tuple{Int64, Int64}, Float64}
-    a_U::Dict{Tuple{Int64, Int64}, Float64}
-    E_m::Dict{Int64, Float64}
-    S_e_upTerm::Dict{Tuple{Int64, Int64}, Float64}
-    S_e_downTerm::Dict{Tuple{Int64, Int64}, Float64}
-    x_nl::Dict{Tuple{Int64, Int64}, Float64}
-    a::Dict{Tuple{Int64, Int64}, Float64}
-    Q_nl::Dict{Tuple{Int64, Int64}, Float64}
-    Q_loc::Dict{Tuple{Int64, Int64}, Float64}
-    qMax::Dict{Tuple{Int64, Int64}, Float64}
-    sigma::Dict{Int64, Float64}
+# Dense pair/type-indexed tables; keep the Dict-style `table[(p,t)]` / `table[t]`
+# call syntax used across the BCA hot path, but with O(1) array indexing.
+struct PairTable
+    data::Matrix{Float64}
 end
+@inline Base.getindex(t::PairTable, key::Tuple{Int64, Int64}) = t.data[key[1], key[2]]
+@inline Base.getindex(t::PairTable, i::Integer, j::Integer) = t.data[i, j]
+
+struct TypeTable
+    data::Vector{Float64}
+end
+@inline Base.getindex(t::TypeTable, i::Integer) = t.data[i]
+
+struct ConstantsByType
+    V_upterm::PairTable
+    a_U::PairTable
+    E_m::TypeTable
+    S_e_upTerm::PairTable
+    S_e_downTerm::PairTable
+    x_nl::PairTable
+    a::PairTable
+    Q_nl::PairTable
+    Q_loc::PairTable
+    qMax::PairTable
+    sigma::TypeTable
+end
+
+
+# Concrete type of the gridded θ/τ interpolations: storing these in a typed
+# table (instead of Dict{Tuple,Function}) removes dynamic dispatch and boxing
+# from every collision.
+const ΘτInterpolation = typeof(interpolate((Float64[0.0, 1.0], Float64[0.0, 1.0]), zeros(Float64, 2, 2), Gridded(Linear())))
+
+struct InterpTable
+    data::Matrix{ΘτInterpolation}
+end
+@inline Base.getindex(t::InterpTable, key::Tuple{Int64, Int64}) = t.data[key[1], key[2]]
 
 
 struct Element
@@ -431,8 +456,8 @@ mutable struct Simulator
     nCascade::Int64
     nCollisionEvent::Int64
     exploredCells::Vector{Cell}
-    θFunctions::Dict{Tuple{Int64, Int64}, Function}
-    τFunctions::Dict{Tuple{Int64, Int64}, Function}
+    θFunctions::InterpTable
+    τFunctions::InterpTable
     uniformDensity::Float64
     #soap::PyObject
     environmentCut::Float64
@@ -447,9 +472,11 @@ mutable struct Simulator
     numberOfVacancies::Int64
     maxVacancyID::Int64
     minLatticeAtomID::Int64
-    deprecatedCellKeys::Set{Tuple{Int64, Int64, Int64}}
-    preservedCellKeys::Set{Tuple{Int64, Int64, Int64}}
-    attempedDeCellKeys::Set{Tuple{Int64, Int64, Int64}}
+    # Deferred cell reclamation: cells created during a cascade are recorded in
+    # touchedCells; at cascade end, the ones still empty are removed from the
+    # grid dict and parked in freeCells for reuse.
+    freeCells::Vector{Cell}
+    touchedCells::Vector{Cell}
     cellStd::CellStd
     cellLatticeAtomNumber::Int64
     # for debug
@@ -483,9 +510,8 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     workBuffers = WorkBuffers()
     uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])
     cellStd = CellStd()
-    deprecatedCellKeys = Set{Tuple{Int64, Int64, Int64}}()
-    preservedCellKeys = Set{Tuple{Int64, Int64, Int64}}()
-    attempedDeCellKeys = Set{Tuple{Int64, Int64, Int64}}()
+    freeCells = Vector{Cell}()
+    touchedCells = Vector{Cell}()
     cellLatticeAtomNumber = 0
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
@@ -499,9 +525,9 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      #soap, 
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
-                     vacancies, numberOfVacancies, maxVacancyID, minLatticeAtomID, 
-                     deprecatedCellKeys, preservedCellKeys, attempedDeCellKeys, 
-                     cellStd, cellLatticeAtomNumber, 
+                     vacancies, numberOfVacancies, maxVacancyID, minLatticeAtomID,
+                     freeCells, touchedCells,
+                     cellStd, cellLatticeAtomNumber,
                      debugAtoms,
                      parameters,
                      workBuffers)  

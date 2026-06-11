@@ -168,9 +168,9 @@ function CreateGrid(box::Box, inputVectors::Matrix{Float64})
             SetNeighborCellsInfo!(cell, grid)
         end
     else
-        cells = Dict{Tuple{Int64, Int64, Int64}, Cell}()    
+        cells = Dict{Int64, Cell}()
         cellVolume = vectors[1,1] * vectors[2,2] * vectors[3,3]
-        grid = Grid(cells, vectors, sizes, cellVolume) 
+        grid = Grid(cells, vectors, sizes, cellVolume)
     end
     log_success("Cell grid created")
     log_separator()

@@ -55,29 +55,61 @@ function IsEmptyDynamicCell(cellIndex::Tuple{Int64, Int64, Int64}, simulator::Si
     return false
 end
 
+@inline function CellKey(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64})
+    return ((cellIndex[1] - 1) * grid.sizes[2] + (cellIndex[2] - 1)) * grid.sizes[3] + cellIndex[3]
+end
+
 function GetCell(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
     return _GetCellDict!(grid, cellIndex, simulator)
 end
 
 function _GetCellDict!(grid::Grid, cellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
-    dks = simulator.deprecatedCellKeys
     cells = grid.cells
-    if haskey(cells, cellIndex)
-        if cellIndex in dks
-            delete!(dks, cellIndex)
-        end
-    else
-        if isempty(dks)
-            cells[cellIndex] = CreateCell(cellIndex, grid.vectors, simulator)
+    key = CellKey(grid, cellIndex)
+    cell = get(cells, key, nothing)
+    if cell === nothing
+        if isempty(simulator.freeCells)
+            cell = CreateCell(cellIndex, grid.vectors, simulator)
         else
-            dk = pop!(dks)
-            cell = pop!(cells, dk)
+            cell = pop!(simulator.freeCells)
             UpdateCell!(cell, cellIndex, grid.vectors, simulator)
-            cells[cellIndex] = cell
+        end
+        cells[key] = cell
+        push!(simulator.touchedCells, cell)
+    end
+    return cell
+end
+
+const FREE_CELL_POOL_MAX = 1 << 21
+
+# Deferred reclamation: at cascade end, drop cells that are still empty from
+# the grid dict and park them for reuse. Cells holding defects stay resident.
+function SweepTouchedCells!(simulator::Simulator)
+    grid = simulator.grid
+    cells = grid.cells
+    freeCells = simulator.freeCells
+    for cell in simulator.touchedCells
+        if isempty(cell.atoms) && isempty(cell.vacancies)
+            key = CellKey(grid, cell.index)
+            if get(cells, key, nothing) === cell
+                delete!(cells, key)
+                if length(freeCells) < FREE_CELL_POOL_MAX
+                    push!(freeCells, cell)
+                end
+            end
         end
     end
-    return cells[cellIndex]
-end 
+    empty!(simulator.touchedCells)
+end
+
+# A cell from an earlier cascade can be emptied by the current one (its atom
+# moved away or got deleted); record it so the sweep can reclaim it.
+@inline function MarkCellIfEmpty!(cell::Cell, simulator::Simulator)
+    if isempty(cell.atoms) && isempty(cell.vacancies)
+        push!(simulator.touchedCells, cell)
+    end
+    return nothing
+end
 
 function InitCellStd!(simulator::Simulator, PN::Vector{Int64})
     # only for dyanmic load
@@ -205,25 +237,6 @@ end
 
 
 
-function DeprecateCell!(cell::Cell, simulator::Simulator)
-    if !(cell.index in simulator.preservedCellKeys)
-        if isempty(cell.atoms) && isempty(cell.vacancies) 
-            push!(simulator.deprecatedCellKeys, cell.index)
-        else
-            for atom in cell.atoms
-                if AtomEnergy(atom, simulator) >= simulator.parameters.stopEnergy
-                    return
-                end
-            end
-        end
-    else
-        push!(simulator.attempedDeCellKeys, cell.index)
-    end
-end
-
-
-
-
 
 function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
     grid = simulator.grid
@@ -235,22 +248,8 @@ function ChangeCell!(atom::Atom, nextCellIndex::Tuple{Int64, Int64, Int64}, simu
     else
         originalCell = GetCell(grid, atom.cellIndex, simulator)
         delete!(originalCell, atom, simulator)
+        MarkCellIfEmpty!(originalCell, simulator)
         nextCell = GetCell(grid, nextCellIndex, simulator)
         push!(nextCell, atom, simulator)
-        nextNeighborCellsInfo = GetNeighborCellsInfo!(nextCell, grid, simulator, 1)
-        originalNeighborCellsInfo = GetNeighborCellsInfo!(originalCell, grid, simulator, 2)
-        for cellInfo in originalNeighborCellsInfo
-            neighborIndex = cellInfo.index
-            isNextNeighbor = false
-            for nextCellInfo in nextNeighborCellsInfo
-                if neighborIndex == nextCellInfo.index
-                    isNextNeighbor = true
-                    break
-                end
-            end
-            if !isNextNeighbor
-                DeprecateCell!(GetCell(grid, neighborIndex, simulator), simulator)
-            end
-        end
     end
 end

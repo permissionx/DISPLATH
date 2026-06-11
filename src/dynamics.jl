@@ -58,7 +58,7 @@ function AtomOutFaceDimension(atom::Atom, cell::Cell, simulator::Simulator)
         end
         faceCoordinate = rangeIndex == 1 ? CellLower(cell, d, simulator.grid) : CellUpper(cell, d, simulator.grid)
         t = (faceCoordinate - coordinate[d]) / velocityDirection[d]
-        elseDs = [ed for ed in 1:3 if ed != d]
+        elseDs = d == 1 ? (2, 3) : (d == 2 ? (1, 3) : (1, 2))
         allInRange = true
         for elseD in elseDs
             crossCoord = coordinate[elseD] + velocityDirection[elseD] * t
