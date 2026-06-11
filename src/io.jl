@@ -442,6 +442,9 @@ using Main: Simulator
 export @dump, @record, close_all!
 
 FLUSH_BYTES = 4_096
+# Large dumps flush in big chunks: on networked filesystems (BeeGFS) a
+# write+flush per 4 KiB dominates the wall time of multi-GB dump files.
+DUMP_FLUSH_BYTES = 8_388_608
 const _fh = Dict{String, IO}()
 const _buf = Dict{String, IOBuffer}()
 
@@ -492,7 +495,8 @@ end
 macro dump(file, atoms, properties=[], stepProperty=:nCascade)
     # for example: properties = ["vx", "vy", "vz", "e"]
     quote
-        atomNumber = count(a -> a.isAlive, $(esc(atoms)))
+        local _atoms = $(esc(atoms))
+        atomNumber = count(a -> a.isAlive, _atoms)
         local _file = $(esc(file))
         Output._ensure(_file)
         local buf = Output._buf[_file]
@@ -502,7 +506,7 @@ macro dump(file, atoms, properties=[], stepProperty=:nCascade)
             print(buf, p * " ")
         end
         print(buf, "\n")
-        for atom in $(esc(atoms))
+        for atom in _atoms
             if !atom.isAlive
                 continue
             end
@@ -533,7 +537,7 @@ macro dump(file, atoms, properties=[], stepProperty=:nCascade)
                 end
             end
             print(buf, "\n")
-            if position(buf) >= Output.FLUSH_BYTES
+            if position(buf) >= Output.DUMP_FLUSH_BYTES
                 Output._flush!(_file)
             end
         end
