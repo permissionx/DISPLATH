@@ -19,7 +19,13 @@ function ShotTarget_dynamicLoad(atom::Atom, filterIndexes::Vector{Int64}, simula
                                              dimension == 3 ? ni : 2]
             crossFlag = neighborInfo.cross
             if crossFlag[dimension] != 0 && periodic[dimension]
-                atom.coordinate[dimension] -= crossFlag[dimension] * simulator.box.vectors[dimension, dimension]
+                c = atom.coordinate
+                delta = crossFlag[dimension] * simulator.box.vectors[dimension, dimension]
+                atom.coordinate = SVector{3,Float64}(
+                    dimension == 1 ? c[1] - delta : c[1],
+                    dimension == 2 ? c[2] - delta : c[2],
+                    dimension == 3 ? c[3] - delta : c[3],
+                )
             end
             if (neighborInfo.cross[dimension] != 0 && !periodic[dimension]) || t >= simulator.parameters.infiniteLength
                 return TargetCandidate[], false, 0.0 # means find nothing
@@ -394,14 +400,11 @@ function LeaveLatticePoint_dynamicLoad!(target::TargetCandidate, simulator::Simu
     energy = AtomEnergy(target, simulator)
     ClearAtomDynamics!(target.index, simulator)
     atom = Atom(target.type, target.coordinate, simulator.parameters)
-    for d in 1:3
-        length = simulator.box.vectors[d,d]
-        if atom.coordinate[d] < 0
-            atom.coordinate[d] += length
-        elseif atom.coordinate[d] >= length
-            atom.coordinate[d] -= length
-        end
-    end
+    atom.coordinate = SVector{3,Float64}(
+        _wrap_box_component(atom.coordinate[1], simulator.box.vectors[1,1]),
+        _wrap_box_component(atom.coordinate[2], simulator.box.vectors[2,2]),
+        _wrap_box_component(atom.coordinate[3], simulator.box.vectors[3,3]),
+    )
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
     if target.cellIndex != cellIndex
         cell = GetCell(simulator.grid, cellIndex, simulator)
@@ -523,27 +526,42 @@ function Restore_dynamicLoad!(simulator::Simulator)
 end
 
 
+# Component-wise box wrap used when a displaced lattice atom is materialized.
+@inline function _wrap_box_component(x::Float64, length::Float64)
+    if x < 0
+        return x + length
+    elseif x >= length
+        return x - length
+    end
+    return x
+end
+
 function Pertubation_dynamicload!(atom::Atom, ranges::AbstractMatrix{<:Real}, simulator::Simulator)
-    if simulator.parameters.isAmorphous 
+    if simulator.parameters.isAmorphous
         rng = THREAD_RNG[Threads.threadid()]
-        atom.coordinate[1] = ranges[1, 1] + rand(rng) * simulator.grid.vectors[1, 1]
-        atom.coordinate[2] = ranges[2, 1] + rand(rng) * simulator.grid.vectors[2, 2]
-        atom.coordinate[3] = ranges[3, 1] + rand(rng) * simulator.grid.vectors[3, 3]
+        x1 = ranges[1, 1] + rand(rng) * simulator.grid.vectors[1, 1]
+        x2 = ranges[2, 1] + rand(rng) * simulator.grid.vectors[2, 2]
+        x3 = ranges[3, 1] + rand(rng) * simulator.grid.vectors[3, 3]
+        atom.coordinate = SVector{3,Float64}(x1, x2, x3)
     else
         ah = simulator.parameters.amorphousHeight
         if atom.coordinate[3] > ah
             rng = THREAD_RNG[Threads.threadid()]
-            atom.coordinate[1] = ranges[1,1] + rand(rng) * simulator.grid.vectors[1, 1]
-            atom.coordinate[2] = ranges[2,1] + rand(rng) * simulator.grid.vectors[2, 2]
+            x1 = ranges[1,1] + rand(rng) * simulator.grid.vectors[1, 1]
+            x2 = ranges[2,1] + rand(rng) * simulator.grid.vectors[2, 2]
             base = ranges[3,1] > ah ? ranges[3,1] : ah
-            latticeTop = simulator.parameters.primaryVectors[3,3] * simulator.parameters.latticeRanges[3,2]     
+            latticeTop = simulator.parameters.primaryVectors[3,3] * simulator.parameters.latticeRanges[3,2]
             top = ranges[3,2] < latticeTop ? ranges[3,2] : latticeTop
-            atom.coordinate[3] = base + rand(rng) * (top - base)
+            x3 = base + rand(rng) * (top - base)
+            atom.coordinate = SVector{3,Float64}(x1, x2, x3)
         else
             if simulator.parameters.temperature > 0.0
-                for d in 1:3
-                    atom.coordinate[d] += GaussianDeltaX(simulator.constantsByType.sigma[atom.type])
-                end
+                sigma = simulator.constantsByType.sigma[atom.type]
+                c = atom.coordinate
+                g1 = GaussianDeltaX(sigma)
+                g2 = GaussianDeltaX(sigma)
+                g3 = GaussianDeltaX(sigma)
+                atom.coordinate = SVector{3,Float64}(c[1] + g1, c[2] + g2, c[3] + g3)
             end
         end
     end

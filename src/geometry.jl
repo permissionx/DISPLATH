@@ -15,10 +15,11 @@ function Atom(type::Int64, coordinate::AbstractVector{<:Real}, parameters::Param
     index = 0
     isAlive = true
     cellIndex = (0,0,0)
-    coordinateVector = Float64[coordinate[1], coordinate[2], coordinate[3]]
     if IS_DYNAMIC_LOAD
-        return Atom(index, isAlive, type, coordinateVector, cellIndex)
+        return Atom(index, isAlive, type,
+                    SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3]), cellIndex)
     end
+    coordinateVector = Float64[coordinate[1], coordinate[2], coordinate[3]]
 
     velocityDirection = ZERO_VELOCITY_DIRECTION
     energy = 0.0
@@ -281,7 +282,7 @@ end
     return cellIndex
 end
 
-function WhichCell(coordinate::Vector{Float64}, grid::Grid)
+function WhichCell(coordinate::AbstractVector{<:Real}, grid::Grid)
     return (
         _cell_index_1d(coordinate[1], 1, grid),
         _cell_index_1d(coordinate[2], 2, grid),
@@ -510,37 +511,33 @@ end
     return x
 end
 
-function DisplaceAtom!(atom::Atom, newPosition::Vector{Float64}, simulator::Simulator)
-    atom.coordinate[1] = _wrapped_position_component(newPosition[1], 1, simulator)
-    atom.coordinate[2] = _wrapped_position_component(newPosition[2], 2, simulator)
-    atom.coordinate[3] = _wrapped_position_component(newPosition[3], 3, simulator)
-    ifdebug = false
+function DisplaceAtom!(atom::Atom, newPosition::Union{Vector{Float64}, SVector{3, Float64}}, simulator::Simulator)
+    if IS_DYNAMIC_LOAD
+        atom.coordinate = SVector{3,Float64}(
+            _wrapped_position_component(newPosition[1], 1, simulator),
+            _wrapped_position_component(newPosition[2], 2, simulator),
+            _wrapped_position_component(newPosition[3], 3, simulator),
+        )
+    else
+        atom.coordinate[1] = _wrapped_position_component(newPosition[1], 1, simulator)
+        atom.coordinate[2] = _wrapped_position_component(newPosition[2], 2, simulator)
+        atom.coordinate[3] = _wrapped_position_component(newPosition[3], 3, simulator)
+    end
     cellIndex = WhichCell(atom.coordinate, simulator.grid)
     if cellIndex != atom.cellIndex
         ChangeCell!(atom, cellIndex, simulator)
     end
 end
 
-function DisplaceAtom!(atom::Atom, newPosition::SVector{3, Float64}, simulator::Simulator)
-    atom.coordinate[1] = _wrapped_position_component(newPosition[1], 1, simulator)
-    atom.coordinate[2] = _wrapped_position_component(newPosition[2], 2, simulator)
-    atom.coordinate[3] = _wrapped_position_component(newPosition[3], 3, simulator)
-    ifdebug = false
-    cellIndex = WhichCell(atom.coordinate, simulator.grid)
-    if cellIndex != atom.cellIndex
-        ChangeCell!(atom, cellIndex, simulator)
-    end
-end
 
-
-function ComputeDistance_squared(coordinate1::Vector{Float64}, coordinate2::Vector{Float64}, crossFlag::NTuple{3, Int8}, box::Box)
+function ComputeDistance_squared(coordinate1::AbstractVector{<:Real}, coordinate2::AbstractVector{<:Real}, crossFlag::NTuple{3, Int8}, box::Box)
     dv = VectorDifference(coordinate1, coordinate2, crossFlag, box)
     distance_squared = dv[1]* dv[1] + dv[2]*dv[2] + dv[3]  * dv[3]
     return distance_squared
 end
 
 
-function ComputeDistance(coordinate1::Vector{Float64}, coordinate2::Vector{Float64}, crossFlag::NTuple{3, Int8}, box::Box)
+function ComputeDistance(coordinate1::AbstractVector{<:Real}, coordinate2::AbstractVector{<:Real}, crossFlag::NTuple{3, Int8}, box::Box)
     return sqrt(ComputeDistance_squared(coordinate1, coordinate2, crossFlag, box))
 end
 
@@ -615,7 +612,7 @@ function ComputeVDistanceHoisted(pCoordinate, pVelocity::SVector{3,Float64}, tar
 end
 
 function ComputePHoisted(
-    pCoordinate::Vector{Float64},
+    pCoordinate::AbstractVector{<:Real},
     pVelocity::SVector{3,Float64},
     targetIndex::Int64,
     targetType::Int64,
@@ -1019,9 +1016,13 @@ end
 
 
 
-function SetCoordinate!(atom::Atom, coordinate::Vector{Float64})
-    atom.coordinate .= coordinate
-end 
+function SetCoordinate!(atom::Atom, coordinate::AbstractVector{<:Real})
+    if IS_DYNAMIC_LOAD
+        atom.coordinate = SVector{3,Float64}(coordinate[1], coordinate[2], coordinate[3])
+    else
+        atom.coordinate .= coordinate
+    end
+end
 
 
 function TemperatureToSigma(T::Float64, θ_D::Float64, m_rel::Float64; atol=1e-10, rtol=1e-8)

@@ -21,7 +21,10 @@ end
             index::Int64  # never change
             isAlive::Bool
             type::Int64
-            coordinate::Vector{Float64}
+            # Inline storage: halves per-atom memory and removes one heap
+            # object + pointer chase per atom (tens of millions accumulate
+            # over a dynamic-load run). Mutate via whole-SVector assignment.
+            coordinate::SVector{3,Float64}
             cellIndex::Tuple{Int64, Int64, Int64}
         end
     end,
