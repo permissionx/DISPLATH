@@ -149,6 +149,7 @@ function UpdateCell!(cell::Cell, cellIndex::Tuple{Int64, Int64, Int64}, vectors:
     empty!(cell.atoms)
     empty!(cell.vacancies)
     cell.vacancyMask = UInt128(0)
+    cell.coordsCascade = -1
     cell.index = cellIndex
     return cell
 end

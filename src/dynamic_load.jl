@@ -73,7 +73,7 @@ function _append_neighbor_candidates!(
     end
     mask = neighborCell.vacancyMask
     cellIndex = neighborCell.index
-    latticeCoordinates = LatticeSiteCoordinates!(cellIndex, simulator)
+    arena, coordsBase = LatticeSiteCoordinatesBase!(neighborCell, simulator)
     stdAtoms = simulator.cellStd.atoms
     for indexInCell in eachindex(stdAtoms)
         if (mask >> (indexInCell - 1)) & UInt128(1) != 0
@@ -83,7 +83,7 @@ function _append_neighbor_candidates!(
         if targetIndex in filterIndexes
             continue
         end
-        coordinate = latticeCoordinates[indexInCell]
+        coordinate = arena[coordsBase + indexInCell]
         if ComputeVDistanceHoisted(pCoordinate, pVelocity, coordinate, cross, box) > 0
             candidate = ComputePHoisted(pCoordinate, pVelocity, targetIndex, stdAtoms[indexInCell].type,
                                         cellIndex, true, indexInCell, coordinate, cross, box)
@@ -106,7 +106,12 @@ function _append_threaded_neighbor_candidates!(
     grid = simulator.grid
     for n in eachindex(neighborCellsInfo)
         neighborCellInfo = neighborCellsInfo[n]
-        GetCell(grid, neighborCellInfo.index, simulator)  # preload the cell to avoid race condition
+        # Preload the cell and its lattice-coordinate cache serially so the
+        # parallel section below only reads shared state.
+        cell = GetCell(grid, neighborCellInfo.index, simulator)
+        if !IsEmptyDynamicCell(cell.index, simulator)
+            LatticeSiteCoordinatesBase!(cell, simulator)
+        end
     end
     @threads :static for n in eachindex(neighborCellsInfo)
         neighborCellInfo = neighborCellsInfo[n]

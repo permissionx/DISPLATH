@@ -126,9 +126,14 @@ const ZERO_ATOM_DYNAMICS = AtomDynamics(ZERO_VELOCITY_DIRECTION, 0.0)
             # Bit i-1 set <=> lattice site i of this cell is vacant; mirrors
             # `vacancies` so the hot candidate search can test occupancy in O(1).
             vacancyMask::UInt128
+            # Per-cascade cache of perturbed lattice-site coordinates: when
+            # coordsCascade == simulator.nCascade, sites live at
+            # workBuffers.latticeCoordsArena[coordsOffset+1 : coordsOffset+n].
+            coordsOffset::Int64
+            coordsCascade::Int64
         end
         Cell(index::Tuple{Int64, Int64, Int64}, atoms::Vector{Atom}, vacancies::Vector{Atom}) =
-            Cell(index, atoms, vacancies, UInt128(0))
+            Cell(index, atoms, vacancies, UInt128(0), 0, -1)
     end
 ,
     begin
@@ -363,7 +368,10 @@ mutable struct WorkBuffers
     collisionParames::CollisionParamsBuffers
     threadCandidates::Vector{Vector{TargetCandidate}}
     neighborCellsInfos::Vector{Array{NeighborCellInfo, 3}}
-    latticeSiteCoordinates::Vector{Dict{Tuple{Int64, Int64, Int64}, Vector{SVector{3,Float64}}}}
+    # Arena holding per-cascade lattice-site coordinates for visited cells;
+    # cells point into it via (coordsOffset, coordsCascade). Reset per cascade.
+    latticeCoordsArena::Vector{SVector{3,Float64}}
+    latticeCoordsTop::Int64
     lastTargets::Dict{Int64, Vector{Int64}}
     atomDynamics::Dict{Int64, AtomDynamics}
     # Reusable cascade-loop storage (single cascade runs at a time).
@@ -388,11 +396,11 @@ mutable struct WorkBuffers
             sizehint!(tc, 50)
         end
         neighborCellsInfos = [_new_neighbor_info_buffer() for _ in 1:2]
-        latticeSiteCoordinates = [Dict{Tuple{Int64, Int64, Int64}, Vector{SVector{3,Float64}}}() for _ in 1:max_threads]
+        latticeCoordsArena = Vector{SVector{3,Float64}}()
         lastTargets = Dict{Int64, Vector{Int64}}()
         atomDynamics = Dict{Int64, AtomDynamics}()
         return new(coordinates, candidateTargets,
-                  collisionParams, threadCandidates, neighborCellsInfos, latticeSiteCoordinates,
+                  collisionParams, threadCandidates, neighborCellsInfos, latticeCoordsArena, 0,
                   lastTargets, atomDynamics,
                   Vector{Vector{TargetCandidate}}(), 0, Vector{Vector{TargetCandidate}}(),
                   Vector{Float64}(), Vector{Int64}(), Vector{Int64}(),
@@ -499,9 +507,7 @@ function ClearBuffers!(buffers::WorkBuffers)
 end
 
 function ClearLatticeSiteCoordinateCaches!(buffers::WorkBuffers)
-    for cache in buffers.latticeSiteCoordinates
-        empty!(cache)
-    end
+    buffers.latticeCoordsTop = 0
     return nothing
 end
 

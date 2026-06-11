@@ -407,17 +407,28 @@ function LatticeSiteCoordinate(cellIndex::Tuple{Int64, Int64, Int64}, indexInCel
     return coordinate
 end
 
-function LatticeSiteCoordinates!(cellIndex::Tuple{Int64, Int64, Int64}, simulator::Simulator)
-    cache = simulator.workBuffers.latticeSiteCoordinates[Threads.threadid()]
-    coords = get(cache, cellIndex, nothing)
-    if coords === nothing
-        coords = Vector{SVector{3,Float64}}(undef, simulator.cellLatticeAtomNumber)
-        for indexInCell in eachindex(coords)
-            coords[indexInCell] = LatticeSiteCoordinate(cellIndex, indexInCell, simulator)
+# Fill (once per cell per cascade) and expose this cell's perturbed lattice
+# site coordinates inside the shared arena. Returns (arena, base) such that
+# site i lives at arena[base + i]. Values are identical to
+# LatticeSiteCoordinate (deterministic hash randoms), only the storage moved.
+function LatticeSiteCoordinatesBase!(cell::Cell, simulator::Simulator)
+    buffers = simulator.workBuffers
+    if cell.coordsCascade != simulator.nCascade
+        n = simulator.cellLatticeAtomNumber
+        base = buffers.latticeCoordsTop
+        arena = buffers.latticeCoordsArena
+        if length(arena) < base + n
+            resize!(arena, base + n)
         end
-        cache[cellIndex] = coords
+        cellIndex = cell.index
+        for indexInCell in 1:n
+            arena[base + indexInCell] = LatticeSiteCoordinate(cellIndex, indexInCell, simulator)
+        end
+        buffers.latticeCoordsTop = base + n
+        cell.coordsOffset = base
+        cell.coordsCascade = simulator.nCascade
     end
-    return coords
+    return buffers.latticeCoordsArena, cell.coordsOffset
 end
 
 @inline function HasVacancyAtIndex(cell::Cell, indexInCell::Int64, simulator::Simulator)
