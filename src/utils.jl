@@ -95,10 +95,11 @@ function rotation_matrix_from_vectors(vec1::AbstractVector, vec2::AbstractVector
 
 
     if c ≈ -1.0
-
+        # antiparallel: 180-degree rotation about any axis perpendicular to a.
+        # For a unit axis k, the rotation matrix is R = 2*k*k' - I.
         other = abs(dot(a, [0, 0, 1])) < 0.9 ? [0, 0, 1] : [1, 0, 0]
         axis = normalize(cross(a, other))
-        return AngleAxis(π, axis...)|>RotMatrix
+        return 2 * axis * axis' - I(3)
     end
     
 

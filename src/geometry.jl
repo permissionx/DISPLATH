@@ -930,7 +930,7 @@ end
 
 
 function InitLatticePointEnvronment(simulator::Simulator)
-    if simulator.parameters.DTEMode != 1 && simulator.parameters.DTEMode != 4
+    if simulator.parameters.DTEMode != 1 && simulator.parameters.DTEMode != 3
         log_info("🌐 Initializing lattice point environment...\n")
         for latticePoint in simulator.latticePoints
             latticePoint.environment = GetEnvironmentLatticePoints(latticePoint, simulator)

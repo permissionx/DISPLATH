@@ -7,9 +7,7 @@ function GetDTE(atom::Atom, simulator::Simulator)
         return AtomDTE(atom, simulator)
     elseif simulator.parameters.DTEMode == 2  # all environment
         return GetDTEByEnvironment(atom, simulator)
-    #elseif simulator.parameters.DTEMode == 3   # soap
-    #    return GetDTEBySoap(atom, simulator)
-    elseif simulator.parameters.DTEMode == 4
+    elseif simulator.parameters.DTEMode == 3  # custom user function
         return GetDTECustom(atom, simulator)
     end
 end
@@ -27,9 +25,7 @@ function GetBDE(atom::Atom, simulator::Simulator)  # BDE: binding energy
         return AtomBDE(atom, simulator)
     elseif simulator.parameters.DTEMode == 2  # all environment
         return GetBDEByEnvironment(atom, simulator)
-    #elseif simulator.parameters.DTEMode == 3   # soap
-    #    return GetBDEBySoap(atom, simulator)
-    elseif simulator.parameters.DTEMode == 4
+    elseif simulator.parameters.DTEMode == 3  # custom user function
         return GetBDECustom(atom, simulator)
     end
 end
