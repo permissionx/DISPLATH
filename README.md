@@ -22,7 +22,7 @@ provided under [`examples/`](examples/).
 ## 1. Requirements
 
 * **Julia ≥ 1.9** (developed and tested with the build under
-  `/beegfs/science-share/julia`).
+  Julia 1.11.7).
 * External Julia packages (the only ones that must be installed; everything
   else is from the standard library):
 
