@@ -4,25 +4,37 @@
 #
 function GetDTE(atom::Atom, simulator::Simulator)
     if simulator.parameters.DTEMode == 1  # direct 
-        return atom.dte
+        return AtomDTE(atom, simulator)
     elseif simulator.parameters.DTEMode == 2  # all environment
         return GetDTEByEnvironment(atom, simulator)
-    #elseif simulator.parameters.DTEMode == 3   # soap
-    #    return GetDTEBySoap(atom, simulator)
-    elseif simulator.parameters.DTEMode == 4
+    elseif simulator.parameters.DTEMode == 3  # custom user function
         return GetDTECustom(atom, simulator)
+    end
+end
+
+function GetDTE(target::TargetCandidate, simulator::Simulator)
+    if simulator.parameters.DTEMode == 1
+        return TargetDTE(target, simulator)
+    else
+        return TargetDTE(target, simulator)
     end
 end
 
 function GetBDE(atom::Atom, simulator::Simulator)  # BDE: binding energy
     if simulator.parameters.DTEMode == 1  # direct 
-        return atom.bde
+        return AtomBDE(atom, simulator)
     elseif simulator.parameters.DTEMode == 2  # all environment
         return GetBDEByEnvironment(atom, simulator)
-    #elseif simulator.parameters.DTEMode == 3   # soap
-    #    return GetBDEBySoap(atom, simulator)
-    elseif simulator.parameters.DTEMode == 4
+    elseif simulator.parameters.DTEMode == 3  # custom user function
         return GetBDECustom(atom, simulator)
+    end
+end
+
+function GetBDE(target::TargetCandidate, simulator::Simulator)
+    if simulator.parameters.DTEMode == 1
+        return TargetBDE(target, simulator)
+    else
+        return TargetBDE(target, simulator)
     end
 end
 
@@ -58,6 +70,7 @@ end
 #    return soap
 #end
 #test2
+
 function GetNeighborArray(atom::Atom, simulator::Simulator)
     coordinates = atom.coordinate'  
     elementNames = Vector{String}([simulator.parameters.typeDict[atom.type].name])
@@ -89,4 +102,3 @@ end
 #    descriptor = soap.create(atoms, centers=[0])
 #    return soap, descriptor
 #end
-

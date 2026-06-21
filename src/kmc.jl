@@ -47,7 +47,7 @@ function GetFinalLatticePointInfo(latticePoint::LatticePoint, simulator::Simulat
     latticePoints = simulator.latticePoints
     finalLatticePointEnvIndexs = Vector{Int64}()
     finalLatticePointIndexs = Vector{Int64}()
-    for i in 1:length(environment)
+    for i in eachindex(environment)
         neighborLatticePoint = latticePoints[environment[i]]
         if neighborLatticePoint.atomIndex == -1 &&  latticePoint.tpye == atom.type
             push!(finalLatticePointEnvIndexs, 2^(i-1))    
@@ -69,7 +69,7 @@ end
 function GetRandomMobileAtomIndex(simulator::Simulator)
     randomNumber = rand() * (simulator.frequency + simulator.parameters.irrdiationFrequency)
     cumulativeProbability = 0.0
-    for i in 1:length(simulator.frequencies)
+    for i in eachindex(simulator.frequencies)
         cumulativeProbability += simulator.frequencies[i]
         if cumulativeProbability >= randomNumber
             return i
@@ -81,7 +81,7 @@ end
 function GetRandomFinalLatticePointIndex(atom::Atom)
     randomNumber = rand() * atom.frequency
     cumulativeProbability = 0.0
-    for i in 1:length(atom.frequencies)
+    for i in eachindex(atom.frequencies)
         cumulativeProbability += atom.frequencies[i]
         if randomNumber <= cumulativeProbability
             return atom.finalLatticePointIndexs[i]

@@ -7,50 +7,71 @@ mutable struct Box
 end
 
 
-mutable struct Atom
-    index::Int64  # never change
-    isAlive::Bool
-    type::Int64
-    coordinate::Vector{Float64}
-    cellIndex::Tuple{Int64, Int64, Int64}
-    radius::Float64
-    mass::Float64
-    velocityDirection::SVector{3,Float64}
-    energy::Float64
-    Z::Float64
-
-    dte::Float64
-    bde::Float64
-
-    #numberOfEmptyCells::Int64
-    emptyPath::Float64
-
-    # for atom_t
-    pValue::Float64
-    pPoint::SVector{3,Float64}
-    pVector::SVector{3,Float64}
-    pL::Float64
-    pAtomIndex::Int64 # temperory 
-    pDirection::Vector{Float64}  # temperory 
-
-    # for atom_p
-    lastTargets::Vector{Int64}
-
-
-    latticePointIndex::Int64 # -1 for off lattice
-    
-    # for KMC 
-    frequency::Float64 # Hz, s^-1
-    frequencies::Vector{Float64} 
-    finalLatticePointIndexs::Vector{Int64}
-    eventIndex::Int64
-
-    # for dynamic load 
-    isNewlyLoaded::Bool
-    latticeCoordinate::SVector{3,Float64}
-    indexInCell::Int64
-
+macro load_variant(dynamic_expr, static_expr)
+    if !isdefined(__module__, :IS_DYNAMIC_LOAD)
+        error("IS_DYNAMIC_LOAD must be defined before including DISPLATH types")
+    end
+    return getfield(__module__, :IS_DYNAMIC_LOAD) ? esc(dynamic_expr) : esc(static_expr)
 end
+
+
+@load_variant(
+    begin
+        mutable struct Atom
+            index::Int64  # never change
+            isAlive::Bool
+            type::Int64
+            # Inline storage: halves per-atom memory and removes one heap
+            # object + pointer chase per atom (tens of millions accumulate
+            # over a dynamic-load run). Mutate via whole-SVector assignment.
+            coordinate::SVector{3,Float64}
+            cellIndex::Tuple{Int64, Int64, Int64}
+        end
+    end,
+    begin
+    mutable struct Atom
+        index::Int64  # never change
+        isAlive::Bool
+        type::Int64
+        coordinate::Vector{Float64}
+        cellIndex::Tuple{Int64, Int64, Int64}
+        radius::Float64
+        mass::Float64
+        velocityDirection::SVector{3,Float64}
+        energy::Float64
+        Z::Float64
+
+        dte::Float64
+        bde::Float64
+
+        emptyPath::Float64
+
+        # for atom_t
+        pValue::Float64
+        pPoint::SVector{3,Float64}
+        pVector::SVector{3,Float64}
+        pL::Float64
+        pAtomIndex::Int64
+        pDirection::Vector{Float64}
+
+        # for atom_p
+        lastTargets::Vector{Int64}
+
+        latticePointIndex::Int64 # -1 for off lattice
+
+        # for KMC
+        frequency::Float64
+        frequencies::Vector{Float64}
+        finalLatticePointIndexs::Vector{Int64}
+        eventIndex::Int64
+
+        # for dynamic load, kept here so static mode retains the main-branch shape
+        isNewlyLoaded::Bool
+        latticeCoordinate::SVector{3,Float64}
+        indexInCell::Int64
+    end
+    end
+)
 
 struct Material
     box::Box
@@ -69,54 +90,110 @@ mutable struct LatticePoint
 end
 
 
-struct NeighborCellInfo
+mutable struct NeighborCellInfo
     index::NTuple{3, Int64}
     cross::NTuple{3, Int8} # 0 for no cross, 1 for hi, -1 for lo, eg. (0,0,1) for top 
 end
 
+struct TargetCandidate
+    index::Int64
+    type::Int64
+    cellIndex::Tuple{Int64, Int64, Int64}
+    isLatticeAtom::Bool
+    indexInCell::Int64
+    coordinate::SVector{3,Float64}
+    pValue::Float64
+    pPoint::SVector{3,Float64}
+    # pVector is derivable as pPoint - coordinate; not stored to keep the
+    # candidate (copied around hot buffers) 24 bytes smaller.
+    pL::Float64
+end
 
-mutable struct Cell
-    # only for orthogonal box
-    index::Tuple{Int64, Int64, Int64}
+@inline TargetPVector(target::TargetCandidate) = target.pPoint - target.coordinate
+
+struct AtomDynamics
+    velocityDirection::SVector{3,Float64}
+    energy::Float64
+end
+
+const ZERO_VELOCITY_DIRECTION = SVector{3,Float64}(0.0, 0.0, 0.0)
+const ZERO_ATOM_DYNAMICS = AtomDynamics(ZERO_VELOCITY_DIRECTION, 0.0)
+
+
+@load_variant(
+    begin
+        mutable struct Cell
+            index::Tuple{Int64, Int64, Int64}
+            atoms::Vector{Atom}
+            vacancies::Vector{Atom}
+            # Bit i-1 set <=> lattice site i of this cell is vacant; mirrors
+            # `vacancies` so the hot candidate search can test occupancy in O(1).
+            vacancyMask::UInt128
+            # Per-cascade cache of perturbed lattice-site coordinates: when
+            # coordsCascade == simulator.nCascade, sites live at
+            # workBuffers.latticeCoordsArena[coordsOffset+1 : coordsOffset+n].
+            coordsOffset::Int64
+            coordsCascade::Int64
+            # Per-cascade cache of the 27 neighbor cells (and their periodic
+            # cross flags) in workBuffers.neighborCellsArena/neighborCrossArena.
+            neighborsOffset::Int64
+            neighborsCascade::Int64
+            # Cached IsEmptyDynamicCell(index): pure function of the index.
+            isEmptyDynamic::Bool
+        end
+        Cell(index::Tuple{Int64, Int64, Int64}, atoms::Vector{Atom}, vacancies::Vector{Atom}) =
+            Cell(index, atoms, vacancies, UInt128(0), 0, -1, 0, -1, false)
+    end
+,
+    begin
+    mutable struct Cell
+        # only for orthogonal box
+        index::Tuple{Int64, Int64, Int64}
+        atoms::Vector{Atom}
+        latticePoints::Vector{LatticePoint}
+        ranges::Matrix{Float64}
+        neighborCellsInfo::Array{NeighborCellInfo, 3}
+        isExplored::Bool
+        atomicDensity::Float64
+        latticeAtoms::Vector{Atom}
+        isLoaded::Bool
+        vacancies::Vector{Atom}
+        isSavedLatticeRange::Bool
+        latticeRanges::Matrix{Int64}
+        isPushedNeighbor::Bool
+    end
+
+    function Cell(
+        index::Tuple{Int64, Int64, Int64},
+        atoms::Vector{Atom},
+        latticePoints::Vector{LatticePoint},
+        ranges::Matrix{Float64},
+        neighborCellsInfo::Array{NeighborCellInfo, 3},
+        isExplored::Bool,
+        atomicDensity::Float64)
+        latticeAtoms = Vector{Atom}()
+        isLoaded = false
+        vacancies = Vector{Atom}()
+        isSavedLatticeRange = false
+        latticeRanges = Matrix{Int64}(undef, 3, 2)
+        isPushedNeighbor = false
+        return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity,
+                    latticeAtoms, isLoaded, vacancies, isSavedLatticeRange, latticeRanges, isPushedNeighbor)
+    end
+    end
+)
+
+struct CellStd
     atoms::Vector{Atom}
-    latticePoints::Vector{LatticePoint}  
-    ranges::Matrix{Float64}
-    neighborCellsInfo::Array{NeighborCellInfo, 3}
-    isExplored::Bool
-    atomicDensity::Float64
-    # for dynamic load
-    latticeAtoms::Vector{Atom}
-    isLoaded::Bool
-    vacancies::Vector{Atom}  # also for static load 
-    isSavedLatticeRange::Bool
-    latticeRanges::Matrix{Int64}
-    isPushedNeighbor::Bool
+    function CellStd()
+        return new(Vector{Atom}())
+    end
 end
-
-
-function Cell(
-    index::Tuple{Int64, Int64, Int64},
-    atoms::Vector{Atom},
-    latticePoints::Vector{LatticePoint},
-    ranges::Matrix{Float64},
-    #neighborCellsInfo::Dict{Vector{Int8}, NeighborCellInfo},
-    neighborCellsInfo::Array{NeighborCellInfo, 3},
-    isExplored::Bool,
-    atomicDensity::Float64)           
-    latticeAtoms = Vector{Atom}()
-    isLoaded = false
-    vacancies = Vector{Atom}()
-    isSavedLatticeRange = false
-    latticeRanges = Matrix{Int64}(undef, 3, 2)
-    isPushedNeighbor = false
-    return Cell(index, atoms, latticePoints, ranges, neighborCellsInfo, isExplored, atomicDensity, 
-                    latticeAtoms, isLoaded, vacancies, isSavedLatticeRange, latticeRanges, isPushedNeighbor)     
-end
-
 
 macro cell_storage_type()
     if IS_DYNAMIC_LOAD
-        return :(Dict{Tuple{Int64, Int64, Int64}, Cell}) #:(SparseVector{Cell})
+        # Packed Int64 linear index as key: one cheap hash instead of a 3-tuple hash.
+        return :(Dict{Int64, Cell})
     else
         return :(Array{Cell, 3})
     end
@@ -130,19 +207,43 @@ mutable struct Grid
 end 
 
 
-struct ConstantsByType
-    V_upterm::Dict{Vector{Int64}, Float64}
-    a_U::Dict{Vector{Int64}, Float64}
-    E_m::Dict{Int64, Float64}
-    S_e_upTerm::Dict{Vector{Int64}, Float64}
-    S_e_downTerm::Dict{Vector{Int64}, Float64}
-    x_nl::Dict{Vector{Int64}, Float64}
-    a::Dict{Vector{Int64}, Float64}
-    Q_nl::Dict{Vector{Int64}, Float64}  
-    Q_loc::Dict{Vector{Int64}, Float64}
-    qMax::Dict{Vector{Int64}, Float64}
-    sigma::Dict{Int64, Float64}
+# Dense pair/type-indexed tables; keep the Dict-style `table[(p,t)]` / `table[t]`
+# call syntax used across the BCA hot path, but with O(1) array indexing.
+struct PairTable
+    data::Matrix{Float64}
 end
+@inline Base.getindex(t::PairTable, key::Tuple{Int64, Int64}) = t.data[key[1], key[2]]
+@inline Base.getindex(t::PairTable, i::Integer, j::Integer) = t.data[i, j]
+
+struct TypeTable
+    data::Vector{Float64}
+end
+@inline Base.getindex(t::TypeTable, i::Integer) = t.data[i]
+
+struct ConstantsByType
+    V_upterm::PairTable
+    a_U::PairTable
+    E_m::TypeTable
+    S_e_upTerm::PairTable
+    S_e_downTerm::PairTable
+    x_nl::PairTable
+    a::PairTable
+    Q_nl::PairTable
+    Q_loc::PairTable
+    qMax::PairTable
+    sigma::TypeTable
+end
+
+
+# Concrete type of the gridded θ/τ interpolations: storing these in a typed
+# table (instead of Dict{Tuple,Function}) removes dynamic dispatch and boxing
+# from every collision.
+const ΘτInterpolation = typeof(interpolate((Float64[0.0, 1.0], Float64[0.0, 1.0]), zeros(Float64, 2, 2), Gridded(Linear())))
+
+struct InterpTable
+    data::Matrix{ΘτInterpolation}
+end
+@inline Base.getindex(t::InterpTable, key::Tuple{Int64, Int64}) = t.data[key[1], key[2]]
 
 
 struct Element
@@ -192,6 +293,7 @@ mutable struct Parameters
     isAmorphous::Bool
     amorphousLength::Float64
     amorphousHeight::Float64
+    infiniteLength::Float64
     debugMode::Bool
 end
 
@@ -227,7 +329,9 @@ function Parameters(
     maxRSS::Int = 20, # unit: GB
     isAmorphous::Bool = false,
     amorphousLength::Float64 = -100.0,
+    infiniteLength::Float64 = 1000.0,
     debugMode::Bool = false) 
+
     pMax_squared = pMax * pMax 
     temperature_kb = temperature * 8.61733362E-5 # eV
     primaryVectors_INV = inv(primaryVectors)
@@ -248,7 +352,7 @@ function Parameters(
                       #soapParameters, 
                       DTEFile,
                       isKMC, nu_0_dict, temperature, temperature_kb, perfectEnvIndex, irrdiationFrequency,
-                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousLength, amorphousHeight, 
+                      nCascadeEveryLoad, maxRSS, isAmorphous, amorphousLength, amorphousHeight, infiniteLength,
                       debugMode)
 end 
 
@@ -269,21 +373,121 @@ end
 
 mutable struct WorkBuffers
     coordinates::Vector{Vector{Float64}}
-    candidateTargets::Vector{Atom}
+    candidateTargets::Vector{TargetCandidate}
     collisionParames::CollisionParamsBuffers
-    threadCandidates::Vector{Vector{Atom}}
+    threadCandidates::Vector{Vector{TargetCandidate}}
+    neighborCellsInfos::Vector{Array{NeighborCellInfo, 3}}
+    # Arena holding per-cascade lattice-site coordinates for visited cells;
+    # cells point into it via (coordsOffset, coordsCascade). Reset per cascade.
+    latticeCoordsArena::Vector{SVector{3,Float64}}
+    latticeCoordsTop::Int64
+    # Arena holding per-cascade 27-neighborhoods (cell refs + cross flags).
+    neighborCellsArena::Vector{Cell}
+    neighborCrossArena::Vector{NTuple{3, Int8}}
+    neighborTop::Int64
+    lastTargets::Dict{Int64, Vector{Int64}}
+    atomDynamics::Dict{Int64, AtomDynamics}
+    # Reusable cascade-loop storage (single cascade runs at a time).
+    targetsPool::Vector{Vector{TargetCandidate}}
+    targetsPoolTop::Int64
+    targetsList::Vector{Vector{TargetCandidate}}
+    emptyPathList::Vector{Float64}
+    deleteIndexes::Vector{Int64}
+    othersTargetIndexes::Vector{Int64}
+    pAtoms::Vector{Atom}
+    nextPAtoms::Vector{Atom}
+    pAtomsIndex::Vector{Int64}
+    filterIndexes::Vector{Int64}
+    lastTargetsPool::Vector{Vector{Int64}}
     function WorkBuffers(max_threads::Int64=Threads.nthreads())
         coordinates = [Vector{Float64}(undef, 3) for _ in 1:max_threads]
-        candidateTargets = Vector{Atom}()
+        candidateTargets = Vector{TargetCandidate}()
         sizehint!(candidateTargets, 100)
         collisionParams = CollisionParamsBuffers()
-        threadCandidates = [Vector{Atom}() for _ in 1:max_threads]
+        threadCandidates = [Vector{TargetCandidate}() for _ in 1:max_threads]
         for tc in threadCandidates
             sizehint!(tc, 50)
         end
-        return new(coordinates, candidateTargets, 
-                  collisionParams, threadCandidates)
+        neighborCellsInfos = [_new_neighbor_info_buffer() for _ in 1:2]
+        latticeCoordsArena = Vector{SVector{3,Float64}}()
+        neighborCellsArena = Vector{Cell}()
+        neighborCrossArena = Vector{NTuple{3, Int8}}()
+        lastTargets = Dict{Int64, Vector{Int64}}()
+        atomDynamics = Dict{Int64, AtomDynamics}()
+        return new(coordinates, candidateTargets,
+                  collisionParams, threadCandidates, neighborCellsInfos, latticeCoordsArena, 0,
+                  neighborCellsArena, neighborCrossArena, 0,
+                  lastTargets, atomDynamics,
+                  Vector{Vector{TargetCandidate}}(), 0, Vector{Vector{TargetCandidate}}(),
+                  Vector{Float64}(), Vector{Int64}(), Vector{Int64}(),
+                  Vector{Atom}(), Vector{Atom}(), Vector{Int64}(), Vector{Int64}(),
+                  Vector{Vector{Int64}}())
     end
+end
+
+# Pool of targets vectors handed out by GetTargetsFromNeighbor_dynamicLoad;
+# reset once per collision event instead of allocating per call.
+function AcquireTargetsBuffer!(buffers::WorkBuffers)
+    buffers.targetsPoolTop += 1
+    if buffers.targetsPoolTop > length(buffers.targetsPool)
+        v = Vector{TargetCandidate}()
+        push!(buffers.targetsPool, v)
+        return v
+    end
+    v = buffers.targetsPool[buffers.targetsPoolTop]
+    empty!(v)
+    return v
+end
+
+function ResetTargetsPool!(buffers::WorkBuffers)
+    buffers.targetsPoolTop = 0
+    return nothing
+end
+
+function ReleaseLastTargets!(buffers::WorkBuffers)
+    for v in values(buffers.lastTargets)
+        push!(buffers.lastTargetsPool, v)
+    end
+    empty!(buffers.lastTargets)
+    return nothing
+end
+
+function _new_neighbor_info_buffer()
+    buffer = Array{NeighborCellInfo, 3}(undef, 3, 3, 3)
+    for i in eachindex(buffer)
+        buffer[i] = NeighborCellInfo((0, 0, 0), (Int8(0), Int8(0), Int8(0)))
+    end
+    return buffer
+end
+
+function LastTargets!(atom::Atom, simulator)
+    buffers = simulator.workBuffers
+    return get!(buffers.lastTargets, atom.index) do
+        isempty(buffers.lastTargetsPool) ? Vector{Int64}() : empty!(pop!(buffers.lastTargetsPool))
+    end
+end
+
+function ClearLastTargets!(atom::Atom, simulator)
+    targets = get(simulator.workBuffers.lastTargets, atom.index, nothing)
+    targets === nothing || empty!(targets)
+    return nothing
+end
+
+function AtomDynamics!(atom::Atom, simulator)
+    return AtomDynamics!(atom.index, simulator)
+end
+
+function AtomDynamics!(index::Int64, simulator)
+    return get(simulator.workBuffers.atomDynamics, index, ZERO_ATOM_DYNAMICS)
+end
+
+function ClearAtomDynamics!(atom::Atom, simulator)
+    return ClearAtomDynamics!(atom.index, simulator)
+end
+
+function ClearAtomDynamics!(index::Int64, simulator)
+    delete!(simulator.workBuffers.atomDynamics, index)
+    return nothing
 end
 
 function EnsureCollisionCapacity!(buffers::CollisionParamsBuffers, n::Int)
@@ -298,12 +502,30 @@ function EnsureCollisionCapacity!(buffers::CollisionParamsBuffers, n::Int)
 end
 
 function ClearBuffers!(buffers::WorkBuffers)
-    empty!(buffers.coordinate)
-    empty!(buffers.targets)
     empty!(buffers.candidateTargets)
     for tc in buffers.threadCandidates
         empty!(tc)
     end
+    ClearLatticeSiteCoordinateCaches!(buffers)
+    empty!(buffers.lastTargets)
+    empty!(buffers.atomDynamics)
+    empty!(buffers.targetsPool)
+    buffers.targetsPoolTop = 0
+    empty!(buffers.targetsList)
+    empty!(buffers.emptyPathList)
+    empty!(buffers.deleteIndexes)
+    empty!(buffers.othersTargetIndexes)
+    empty!(buffers.pAtoms)
+    empty!(buffers.nextPAtoms)
+    empty!(buffers.pAtomsIndex)
+    empty!(buffers.filterIndexes)
+    empty!(buffers.lastTargetsPool)
+end
+
+function ClearLatticeSiteCoordinateCaches!(buffers::WorkBuffers)
+    buffers.latticeCoordsTop = 0
+    buffers.neighborTop = 0
+    return nothing
 end
 
 mutable struct Simulator
@@ -320,8 +542,8 @@ mutable struct Simulator
     nCascade::Int64
     nCollisionEvent::Int64
     exploredCells::Vector{Cell}
-    θFunctions::Dict{Vector{Int64}, Function}
-    τFunctions::Dict{Vector{Int64}, Function}
+    θFunctions::InterpTable
+    τFunctions::InterpTable
     uniformDensity::Float64
     #soap::PyObject
     environmentCut::Float64
@@ -336,6 +558,13 @@ mutable struct Simulator
     numberOfVacancies::Int64
     maxVacancyID::Int64
     minLatticeAtomID::Int64
+    # Deferred cell reclamation: cells created during a cascade are recorded in
+    # touchedCells; at cascade end, the ones still empty are removed from the
+    # grid dict and parked in freeCells for reuse.
+    freeCells::Vector{Cell}
+    touchedCells::Vector{Cell}
+    cellStd::CellStd
+    cellLatticeAtomNumber::Int64
     # for debug
     debugAtoms::Vector{Atom}
     parameters::Parameters
@@ -366,6 +595,10 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
     debugAtoms = Atom[]
     workBuffers = WorkBuffers()
     uniformDensity = length(parameters.basisTypes) / (parameters.primaryVectors[1,1] * parameters.primaryVectors[2,2] * parameters.primaryVectors[3,3])
+    cellStd = CellStd()
+    freeCells = Vector{Cell}()
+    touchedCells = Vector{Cell}()
+    cellLatticeAtomNumber = 0
     return Simulator(Vector{Atom}(), Vector{LatticePoint}(), 
                      box, grid, 
                      0, 0, 
@@ -378,9 +611,10 @@ function Simulator(box::Box, inputGridVectors::Matrix{Float64}, parameters::Para
                      #soap, 
                      environmentCut, DTEData, 
                      time, frequency, frequencies, mobileAtoms,
-                     vacancies, numberOfVacancies, maxVacancyID,minLatticeAtomID,
+                     vacancies, numberOfVacancies, maxVacancyID, minLatticeAtomID,
+                     freeCells, touchedCells,
+                     cellStd, cellLatticeAtomNumber,
                      debugAtoms,
                      parameters,
                      workBuffers)  
 end
-
