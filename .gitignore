@@ -54,4 +54,6 @@ log
 nohup.out
 err.dte
 .git_backup
-*.mem
+*.memCLAUDE.md
+nS_main
+nV_main
